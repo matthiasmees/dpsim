@@ -196,6 +196,9 @@ if(WITH_CIM)
 		CIM/EMT_CIGRE_MV_withoutDG.cpp
 		CIM/EMT_CIGRE_MV_withDG.cpp
 		CIM/EMT_CIGRE_MV_withDG_withLoadStep.cpp
+
+
+		CIM/CreteValley_CIM_PF.cpp
 	)
 
 	list(APPEND TEST_SOURCES
