@@ -288,7 +288,7 @@ class Reader:
 
 
                 dpsimpy_comp_dict[transf_name] = [dpsimpy.sp.ph1.Transformer(transf_name, dpsimpy.LogLevel.info)]
-                dpsimpy_comp_dict[transf_name][0].set_parameters(transf_primary_v, transf_secondary_v, np.abs(transf_ratio), np.angle(transf_ratio), transf_r, transf_l, transf_c)
+                dpsimpy_comp_dict[transf_name][0].set_parameters(transf_primary_v, transf_secondary_v, transf_s, np.abs(transf_ratio), np.angle(transf_ratio), transf_r, transf_l, transf_c, 0.0)
                 dpsimpy_comp_dict[transf_name][0].set_base_voltage(transf_tbus_baseV)
 
 
