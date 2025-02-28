@@ -45,6 +45,13 @@ class Reader:
         self.mpc_bus_data['area'] = self.mpc_bus_data['area'].astype(int)
         self.mpc_bus_data['zone'] = self.mpc_bus_data['zone'].astype(int)
 
+        # remove isolated busses
+        self.mpc_bus_data= self.mpc_bus_data[(self.mpc_bus_data['type'] !=4)]
+
+        # # remove busses with Pd & Qd & Gs & Bs =0 ?
+        # self.mpc_bus_data= self.mpc_bus_data[((self.mpc_bus_data['Pd'] !=0) | (self.mpc_bus_data['Qd'] !=0) | (self.mpc_bus_data['Gs'] !=0) | (self.mpc_bus_data['Bs'] !=0))]
+
+
         #### Generators
         mpc_gen_raw = self.mpc_raw[self.mpc_name][0][0][gen_data_idx]
 
@@ -56,6 +63,9 @@ class Reader:
 
         self.mpc_gen_data['bus'] = self.mpc_gen_data['bus'].astype(int)
         self.mpc_gen_data['status'] = self.mpc_gen_data['status'].astype(int)
+
+        # remove gens with status =0
+        self.mpc_gen_data= self.mpc_gen_data[self.mpc_gen_data['status'] == 1]
 
         #### Branches
         # extract only first 13 columns since following columns include results
@@ -69,6 +79,10 @@ class Reader:
         self.mpc_branch_data['fbus'] = self.mpc_branch_data['fbus'].astype(int)
         self.mpc_branch_data['tbus'] = self.mpc_branch_data['tbus'].astype(int)
         self.mpc_branch_data['status'] = self.mpc_branch_data['status'].astype(int)
+
+        # remove branches with status =0
+        self.mpc_branch_data= self.mpc_branch_data[self.mpc_branch_data['status'] == 1]
+
 
         #### TODO Generator costs
 
@@ -84,9 +98,10 @@ class Reader:
         mw_w = 1e6
         kv_v = 1e3
 
-        # Nodes
+        # Component counters
         bus = 0
         load = 0
+        shunt= 0
         generator = 0
         inj = 0
 
@@ -101,8 +116,10 @@ class Reader:
             # 1 = PQ, 2 = PV, 3 = ref, 4 = isolated
             bus_type = self.mpc_bus_data.at[index,'type']
 
-            # Loads
+            # PQ bus
             if bus_type == 1:
+                ### LOADS ###
+                ###### TODO: if Pd & Qd <>0
                 load = load + 1
                 load_name = "load%s" %load
                 load_p = self.mpc_bus_data.at[index,'Pd'] * mw_w
@@ -116,8 +133,45 @@ class Reader:
                 # add connections
                 dpsimpy_comp_dict[load_name].append([dpsimpy_busses_dict[bus_index]]) # [to bus]
 
-            # Generators
+                ### SHUNTS ###
+                ###### TODO: if Gs & Bs <> 0                
+                shunt = shunt + 1
+                shunt_name = "shunt%s" %shunt
+                shunt_g= self.mpc_bus_data.at[index,'Gs'] * mw_w
+                shunt_b= self.mpc_bus_data.at[index,'Bs'] * mw_w 
+                shunt_baseV = self.mpc_bus_data.at[index,'baseKV'] * kv_v
+
+                dpsimpy_comp_dict[shunt_name] = [dpsimpy.sp.ph1.Shunt(shunt_name, dpsimpy.LogLevel.info)]
+                dpsimpy_comp_dict[shunt_name][0].set_parameters(shunt_g/(shunt_baseV**2), shunt_b/(shunt_baseV**2))
+                dpsimpy_comp_dict[shunt_name][0].set_base_voltage(shunt_baseV)
+                # add connections
+                dpsimpy_comp_dict[shunt_name].append([dpsimpy_busses_dict[bus_index]]) # [to bus]
+
+                ### PQ GENERATORS ###
+                if self.mpc_bus_data.at[index,'bus_i'] in self.mpc_gen_data['bus'].values:
+                    generator = generator + 1
+                    gen_name = "gen%s" %generator
+
+                    # relevant data from self.mpc_gen_data. Identification with bus number available in mpc_bus_data and mpc_gen_data
+                    gen = self.mpc_gen_data.loc[self.mpc_gen_data['bus'] == self.mpc_bus_data.at[index,'bus_i']]
+
+                    gen_baseS = gen['mBase']*mw_w # gen base MVA default is mpc.baseMVA
+                    gen_baseV = self.mpc_bus_data.at[index,'baseKV']*kv_v # gen base kV
+                    gen_v = gen['Vg']*gen_baseV   # gen set point voltage (gen['Vg'] in p.u.)
+                    gen_p = gen['Pg']*mw_w   # gen ini. active power (gen['Pg'] in MVA)
+                    gen_q = gen['Qg']*mw_w   # gen ini. reactive power (gen['Qg'] in MVAr)
+                    gen_nom_s = abs(complex(gen['Pmax'], gen['Qmax'])) # gen nominal power (set default to mpc.baseMVA ? )
+
+                    dpsimpy_comp_dict[gen_name] = [dpsimpy.sp.ph1.SynchronGenerator(gen_name, dpsimpy.LogLevel.info)]
+                    dpsimpy_comp_dict[gen_name][0].set_parameters(gen_nom_s, gen_baseV, gen_p, gen_v, dpsimpy.PowerflowBusType.PQ, gen_q)
+                    dpsimpy_comp_dict[gen_name][0].set_base_voltage(gen_baseV)
+
+                    # add connections
+                    dpsimpy_comp_dict[gen_name].append([dpsimpy_busses_dict[bus_index]]) # [to bus]
+
+            # PV bus
             elif bus_type == 2:
+                ### PV GENERATORS ###
                 generator = generator + 1
                 gen_name = "gen%s" %generator
 
@@ -128,18 +182,20 @@ class Reader:
                 gen_baseV = self.mpc_bus_data.at[index,'baseKV']*kv_v # gen base kV
                 gen_v = gen['Vg']*gen_baseV   # gen set point voltage (gen['Vg'] in p.u.)
                 gen_p = gen['Pg']*mw_w   # gen ini. active power (gen['Pg'] in MVA)
-                # gen_q = gen['Qg']*mw_w   # gen ini. reactive power (gen['Qg'] in MVAr)
+                gen_q = gen['Qg']*mw_w   # gen ini. reactive power (gen['Qg'] in MVAr)
                 gen_nom_s = abs(complex(gen['Pmax'], gen['Qmax'])) # gen nominal power (set default to mpc.baseMVA ? )
 
                 dpsimpy_comp_dict[gen_name] = [dpsimpy.sp.ph1.SynchronGenerator(gen_name, dpsimpy.LogLevel.info)]
-                dpsimpy_comp_dict[gen_name][0].set_parameters(gen_nom_s, gen_baseV, gen_p, gen_v, dpsimpy.PowerflowBusType.PV)
+                dpsimpy_comp_dict[gen_name][0].set_parameters(gen_nom_s, gen_baseV, gen_p, gen_v, dpsimpy.PowerflowBusType.PV, gen_q)
                 dpsimpy_comp_dict[gen_name][0].set_base_voltage(gen_baseV)
+
 
                 # add connections
                 dpsimpy_comp_dict[gen_name].append([dpsimpy_busses_dict[bus_index]]) # [to bus]
 
-            # Network injection (slack bus)
+            # Slack bus
             elif bus_type == 3:
+                ### NETWORK INJECTION ###
                 inj = inj + 1
                 extnet_name = "extnet%s" %inj
 
@@ -160,9 +216,9 @@ class Reader:
 
             #isolated
             elif bus_type == 4:
-                print("isolated bus type")
+                print("Isolated bus type:" + bus_name)
             else:
-                print("bus type error")
+                print("Bus type error")
 
         ### branches ####
         line = 0
@@ -226,14 +282,15 @@ class Reader:
                 transf_baseZ = transf_tbus_baseV*transf_tbus_baseV / (self.mpc_base_power_MVA*mw_w)
                 transf_r = self.mpc_branch_data.at[index,'r']* transf_baseZ
                 transf_x = self.mpc_branch_data.at[index,'x']* transf_baseZ
+                transf_b = self.mpc_branch_data.at[index,'b'] / transf_baseZ
                 transf_l = transf_x / self.mpc_omega
+                transf_c = transf_b / self.mpc_omega
+
 
                 dpsimpy_comp_dict[transf_name] = [dpsimpy.sp.ph1.Transformer(transf_name, dpsimpy.LogLevel.info)]
-                dpsimpy_comp_dict[transf_name][0].set_parameters(transf_primary_v, transf_secondary_v, np.abs(transf_ratio), np.angle(transf_ratio), transf_r, transf_l)
+                dpsimpy_comp_dict[transf_name][0].set_parameters(transf_primary_v, transf_secondary_v, np.abs(transf_ratio), np.angle(transf_ratio), transf_r, transf_l, transf_c)
                 dpsimpy_comp_dict[transf_name][0].set_base_voltage(transf_tbus_baseV)
 
-                print(transf_primary_v, transf_secondary_v, np.abs(transf_ratio), np.angle(transf_ratio), transf_r, transf_l)
-                print(transf_tbus_baseV)
 
                 # add connections
                 dpsimpy_comp_dict[transf_name].append([dpsimpy_busses_dict[str(transf_fbus)], dpsimpy_busses_dict[str(transf_tbus)]])
