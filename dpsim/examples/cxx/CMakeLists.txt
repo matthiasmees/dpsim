@@ -17,6 +17,9 @@ set(CIRCUIT_SOURCES
 	Circuits/DP_Diakoptics.cpp
 	Circuits/DP_VSI.cpp
 
+	# 9bus examples
+	Circuits/cosim-9bus.cpp
+
 	# DP examples with PF initialization
 	Circuits/DP_Slack_PiLine_PQLoad_with_PF_Init.cpp
 	Circuits/DP_Slack_PiLine_VSI_with_PF_Init.cpp
