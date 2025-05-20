@@ -33,21 +33,21 @@ void IEEE9Bus_Simulation(String simName, Real timeStep,
       SP::Ph1::SynchronGenerator::make(ninebus.gen1.Name, Logger::Level::debug);
   gen1PF->setParameters(ninebus.gen1.RatedPower, ninebus.gen1.RatedVoltage,
                         ninebus.gen1.InitialPower, ninebus.gen1.InitialVoltage,
-                        ninebus.gen1.BusType);
+                        ninebus.gen1.BusType); // Reactive power not given, should be 27e6
   gen1PF->setBaseVoltage(ninebus.gen1.RatedVoltage);
 
   auto gen2PF =
       SP::Ph1::SynchronGenerator::make(ninebus.gen2.Name, Logger::Level::debug);
   gen2PF->setParameters(ninebus.gen2.RatedPower, ninebus.gen2.RatedVoltage,
                         ninebus.gen2.InitialPower, ninebus.gen2.InitialVoltage,
-                        ninebus.gen2.BusType);
+                        ninebus.gen2.BusType); // Reactive power not given, should be 6.7e6
   gen2PF->setBaseVoltage(ninebus.gen2.RatedVoltage);
 
   auto gen3PF =
       SP::Ph1::SynchronGenerator::make(ninebus.gen3.Name, Logger::Level::debug);
   gen3PF->setParameters(ninebus.gen3.RatedPower, ninebus.gen3.RatedVoltage,
                         ninebus.gen3.InitialPower, ninebus.gen3.InitialVoltage,
-                        ninebus.gen3.BusType);
+                        ninebus.gen3.BusType); // Reactive power not given, should be -10.9e6
   gen3PF->setBaseVoltage(ninebus.gen3.RatedVoltage);
 
   // Loads
@@ -118,7 +118,7 @@ void IEEE9Bus_Simulation(String simName, Real timeStep,
   transf14PF->setParameters(
       ninebus.transf14.VoltageLVSide, ninebus.transf14.VoltageHVSide,
       ninebus.transf14.Ratio, 0.0, // No phase shift (ratioPhase = 0.0)
-      ninebus.transf14.Resistance, ninebus.transf14.Inductance);
+      ninebus.transf14.Resistance, ninebus.transf14.Inductance); // RatioAbs should be 1 from RTDS
   transf14PF->setBaseVoltage(ninebus.transf14.VoltageHVSide);
 
   // Transformer between bus 2 and bus 7
@@ -127,7 +127,7 @@ void IEEE9Bus_Simulation(String simName, Real timeStep,
   transf27PF->setParameters(
       ninebus.transf27.VoltageLVSide, ninebus.transf27.VoltageHVSide,
       ninebus.transf27.Ratio, 0.0, ninebus.transf27.Resistance,
-      ninebus.transf27.Inductance);
+      ninebus.transf27.Inductance); // RatioAbs should be 1 from RTDS
   transf27PF->setBaseVoltage(ninebus.transf27.VoltageHVSide);
 
   // Transformer between bus 3 and bus 9
@@ -136,7 +136,7 @@ void IEEE9Bus_Simulation(String simName, Real timeStep,
   transf39PF->setParameters(
       ninebus.transf39.VoltageLVSide, ninebus.transf39.VoltageHVSide,
       ninebus.transf39.Ratio, 0.0, ninebus.transf39.Resistance,
-      ninebus.transf39.Inductance);
+      ninebus.transf39.Inductance); // RatioAbs should be 1 from RTDS
   transf39PF->setBaseVoltage(ninebus.transf39.VoltageHVSide);
 
   // ----- CONNECT COMPONENTS TO SYSTEM TOPOLOGY -----
