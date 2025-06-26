@@ -73,6 +73,7 @@
 #include <dpsim-models/DP/DP_Ph3_Capacitor.h>
 #include <dpsim-models/DP/DP_Ph3_Inductor.h>
 #include <dpsim-models/DP/DP_Ph3_Resistor.h>
+#include <dpsim-models/DP/DP_Ph3_RXLoad.h>
 #include <dpsim-models/DP/DP_Ph3_SeriesResistor.h>
 #include <dpsim-models/DP/DP_Ph3_SeriesSwitch.h>
 #include <dpsim-models/DP/DP_Ph3_SynchronGeneratorDQTrapez.h>

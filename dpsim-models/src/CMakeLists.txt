@@ -61,6 +61,7 @@ list(APPEND MODELS_SOURCES
 	# DP/DP_Ph3_SynchronGeneratorDQSmpl.cpp
 	# DP/DP_Ph3_SynchronGeneratorVBR.cpp
 	# DP/DP_Ph3_SynchronGeneratorVBRStandalone.cpp
+	DP/DP_Ph3_RXLoad.cpp
 
 	EMT/EMT_Ph1_Capacitor.cpp
 	EMT/EMT_Ph1_CurrentSource.cpp

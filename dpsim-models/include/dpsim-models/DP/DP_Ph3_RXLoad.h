@@ -6,147 +6,95 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  *********************************************************************************/
 
-#include <dpsim-models/DP/DP_Ph1_RXLoad.h>
+#pragma once
 
-using namespace CPS;
+#include <dpsim-models/DP/DP_Ph3_Capacitor.h>
+#include <dpsim-models/DP/DP_Ph3_Inductor.h>
+#include <dpsim-models/DP/DP_Ph3_Resistor.h>
+#include <dpsim-models/Definitions.h>
+#include <dpsim-models/Logger.h>
+#include <dpsim-models/MNASimPowerComp.h>
+#include <dpsim-models/Solver/MNAInterface.h>
 
-DP::Ph1::RXLoad::RXLoad(String uid, String name, Logger::Level logLevel)
-    : CompositePowerComp<Complex>(uid, name, true, true, logLevel),
-      mActivePower(mAttributes->create<Real>("P")),
-      mReactivePower(mAttributes->create<Real>("Q")),
-      mNomVoltage(mAttributes->create<Real>("V_nom")) {
-  setTerminalNumber(1);
+namespace CPS {
+namespace DP {
+namespace Ph3 {
+///
+class RXLoad : public MNASimPowerComp<Complex>,
+                public SharedFactory<RXLoad> {
 
-  SPDLOG_LOGGER_INFO(mSLog, "Create {} {}", this->type(), name);
-  **mIntfVoltage = MatrixComp::Zero(1, 1);
-  **mIntfCurrent = MatrixComp::Zero(1, 1);
-}
 
-DP::Ph1::RXLoad::RXLoad(String name, Logger::Level logLevel)
-    : RXLoad(name, name, logLevel) {}
+protected:
+  /// Power [Watt]
+  MatrixComp mPower;
+  /// Resistance [Ohm]
+  Matrix mResistance;
+  /// Reactance [Ohm]
+  Matrix mReactance;
+  /// Inductance [H]
+  Matrix mInductance;
+  /// Capacitance [F]
+  Matrix mCapacitance;
 
-SimPowerComp<Complex>::Ptr DP::Ph1::RXLoad::clone(String name) {
-  auto copy = RXLoad::make(name, mLogLevel);
-  copy->setParameters(**mActivePower, **mReactivePower, **mNomVoltage);
-  return copy;
-}
+  /// If set to true, the reactance is in series with the resistor. Otherwise it is parallel to the resistor.
+  Bool mReactanceInSeries;
 
-void DP::Ph1::RXLoad::initializeFromNodesAndTerminals(Real frequency) {
+  /// Internal inductor
+  std::shared_ptr<DP::Ph3::Inductor> mSubInductor;
+  /// Internal capacitor
+  std::shared_ptr<DP::Ph3::Capacitor> mSubCapacitor;
+  /// Internal resistance
+  std::shared_ptr<DP::Ph3::Resistor> mSubResistor;
+  /// Right side vectors of subcomponents
+  std::vector<const Matrix *> mRightVectorStamps;
 
-  if (!mParametersSet) {
-    setParameters(mTerminals[0]->singleActivePower(),
-                  mTerminals[0]->singleReactivePower(),
-                  std::abs(mTerminals[0]->initialSingleVoltage()));
-  }
+public:
+/// Active power [Watt]
+  const Attribute<Matrix>::Ptr mActivePower;
+  /// Reactive power [VAr]
+  const Attribute<Matrix>::Ptr mReactivePower;
+  /// Nominal voltage [V]
+  const Attribute<Real>::Ptr mNomVoltage;
 
-  if (**mActivePower != 0) {
-    mResistance = std::pow(**mNomVoltage, 2) / **mActivePower;
-    mSubResistor =
-        std::make_shared<DP::Ph1::Resistor>(**mName + "_res", mLogLevel);
-    mSubResistor->setParameters(mResistance);
-    mSubResistor->connect({SimNode::GND, mTerminals[0]->node()});
-    mSubResistor->initialize(mFrequencies);
-    mSubResistor->initializeFromNodesAndTerminals(frequency);
-    addMNASubComponent(mSubResistor, MNA_SUBCOMP_TASK_ORDER::TASK_BEFORE_PARENT,
-                       MNA_SUBCOMP_TASK_ORDER::TASK_BEFORE_PARENT, false);
-  } else {
-    mResistance = 0;
-  }
+  /// Defines UID, name and logging level
+  RXLoad(String uid, String name, Logger::Level logLevel = Logger::Level::off);
+  /// Defines name, component parameters and logging level
+  RXLoad(String name, Logger::Level logLevel = Logger::Level::off);
+  /// Defines name, component parameters and logging level
+  RXLoad(String name, Matrix activePower, Matrix reactivePower, Real volt,
+         Logger::Level logLevel = Logger::Level::off);
+  virtual ~RXLoad();
+  
 
-  if (**mReactivePower != 0)
-    mReactance = std::pow(**mNomVoltage, 2) / **mReactivePower;
-  else
-    mReactance = 0;
+  // #### General ####
 
-  if (mReactance > 0) {
-    mInductance = mReactance / (2. * PI * frequency);
-    mSubInductor =
-        std::make_shared<DP::Ph1::Inductor>(**mName + "_ind", mLogLevel);
-    mSubInductor->setParameters(mInductance);
-    mSubInductor->connect({SimNode::GND, mTerminals[0]->node()});
-    mSubInductor->initialize(mFrequencies);
-    mSubInductor->initializeFromNodesAndTerminals(frequency);
-    addMNASubComponent(mSubInductor, MNA_SUBCOMP_TASK_ORDER::TASK_BEFORE_PARENT,
-                       MNA_SUBCOMP_TASK_ORDER::TASK_BEFORE_PARENT, true);
-  } else if (mReactance < 0) {
-    mCapacitance = -1. / (2. * PI * frequency) / mReactance;
-    mSubCapacitor =
-        std::make_shared<DP::Ph1::Capacitor>(**mName + "_cap", mLogLevel);
-    mSubCapacitor->setParameters(mCapacitance);
-    mSubCapacitor->connect({SimNode::GND, mTerminals[0]->node()});
-    mSubCapacitor->initialize(mFrequencies);
-    mSubCapacitor->initializeFromNodesAndTerminals(frequency);
-    addMNASubComponent(mSubCapacitor,
-                       MNA_SUBCOMP_TASK_ORDER::TASK_BEFORE_PARENT,
-                       MNA_SUBCOMP_TASK_ORDER::TASK_BEFORE_PARENT, true);
-  }
+  /// Set model specific parameters
+  void setParameters(Matrix activePower, Matrix reactivePower, Real volt, bool reactanceInSeries = false);
 
-  (**mIntfVoltage)(0, 0) = mTerminals[0]->initialSingleVoltage();
-  (**mIntfCurrent)(0, 0) = std::conj(Complex(**mActivePower, **mReactivePower) /
-                                     (**mIntfVoltage)(0, 0));
+  /// Initializes component from power flow data
+  void initializeFromNodesAndTerminals(Real frequency) override;
 
-  SPDLOG_LOGGER_INFO(mSLog,
-                     "\n--- Initialization from powerflow ---"
-                     "\nVoltage across: {:s}"
-                     "\nCurrent: {:s}"
-                     "\nTerminal 0 voltage: {:s}"
-                     "\nResistance: {:f}"
-                     "\nReactance: {:f}"
-                     "\n--- Initialization from powerflow finished ---",
-                     Logger::phasorToString((**mIntfVoltage)(0, 0)),
-                     Logger::phasorToString((**mIntfCurrent)(0, 0)),
-                     Logger::phasorToString(initialSingleVoltage(0)),
-                     mResistance, mReactance);
-}
 
-void DP::Ph1::RXLoad::setParameters(Real activePower, Real reactivePower,
-                                    Real volt) {
-  mParametersSet = true;
-  **mActivePower = activePower;
-  **mReactivePower = reactivePower;
-  **mNomVoltage = volt;
+  // #### MNA section ####
+  ///
+  void mnaCompInitialize(Real omega, Real timeStep,
+                         Attribute<Matrix>::Ptr leftVector) override;
+  /// Stamps system matrix
+  void mnaCompApplySystemMatrixStamp(SparseMatrixRow &systemMatrix) override;
+  ///
+  void mnaCompUpdateVoltage(const Matrix &leftVector) override;
+  ///
+  void mnaCompUpdateCurrent(const Matrix &leftVector) override;
 
-  SPDLOG_LOGGER_INFO(mSLog, "Active Power={} [W] Reactive Power={} [VAr]",
-                     **mActivePower, **mReactivePower);
-  SPDLOG_LOGGER_INFO(mSLog, "Nominal Voltage={} [V]", **mNomVoltage);
-}
-
-void DP::Ph1::RXLoad::mnaCompUpdateVoltage(const Matrix &leftVector) {
-  (**mIntfVoltage)(0, 0) =
-      Math::complexFromVectorElement(leftVector, matrixNodeIndex(0));
-}
-
-void DP::Ph1::RXLoad::mnaCompUpdateCurrent(const Matrix &leftVector) {
-  (**mIntfCurrent)(0, 0) = 0;
-
-  for (auto subComp : mSubComponents) {
-    (**mIntfCurrent)(0, 0) += subComp->intfCurrent()(0, 0);
-  }
-}
-
-void DP::Ph1::RXLoad::mnaParentAddPreStepDependencies(
-    AttributeBase::List &prevStepDependencies,
-    AttributeBase::List &attributeDependencies,
-    AttributeBase::List &modifiedAttributes) {
-  modifiedAttributes.push_back(mRightVector);
-}
-
-void DP::Ph1::RXLoad::mnaParentPreStep(Real time, Int timeStepCount) {
-  mnaCompApplyRightSideVectorStamp(**mRightVector);
-}
-
-void DP::Ph1::RXLoad::mnaParentAddPostStepDependencies(
-    AttributeBase::List &prevStepDependencies,
-    AttributeBase::List &attributeDependencies,
-    AttributeBase::List &modifiedAttributes,
-    Attribute<Matrix>::Ptr &leftVector) {
-  attributeDependencies.push_back(leftVector);
-  modifiedAttributes.push_back(mIntfVoltage);
-  modifiedAttributes.push_back(mIntfCurrent);
-}
-
-void DP::Ph1::RXLoad::mnaParentPostStep(Real time, Int timeStepCount,
-                                        Attribute<Matrix>::Ptr &leftVector) {
-  mnaCompUpdateVoltage(**leftVector);
-  mnaCompUpdateCurrent(**leftVector);
-}
+  /// Add MNA post step dependencies
+  void
+  mnaCompAddPostStepDependencies(AttributeBase::List &prevStepDependencies,
+                                 AttributeBase::List &attributeDependencies,
+                                 AttributeBase::List &modifiedAttributes,
+                                 Attribute<Matrix>::Ptr &leftVector) override;
+  void mnaCompPostStep(Real time, Int timeStepCount,
+                       Attribute<Matrix>::Ptr &leftVector) override;
+};
+} // namespace Ph3
+} // namespace DP
+} // namespace CPS

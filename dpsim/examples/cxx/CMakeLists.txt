@@ -21,6 +21,7 @@ set(CIRCUIT_SOURCES
 	Circuits/cosim-9bus.cpp
 	Circuits/DP_cosim_9bus_4order.cpp
 	Circuits/EMT_cosim_9bus_4order.cpp
+	Circuits/DP_RXLoad.cpp
 
 	# DP examples with PF initialization
 	Circuits/DP_Slack_PiLine_PQLoad_with_PF_Init.cpp
