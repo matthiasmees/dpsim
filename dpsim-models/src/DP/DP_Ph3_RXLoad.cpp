@@ -20,7 +20,7 @@ DP::Ph3::RXLoad::RXLoad(String uid, String name, Logger::Level logLevel)
 
 
   mPhaseType = PhaseType::ABC;
-  setTerminalNumber(1);
+  setTerminalNumber(2);
 
   SPDLOG_LOGGER_INFO(mSLog, "Create {} {}", this->type(), name);
 
@@ -215,7 +215,7 @@ void DP::Ph3::RXLoad::initializeFromNodesAndTerminals(Real frequency) {
     }
   }
 
-
+/*
   // Logging
    SPDLOG_LOGGER_INFO(
       mSLog,
@@ -228,14 +228,15 @@ void DP::Ph3::RXLoad::initializeFromNodesAndTerminals(Real frequency) {
       "\nResistance: {:s}"
       "\nReactance: {:s}"
       "\n--- Initialization from powerflow finished ---",
-      //Logger::matrixToString(**mIntfVoltage),
-      //Logger::matrixToString(**mIntfCurrent),
+      Logger::matrixToString(**mIntfVoltage),
+      Logger::matrixToString(**mIntfCurrent),
       Logger::phasorToString(RMS3PH_TO_PEAK1PH * initialSingleVoltage(0)),
       Logger::matrixToString(**mActivePower),
       Logger::matrixToString(**mReactivePower),
       Logger::matrixToString(mResistance),
       Logger::matrixToString(mReactance));
   mSLog->flush();
+  */
 }
 
 void DP::Ph3::RXLoad::mnaCompInitialize(Real omega, Real timeStep,
