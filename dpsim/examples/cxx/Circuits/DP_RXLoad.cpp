@@ -13,6 +13,7 @@ using namespace CPS::DP;
 using namespace CPS::DP::Ph3;
 
 int main(int argc, char *argv[]) {
+
   Real timeStep = 0.0001;
   Real finalTime = 5;
   String simName = "DP_RXLoad";
@@ -25,15 +26,15 @@ int main(int argc, char *argv[]) {
 
   // Components
   auto vs = Ph3::VoltageSource::make("vs");
-  vs->setParameters(Complex(10, 0));
+  vs->setParameters(Complex(100, 0));
   auto r1 = Ph3::Resistor::make("r_1");
   Matrix r1_param = Matrix::Zero(3, 3);
-  r1_param << 1., 0, 0, 0, 1., 0, 0, 0, 1.;
+  r1_param << 1., 1., 1., 1., 1., 1., 1., 1., 1.;
   r1->setParameters(r1_param);
   auto rx = Ph3::RXLoad::make("RXload");
   Matrix rx_param = Matrix::Zero(3, 3);
-  rx_param << 10, 0, 0, 0, 10, 0, 0, 0, 10;
-  rx->setParameters(rx_param, rx_param, 10, false);
+  rx_param << 10, 10, 10, 10, 10, 10, 10, 10, 10;
+  rx->setParameters(rx_param, rx_param, 100, true);
 
   // Topology
   vs->connect({SimNode::GND, n1});

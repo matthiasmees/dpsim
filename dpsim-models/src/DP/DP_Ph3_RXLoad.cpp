@@ -85,7 +85,7 @@ void DP::Ph3::RXLoad::initializeFromNodesAndTerminals(Real frequency) {
     (**mActivePower)(0, 0) = mTerminals[0]->singleActivePower() / 3.;
     (**mActivePower)(1, 1) = mTerminals[0]->singleActivePower() / 3.;
     (**mActivePower)(2, 2) = mTerminals[0]->singleActivePower() / 3.;
-
+  // Split reactive Power in three phases
     **mReactivePower = Matrix::Zero(3, 3);
     (**mReactivePower)(0, 0) = mTerminals[0]->singleReactivePower() / 3.;
     (**mReactivePower)(1, 1) = mTerminals[0]->singleReactivePower() / 3.;
@@ -115,8 +115,11 @@ void DP::Ph3::RXLoad::initializeFromNodesAndTerminals(Real frequency) {
 
   // Resistance Value
   if ((**mActivePower)(0, 0) != 0) {
-    mResistance =
-        std::pow(**mNomVoltage / sqrt(3), 2) * (**mActivePower).inverse();
+    mResistance = std::pow(**mNomVoltage / sqrt(3), 2) * (**mActivePower).inverse();
+  }
+  else
+  {
+    mResistance = Matrix::Zero(3, 3);
   }
 
   // Inductor / Capacitor reactance
@@ -124,7 +127,7 @@ void DP::Ph3::RXLoad::initializeFromNodesAndTerminals(Real frequency) {
     mReactance =
         std::pow(**mNomVoltage / sqrt(3), 2) * (**mReactivePower).inverse();
   else
-    mReactance = Matrix::Zero(1, 1);
+    mReactance = Matrix::Zero(3, 3);
 
 
   // If reactance chosen create virtual node
@@ -197,8 +200,7 @@ void DP::Ph3::RXLoad::initializeFromNodesAndTerminals(Real frequency) {
   else if (mReactance(0, 0) < 0) {
     mCapacitance = -1 / (2 * PI * frequency) * mReactance.inverse();
 
-    mSubCapacitor =
-        std::make_shared<DP::Ph3::Capacitor>(**mName + "_cap", mLogLevel);
+    mSubCapacitor = std::make_shared<DP::Ph3::Capacitor>(**mName + "_cap", mLogLevel);
     mSubCapacitor->setParameters(mCapacitance);
     if (mReactanceInSeries) {
       mSubCapacitor->connect({SimNode::GND, mVirtualNodes[0]});
@@ -215,7 +217,7 @@ void DP::Ph3::RXLoad::initializeFromNodesAndTerminals(Real frequency) {
     }
   }
 
-/*
+
   // Logging
    SPDLOG_LOGGER_INFO(
       mSLog,
@@ -228,15 +230,15 @@ void DP::Ph3::RXLoad::initializeFromNodesAndTerminals(Real frequency) {
       "\nResistance: {:s}"
       "\nReactance: {:s}"
       "\n--- Initialization from powerflow finished ---",
-      Logger::matrixToString(**mIntfVoltage),
-      Logger::matrixToString(**mIntfCurrent),
+      Logger::phasorMatrixToString(**mIntfVoltage),
+      Logger::phasorMatrixToString(**mIntfCurrent),
       Logger::phasorToString(RMS3PH_TO_PEAK1PH * initialSingleVoltage(0)),
-      Logger::matrixToString(**mActivePower),
-      Logger::matrixToString(**mReactivePower),
-      Logger::matrixToString(mResistance),
-      Logger::matrixToString(mReactance));
+      Logger::phasorMatrixToString(**mActivePower),
+      Logger::phasorMatrixToString(**mReactivePower),
+      Logger::phasorMatrixToString(mResistance),
+      Logger::phasorMatrixToString(mReactance));
   mSLog->flush();
-  */
+
 }
 
 void DP::Ph3::RXLoad::mnaCompInitialize(Real omega, Real timeStep,
