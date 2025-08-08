@@ -94,6 +94,7 @@
    Real BaseVoltage;
    Real Conductance;
    Real Susceptance;
+   Real LoadStep;
  }; // Load Structure
 
  struct Line {
@@ -359,6 +360,7 @@
      load6.BaseVoltage = 230e3;
      load6.Conductance = load6.RealPower / std::pow(load6.BaseVoltage, 2);
      load6.Susceptance = -load6.ReactivePower / std::pow(load6.BaseVoltage, 2);
+     load6.LoadStep = 90e6 * 0.33; // Load 6 = 90e6;
 
      //-----------------Load 8 (bus8)----------------------//
      load8.Name = "LOAD8";
@@ -556,6 +558,72 @@ struct Parameters {
 };
 } // namespace ExcitationSystemEremia
 } // namespace Components
+
+namespace Events {
+std::shared_ptr<DPsim::SwitchEvent> createEventAddPowerConsumption(
+    String nodeName, Real eventTime, Real additionalActivePower,
+    SystemTopology &system, Domain domain, DPsim::DataLogger::Ptr logger) {
+
+  // TODO: use base classes ph1
+  if (domain == CPS::Domain::DP) {
+    auto loadSwitch = DP::Ph1::Switch::make("Load_Add_Switch_" + nodeName,
+                                            Logger::Level::debug);
+    auto connectionNode = system.node<CPS::SimNode<Complex>>(nodeName);
+    Real resistance = std::abs(connectionNode->initialSingleVoltage()) *
+                      std::abs(connectionNode->initialSingleVoltage()) /
+                      additionalActivePower;
+    loadSwitch->setParameters(1e9, resistance);
+    loadSwitch->open();
+    system.addComponent(loadSwitch);
+    system.connectComponentToNodes<Complex>(
+        loadSwitch, {CPS::SimNode<Complex>::GND, connectionNode});
+    logger->logAttribute("switchedload_i", loadSwitch->attribute("i_intf"));
+    return DPsim::SwitchEvent::make(eventTime, loadSwitch, true);
+  } else if (domain == CPS::Domain::SP) {
+    auto loadSwitch = SP::Ph1::Switch::make("Load_Add_Switch_" + nodeName,
+                                            Logger::Level::debug);
+    auto connectionNode = system.node<CPS::SimNode<Complex>>(nodeName);
+    Real resistance = std::abs(connectionNode->initialSingleVoltage()) *
+                      std::abs(connectionNode->initialSingleVoltage()) /
+                      additionalActivePower;
+    loadSwitch->setParameters(1e9, resistance);
+    loadSwitch->open();
+    system.addComponent(loadSwitch);
+    system.connectComponentToNodes<Complex>(
+        loadSwitch, {CPS::SimNode<Complex>::GND, connectionNode});
+    logger->logAttribute("switchedload_i", loadSwitch->attribute("i_intf"));
+    return DPsim::SwitchEvent::make(eventTime, loadSwitch, true);
+  } else {
+    return nullptr;
+  }
+}
+
+std::shared_ptr<DPsim::SwitchEvent3Ph> createEventAddPowerConsumption3Ph(
+    String nodeName, Real eventTime, Real additionalActivePower,
+    SystemTopology &system, Domain domain, DPsim::DataLogger::Ptr logger) {
+
+  // TODO: use base classes ph3
+  if (domain == CPS::Domain::EMT) {
+    auto loadSwitch = EMT::Ph3::Switch::make("Load_Add_Switch_" + nodeName,
+                                             Logger::Level::debug);
+    auto connectionNode = system.node<CPS::SimNode<Real>>(nodeName);
+    Real resistance = std::abs(connectionNode->initialSingleVoltage()) *
+                      std::abs(connectionNode->initialSingleVoltage()) /
+                      additionalActivePower;
+    loadSwitch->setParameters(Matrix::Identity(3, 3) * 1e9,
+                              Matrix::Identity(3, 3) * resistance);
+    loadSwitch->openSwitch();
+    system.addComponent(loadSwitch);
+    system.connectComponentToNodes<Real>(
+        loadSwitch,
+        {CPS::SimNode<Real>::GND, system.node<CPS::SimNode<Real>>(nodeName)});
+    logger->logAttribute("switchedload_i", loadSwitch->attribute("i_intf"));
+    return DPsim::SwitchEvent3Ph::make(eventTime, loadSwitch, true);
+  } else {
+    return nullptr;
+  }
+}
+} // namespace Events
 } // namespace Examples
 } // namespace CIM
 } // namespace CPS

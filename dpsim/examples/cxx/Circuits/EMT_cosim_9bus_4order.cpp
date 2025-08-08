@@ -1,12 +1,14 @@
 #include "../GeneratorFactory.h"
-#include "../GridParameters.h"
+//#include "../GridParameters.h"
+#include "../Examples.h"
 
 #include <DPsim.h>
 
 using namespace DPsim;
 using namespace CPS;
+using namespace CPS::CIM;
 
-CPS::CIM::Examples::NineBus::ScenarioConfig ninebus;
+CPS::CIM::Examples::NineBus::Cosim_9bus ninebus;
 CPS::CIM::Examples::Components::GovernorKundur::Parameters govKundur;
 CPS::CIM::Examples::Components::ExcitationSystemEremia::Parameters excEremia;
 
@@ -216,15 +218,42 @@ String simNameEMT = simName + "_EMT";
 Logger::setLogDir("logs/" + simNameEMT);
 
 // Nodes
-auto n1EMT = SimNode<Real>::make("BUS1", PhaseType::ABC);
-auto n2EMT = SimNode<Real>::make("BUS2", PhaseType::ABC);
-auto n3EMT = SimNode<Real>::make("BUS3", PhaseType::ABC);
-auto n4EMT = SimNode<Real>::make("BUS4", PhaseType::ABC);
-auto n5EMT = SimNode<Real>::make("BUS5", PhaseType::ABC);
-auto n6EMT = SimNode<Real>::make("BUS6", PhaseType::ABC);
-auto n7EMT = SimNode<Real>::make("BUS7", PhaseType::ABC);
-auto n8EMT = SimNode<Real>::make("BUS8", PhaseType::ABC);
-auto n9EMT = SimNode<Real>::make("BUS9", PhaseType::ABC);
+std::vector<Complex> initialVoltage_n1{
+    n1PF->voltage()(0, 0), n1PF->voltage()(0, 0) * SHIFT_TO_PHASE_B,
+    n1PF->voltage()(0, 0) * SHIFT_TO_PHASE_C};
+auto n1EMT = SimNode<Real>::make("BUS1", PhaseType::ABC, initialVoltage_n1);
+std::vector<Complex> initialVoltage_n2{
+    n2PF->voltage()(0, 0), n2PF->voltage()(0, 0) * SHIFT_TO_PHASE_B,
+    n2PF->voltage()(0, 0) * SHIFT_TO_PHASE_C};
+auto n2EMT = SimNode<Real>::make("BUS2", PhaseType::ABC, initialVoltage_n2);
+std::vector<Complex> initialVoltage_n3{
+    n3PF->voltage()(0, 0), n3PF->voltage()(0, 0) * SHIFT_TO_PHASE_B,
+    n3PF->voltage()(0, 0) * SHIFT_TO_PHASE_C};
+auto n3EMT = SimNode<Real>::make("BUS3", PhaseType::ABC, initialVoltage_n3);
+std::vector<Complex> initialVoltage_n4{
+    n4PF->voltage()(0, 0), n4PF->voltage()(0, 0) * SHIFT_TO_PHASE_B,
+    n4PF->voltage()(0, 0) * SHIFT_TO_PHASE_C};
+auto n4EMT = SimNode<Real>::make("BUS4", PhaseType::ABC, initialVoltage_n4);
+std::vector<Complex> initialVoltage_n5{
+    n5PF->voltage()(0, 0), n5PF->voltage()(0, 0) * SHIFT_TO_PHASE_B,
+    n5PF->voltage()(0, 0) * SHIFT_TO_PHASE_C};
+auto n5EMT = SimNode<Real>::make("BUS5", PhaseType::ABC, initialVoltage_n5);
+std::vector<Complex> initialVoltage_n6{
+    n6PF->voltage()(0, 0), n6PF->voltage()(0, 0) * SHIFT_TO_PHASE_B,
+    n6PF->voltage()(0, 0) * SHIFT_TO_PHASE_C};
+auto n6EMT = SimNode<Real>::make("BUS6", PhaseType::ABC, initialVoltage_n6);
+std::vector<Complex> initialVoltage_n7{
+    n7PF->voltage()(0, 0), n7PF->voltage()(0, 0) * SHIFT_TO_PHASE_B,
+    n7PF->voltage()(0, 0) * SHIFT_TO_PHASE_C};
+auto n7EMT = SimNode<Real>::make("BUS7", PhaseType::ABC, initialVoltage_n7);
+std::vector<Complex> initialVoltage_n8{
+    n8PF->voltage()(0, 0), n8PF->voltage()(0, 0) * SHIFT_TO_PHASE_B,
+    n8PF->voltage()(0, 0) * SHIFT_TO_PHASE_C};
+auto n8EMT = SimNode<Real>::make("BUS8", PhaseType::ABC, initialVoltage_n8);
+std::vector<Complex> initialVoltage_n9{
+    n9PF->voltage()(0, 0), n9PF->voltage()(0, 0) * SHIFT_TO_PHASE_B,
+    n9PF->voltage()(0, 0) * SHIFT_TO_PHASE_C};
+auto n9EMT = SimNode<Real>::make("BUS9", PhaseType::ABC, initialVoltage_n9);
 
 // Generator 1 Initialization
 auto gen1EMT = EMT::Ph3::SynchronGenerator4OrderVBR::make(ninebus.gen1.Name, Logger::Level::debug);
@@ -528,6 +557,11 @@ if (std::dynamic_pointer_cast<CPS::EMT::Ph3::PiLine>(comp)) {
 }
 }
 
+// load step event
+std::shared_ptr<SwitchEvent3Ph> loadStepEvent =
+    Examples::Events::createEventAddPowerConsumption3Ph(
+          "BUS6", std::round(2.0 / timeStep) * timeStep, ninebus.load6.LoadStep, systemEMT, Domain::EMT, loggerEMT);
+
 // Simulation setup and run
 systemEMT.initWithPowerflow(systemPF, Domain::EMT);
 Simulation simEMT(simNameEMT, Logger::Level::debug);
@@ -537,6 +571,10 @@ simEMT.setDomain(Domain::EMT);
 simEMT.addLogger(loggerEMT);
 simEMT.setSystem(systemEMT);
 simEMT.doSystemMatrixRecomputation(true);
+
+// Events
+simEMT.addEvent(loadStepEvent);
+
 simEMT.run();
 }
 
