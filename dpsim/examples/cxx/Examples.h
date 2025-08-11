@@ -95,6 +95,10 @@ namespace Examples {
    Real Conductance;
    Real Susceptance;
    Real LoadStep;
+   Real LoadStep33;
+   Real LoadStep66;
+   Real LoadStep133;
+   Real LoadStep166;
  }; // Load Structure
 
  struct Line {
@@ -516,7 +520,7 @@ namespace Examples {
    Transformer transf14;
    Transformer transf27;
    Transformer transf39;
-  
+
   Cosim_9bus() {
   //-----------------Generator 1 (bus1)-----------------//
      gen1.Name = "GEN1";
@@ -715,7 +719,11 @@ namespace Examples {
      load6.BaseVoltage = 230e3;
      load6.Conductance = load6.RealPower / std::pow(load6.BaseVoltage, 2);
      load6.Susceptance = -load6.ReactivePower / std::pow(load6.BaseVoltage, 2);
-     load6.LoadStep = 90e6 * 0.33; // Load 6 = 90e6;
+     load6.LoadStep = 90e6 * 0.66; // Load 6 = 90e6;
+     load6.LoadStep166 = 90e6 * 0.66; // Load 6 = 90e6;
+     load6.LoadStep133 = 90e6 * 0.33; // Load 6 = 90e6;
+     load6.LoadStep66 = -90e6 * 0.33; // Load 6 = 90e6;
+     load6.LoadStep33 = -90e6 * 0.66; // Load 6 = 90e6;
 
      //-----------------Load 8 (bus8)----------------------//
      load8.Name = "LOAD8";

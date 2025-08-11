@@ -13,7 +13,7 @@ CPS::CIM::Examples::Components::GovernorKundur::Parameters govKundur;
 CPS::CIM::Examples::Components::ExcitationSystemEremia::Parameters excEremia;
 
 void IEEE9Bus_Simulation(String simName, Real timeStep,
-                                      Real finalTime) {
+                                      Real finalTime, Real loadStep) {
   // ----- POWER FLOW FOR INITIALIZATION -----
   String simNamePF = simName + "_PF";
   Logger::setLogDir("logs/" + simNamePF);
@@ -560,7 +560,7 @@ if (std::dynamic_pointer_cast<CPS::EMT::Ph3::PiLine>(comp)) {
 // load step event
 std::shared_ptr<SwitchEvent3Ph> loadStepEvent =
     Examples::Events::createEventAddPowerConsumption3Ph(
-          "BUS6", std::round(2.0 / timeStep) * timeStep, ninebus.load6.LoadStep, systemEMT, Domain::EMT, loggerEMT);
+          "BUS6", std::round(10.0 / timeStep) * timeStep, loadStep, systemEMT, Domain::EMT, loggerEMT);
 
 // Simulation setup and run
 systemEMT.initWithPowerflow(systemPF, Domain::EMT);
@@ -581,7 +581,7 @@ simEMT.run();
 int main(int argc, char *argv[]) {
     // Default simulation parameters
     String simName = "Cosim-IEEE9-4order";
-    double finalTime = 5; // seconds (can be adjusted)
+    double finalTime = 20; // seconds (can be adjusted)
     double timeStep = 50e-6;
 
     // Check for command-line arguments
@@ -595,8 +595,16 @@ int main(int argc, char *argv[]) {
         timeStep = atof(argv[3]);
     }
 
-    // Run the simulation with the given parameters
-    IEEE9Bus_Simulation(simName, timeStep, finalTime);
+    // Run the simulation with the given parameters and loadsteps
+    IEEE9Bus_Simulation(simName + "-no-loadstep", timeStep, finalTime, 0);
+
+    IEEE9Bus_Simulation(simName + "-33-percent-loadstep", timeStep, finalTime, ninebus.load6.LoadStep33);
+
+    IEEE9Bus_Simulation(simName + "-66-percent-loadstep", timeStep, finalTime, ninebus.load6.LoadStep66);
+
+    IEEE9Bus_Simulation(simName + "-133-percent-loadstep", timeStep, finalTime, ninebus.load6.LoadStep133);
+
+    IEEE9Bus_Simulation(simName + "-166-percent-loadstep", timeStep, finalTime, ninebus.load6.LoadStep166);
 
     return 0;
 }
