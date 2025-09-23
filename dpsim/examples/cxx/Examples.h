@@ -1612,6 +1612,11 @@ struct Load {
   Real BaseVoltage;
   Real Conductance;
   Real Susceptance;
+  Real LoadStep;
+  Real LoadStep33;
+  Real LoadStep66;
+  Real LoadStep133;
+  Real LoadStep166;
 }; // Load Structure
 
 struct Line {
@@ -1877,6 +1882,11 @@ struct ScenarioConfig {
     load6.BaseVoltage = 230e3;
     load6.Conductance = load6.RealPower / std::pow(load6.BaseVoltage, 2);
     load6.Susceptance = -load6.ReactivePower / std::pow(load6.BaseVoltage, 2);
+    load6.LoadStep = 90e6 * 0.66; // Load 6 = 90e6;
+    load6.LoadStep166 = 90e6 * 0.66; // Load 6 = 90e6;
+    load6.LoadStep133 = 90e6 * 0.33; // Load 6 = 90e6;
+    load6.LoadStep66 = -90e6 * 0.33; // Load 6 = 90e6;
+    load6.LoadStep33 = -90e6 * 0.66; // Load 6 = 90e6;
 
     load8.Name = "LOAD8";
     load8.RealPower = 100e6;
@@ -2026,7 +2036,7 @@ std::shared_ptr<DPsim::SwitchEvent> createEventAddPowerConsumption(
 
 std::shared_ptr<DPsim::SwitchEvent3Ph> createEventAddPowerConsumption3Ph(
     String nodeName, Real eventTime, Real additionalActivePower,
-    SystemTopology &system, Domain domain, DPsim::DataLogger::Ptr logger) {
+    SystemTopology &system, Domain domain, DPsim::DataLoggerInterface::Ptr logger) {
 
   // TODO: use base classes ph3
   if (domain == CPS::Domain::EMT) {

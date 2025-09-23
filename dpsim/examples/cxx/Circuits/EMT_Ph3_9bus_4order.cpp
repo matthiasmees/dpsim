@@ -8,16 +8,14 @@ using namespace CPS;
 
 CPS::CIM::Examples::Grids::NineBus::ScenarioConfig ninebus;
 
-SystemTopology buildTopology(CommandLineArgs &args,
-                             std::shared_ptr<DataLoggerInterface> logger) {
 
-  String simName = args.name;
-
-  // POWER FLOW FOR INITIALIZATION
-  CPS::Logger::get(args.name)->info("Creating power flow initialization.");
-
+void IEEE_9bus_4order_simulation(String simName, Real timeStep,
+                                      Real finalTime, Real loadStep) {
+  // ----- POWER FLOW FOR INITIALIZATION -----
   String simNamePF = simName + "_PF";
-  CPS::Logger::setLogDir("logs/" + simNamePF);
+  Logger::setLogDir("logs/" + simNamePF);
+
+  // ----- INITIALIZE COMPONENTS -----
 
   // Nodes
   auto n1PF = SimNode<Complex>::make("BUS1", PhaseType::Single);
@@ -196,17 +194,16 @@ SystemTopology buildTopology(CommandLineArgs &args,
   // Run power flow simulation
   Simulation simPF(simNamePF, CPS::Logger::Level::off);
   simPF.setSystem(systemPF);
-  simPF.setTimeStep(args.timeStep);
-  simPF.setFinalTime(1 * args.timeStep);
+  simPF.setTimeStep(timeStep);
+  simPF.setFinalTime(1*timeStep);
   simPF.setDomain(Domain::SP);
   simPF.setSolverType(Solver::Type::NRP);
   simPF.setSolverAndComponentBehaviour(Solver::Behaviour::Simulation);
   simPF.addLogger(loggerPF);
   simPF.run();
-  CPS::Logger::get(args.name)->info("Power flow simulation finished.");
 
   // DYNAMIC SIMULATION - EMT
-  CPS::Logger::get(args.name)->info("Dynamic simulation initialization.");
+
   String simNameEMT = simName + "_EMT";
   CPS::Logger::setLogDir("logs/" + simNameEMT);
 
@@ -481,8 +478,7 @@ SystemTopology buildTopology(CommandLineArgs &args,
 
   systemEMT.initWithPowerflow(systemPF, Domain::EMT);
 
-  // Logger
-  if (logger) {
+  auto logger = DataLogger::make(simNameEMT, Logger::Level::debug);
     // Logging
     logger->logAttribute("BUS1", n1EMT->attribute("v"));
     logger->logAttribute("BUS2", n2EMT->attribute("v"));
@@ -520,49 +516,58 @@ SystemTopology buildTopology(CommandLineArgs &args,
         logger->logAttribute(comp->name() + ".V", comp->attribute("v_intf"));
       }
     }
-  }
 
-  systemEMT.renderToFile("logs/" + simNameEMT + ".svg");
+    // Load Step Event
+    std::shared_ptr<SwitchEvent3Ph> loadStepEvent =
+    CPS::CIM::Examples::Events::createEventAddPowerConsumption3Ph(
+          "BUS6", std::round(10.0 / timeStep) * timeStep, loadStep, systemEMT, Domain::EMT, logger);
 
-  return systemEMT;
+
+  // Simulation setup and run
+  systemEMT.initWithPowerflow(systemPF, Domain::EMT);
+  Simulation simEMT(simNameEMT, Logger::Level::debug);
+  simEMT.setTimeStep(timeStep);
+  simEMT.setFinalTime(finalTime);
+  simEMT.setDomain(Domain::EMT);
+  simEMT.addLogger(logger);
+  simEMT.setSystem(systemEMT);
+  simEMT.doSystemMatrixRecomputation(true);
+
+  // Events
+  simEMT.addEvent(loadStepEvent);
+
+  simEMT.run();
+
+
 }
 
 int main(int argc, char *argv[]) {
+// Default simulation parameters
+    String simName = "EMT_Ph3_9bus_4order";
+    double finalTime = 20; // seconds (can be adjusted)
+    double timeStep = 50e-6;
 
-  CommandLineArgs args(argc, argv, "EMT_Ph3_9bus_4order", 0.00005, 0.01 * 60,
-                       ninebus.nomFreq, -1, CPS::Logger::Level::info,
-                       CPS::Logger::Level::off, false, false, false,
-                       CPS::Domain::EMT);
+    // Check for command-line arguments
+    if (argc >= 2) {
+        simName = argv[1];
+    }
+    if (argc >= 3) {
+        finalTime = atof(argv[2]);
+    }
+    if (argc >= 4) {
+        timeStep = atof(argv[3]);
+    }
 
-  CPS::Logger::setLogDir("./logs/" + args.name);
-  bool log = args.options.find("log") != args.options.end() &&
-             args.getOptionBool("log");
+    // Run the simulation with the given parameters and loadsteps
+    IEEE_9bus_4order_simulation(simName + "_no_step", timeStep, finalTime, 1e-6);
 
-  std::filesystem::path logFilename =
-      "./logs/" + args.name + "/" + args.name + ".csv";
-  std::shared_ptr<DataLoggerInterface> logger = nullptr;
+    IEEE_9bus_4order_simulation(simName + "_33_step", timeStep, finalTime, ninebus.load6.LoadStep33);
 
-  if (log) {
-    logger =
-        RealTimeDataLogger::make(logFilename, args.duration, args.timeStep);
-  }
+    IEEE_9bus_4order_simulation(simName + "_66_step", timeStep, finalTime, ninebus.load6.LoadStep66);
 
-  auto sys = buildTopology(args, logger);
+    IEEE_9bus_4order_simulation(simName + "_133_step", timeStep, finalTime, ninebus.load6.LoadStep133);
 
-  Simulation sim(args.name, args);
-  sim.setSystem(sys);
-  sim.setDomain(Domain::EMT);
-  sim.doSystemMatrixRecomputation(true);
-  sim.setLogStepTimes(true);
-  sim.checkForOverruns(args.name + "_overruns");
-  if (log) {
-    sim.addLogger(logger);
-  }
-  sim.run();
+    IEEE_9bus_4order_simulation(simName + "_166_step", timeStep, finalTime, ninebus.load6.LoadStep166);
 
-  sim.logStepTimes(args.name + "_step_times");
-  CPS::Logger::get(args.name)->info("Simulation finished.");
-
-  std::ofstream of(args.name + "_task_dependencies.svg");
-  sim.dependencyGraph().render(of);
+    return 0;
 }

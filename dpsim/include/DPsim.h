@@ -9,6 +9,7 @@
 #include <dpsim/Config.h>
 #include <dpsim/Simulation.h>
 #include <dpsim/Utils.h>
+#include <dpsim/RealTimeDataLogger.h>
 
 #ifndef _MSC_VER
 #include <dpsim/RealTimeSimulation.h>
