@@ -65,4 +65,12 @@ void addSignalComponents(py::module_ mSignal) {
       .def("set_parameters", &CPS::Signal::TurbineGovernorType1::setParameters,
            "T3"_a, "T4"_a, "T5"_a, "Tc"_a, "Ts"_a, "R"_a, "Tmin"_a, "Tmax"_a,
            "OmRef"_a);
+
+  py::class_<CPS::Signal::TurbineGovernor, std::shared_ptr<CPS::Signal::TurbineGovernor>,
+             CPS::SimSignalComp>(mSignal, "TurbineGovernor", py::multiple_inheritance())
+      .def(py::init<std::string>())
+      .def(py::init<std::string, CPS::Logger::Level>())
+      .def("set_parameters", &CPS::Signal::Exciter::setParameters, "Ta"_a,
+           "Tb"_a, "Tc"_a, "Fa"_a, "Fb"_a, "Fc"_a, "K"_a, "Tsr"_a,
+           "Tsm"_a);
 }
