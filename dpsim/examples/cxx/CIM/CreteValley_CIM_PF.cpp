@@ -25,13 +25,16 @@ int main(int argc, char **argv) {
   filenames = DPsim::Utils::findFiles(
       {"20240909T1759Z___DL_.xml", "20240909T1759Z__EQ_.xml",
        "20240909T1759Z___SV_.xml", "20240909T1759Z___TP_.xml",
-       "20240909T1759Z___SSH_.xml"},
+       "20240909T1759Z___SSH_.xml", "20240909T1759Z___GL_.xml"},
       // "dpsim/dpsim/examples/cxx/CIM/CIM-Model","CIMPATH");
-      "dpsim_cv/Network_CIM_Data/Crete_equivalent_min_loading_activeOnly","CIMPATH");
+      "dpsim/Network_CIM_Data/Crete_equivalent_min_loading_activeOnly","CIMPATH");
+
+  //  filenames = DPsim::Utils::findFiles(
+  //    {"20250429T1349Z___DL_.xml", "20250429T1349Z___GL_.xml", "20250429T1349Z___SSH_.xml", "20250429T1349Z___SV_.xml", "20250429T1349Z___TP_.xml", "20250429T1349Z__EQ_.xml"},
+  //    "dpsim/Network_CIM_Data/Crete2030","CIMPATH");
 
 
-
-  String simName = "CreteValley";
+  String simName = "CreteValley_minActiveOnly";
   CPS::Real system_freq = 50;
 
   CIM::Reader reader(simName, Logger::Level::info, Logger::Level::info);
@@ -46,7 +49,7 @@ int main(int argc, char **argv) {
   Simulation sim(simName, Logger::Level::info);
   sim.setSystem(system);
   sim.setTimeStep(1);
-  sim.setFinalTime(1);
+  sim.setFinalTime(1440);
   sim.setDomain(Domain::SP);
   sim.setSolverType(Solver::Type::NRP);
   sim.setSolverAndComponentBehaviour(Solver::Behaviour::Initialization);

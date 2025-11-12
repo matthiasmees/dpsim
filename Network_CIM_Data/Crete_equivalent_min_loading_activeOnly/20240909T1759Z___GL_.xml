@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Created with PowerFactory 2024 SP5A (x64) (digcimdb.dll ServicePack 0) -->
+<rdf:RDF xmlns:cim="http://iec.ch/TC57/2013/CIM-schema-cim16#" xmlns:entsoe="http://entsoe.eu/CIM/SchemaExtension/3/1#" xmlns:md="http://iec.ch/TC57/61970-552/ModelDescription/1#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+  <md:FullModel rdf:about="urn:uuid:751d6564-7d53-494b-9397-c39b4dd32f41">
+    <md:Model.DependentOn rdf:resource="urn:uuid:8029ca09-c8ff-4862-81b2-ed9b113e514a" />
+    <md:Model.created>2025-02-24T08:40:09Z</md:Model.created>
+    <md:Model.description />
+    <md:Model.modelingAuthoritySet />
+    <md:Model.profile>http://entsoe.eu/CIM/GeographicalLocation/2/1</md:Model.profile>
+    <md:Model.scenarioTime>2024-09-09T17:59:15Z</md:Model.scenarioTime>
+    <md:Model.version />
+  </md:FullModel>
+</rdf:RDF>
