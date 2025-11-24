@@ -34,7 +34,7 @@ int main(int argc, char **argv) {
   //    "dpsim/Network_CIM_Data/Crete2030","CIMPATH");
 
 
-  String simName = "CreteValley_minActiveOnly";
+  String simName = "CreteValley_minActiveCPP";
   CPS::Real system_freq = 50;
 
   CIM::Reader reader(simName, Logger::Level::info, Logger::Level::info);

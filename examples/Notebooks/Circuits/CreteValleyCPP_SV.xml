@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html class="html-devise-layout gl-system" lang="en">
+<head>
+<meta charset="utf-8">
+<meta content="IE=edge" http-equiv="X-UA-Compatible">
+<meta content="width=device-width, initial-scale=1" name="viewport">
+<title>Sign in · GitLab</title>
+<script>
+//<![CDATA[
+window.gon={};
+//]]>
+</script>
+
+<script>
+//<![CDATA[
+const root = document.documentElement;
+if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+  root.classList.add('gl-dark');
+}
+
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+  if (e.matches) {
+    root.classList.add('gl-dark');
+  } else {
+    root.classList.remove('gl-dark');
+  }
+});
+
+//]]>
+</script>
+
+
+
+
+<meta content="light dark" name="color-scheme">
+<link rel="stylesheet" href="/assets/application-28b2d5543e88f1014ab7196ad14dc0875032f7da8748709487e3b27453307101.css" media="(prefers-color-scheme: light)" />
+<link rel="stylesheet" href="/assets/application_dark-20759736b486134c15670e0607a732dc5f721c9b73c4fda3d44a7d4b2c2466a4.css" media="(prefers-color-scheme: dark)" />
+<link rel="stylesheet" href="/assets/page_bundles/login-7240ec00cf3969b710fe5e8959f8ef8eeff66d635ded28839b1b4256ae8d96a3.css" /><link rel="stylesheet" href="/assets/page_bundles/commit_description-9e7efe20f0cef17d0606edabfad0418e9eb224aaeaa2dae32c817060fa60abcc.css" /><link rel="stylesheet" href="/assets/page_bundles/work_items-9c736722b9bb76f2c57757ed1bae3a5e79456e78cba897d309ea0aab9503330c.css" /><link rel="stylesheet" href="/assets/page_bundles/notes_shared-57a4db43ec755df32d86f7c5cdd49148a3b4135f33e08d3eee766fa405736239.css" />
+<link rel="stylesheet" href="/assets/application_utilities-e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855.css" media="(prefers-color-scheme: light)" />
+<link rel="stylesheet" href="/assets/application_utilities_dark-e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855.css" media="(prefers-color-scheme: dark)" />
+<link rel="stylesheet" href="/assets/tailwind-d9903dd17fc673b7790a9a7cd84da90157c94b5bc00c137ddf1273b63114f00b.css" />
+
+
+<link rel="stylesheet" href="/assets/fonts-deb7ad1d55ca77c0172d8538d53442af63604ff490c74acc2859db295c125bdb.css" />
+<link rel="stylesheet" href="/assets/highlight/themes/white-be4fdae1a25a255ed59f155dc9b7449697d7552a98dd3965643301056c8f426a.css" media="(prefers-color-scheme: light)" />
+<link rel="stylesheet" href="/assets/highlight/themes/dark-77ed54f14352adb6ae26be56730f321e0273576f8be6e1f73d1d2ac3ec191a0b.css" media="(prefers-color-scheme: dark)" />
+
+<script src="/assets/webpack/runtime.84739550.bundle.js" defer="defer"></script>
+<script src="/assets/webpack/main.bf6a0b28.chunk.js" defer="defer"></script>
+<script src="/assets/webpack/tracker.85adcc5f.chunk.js" defer="defer"></script>
+<script>
+//<![CDATA[
+window.snowplowOptions = {"namespace":"gl","hostname":"git-ce.rwth-aachen.de:443","postPath":"/-/collect_events","forceSecureTracker":true,"appId":"gitlab_sm"}
+
+gl = window.gl || {};
+gl.snowplowStandardContext = {"schema":"iglu:com.gitlab/gitlab_standard/jsonschema/1-1-7","data":{"environment":"self-managed","source":"gitlab-rails","correlation_id":"01KAK5VAE3WY56EP52SMATFCZT","plan":"free","extra":{},"user_id":null,"global_user_id":null,"user_type":null,"is_gitlab_team_member":null,"namespace_id":null,"ultimate_parent_namespace_id":null,"project_id":null,"feature_enabled_by_namespace_ids":null,"realm":"self-managed","instance_id":"95a6a071-8411-461e-891b-4e91a950c9f9","unique_instance_id":"8e4d78ae-8c17-5138-a409-0312e8fa7b29","host_name":"git-ce.rwth-aachen.de","instance_version":"18.5.2","context_generated_at":"2025-11-21T13:22:27.560+01:00"}}
+gl.snowplowPseudonymizedPageUrl = "https://git-ce.rwth-aachen.de/users/sign_in";
+gl.maskedDefaultReferrerUrl = null;
+gl.ga4MeasurementId = 'G-ENFH3X7M5Y';
+gl.duoEvents = ["ai_question_category","perform_completion_worker","process_gitlab_duo_question","agent_platform_session_created","agent_platform_session_dropped","agent_platform_session_finished","agent_platform_session_started","agent_platform_session_stopped","ai_response_time","ci_repository_xray_artifact_created","cleanup_stuck_agent_platform_session","click_purchase_seats_button_group_duo_pro_home_page","code_suggestion_accepted_in_ide","code_suggestion_rejected_in_ide","code_suggestion_shown_in_ide","code_suggestions_connection_details_rate_limit_exceeded","code_suggestions_direct_access_rate_limit_exceeded","code_suggestions_rate_limit_exceeded","create_ai_catalog_item","create_ai_catalog_item_consumer","create_ai_self_hosted_model","default_answer","delete_ai_catalog_item","delete_ai_catalog_item_consumer","delete_ai_self_hosted_model","detected_high_comment_temperature","detected_repeated_high_comment_temperature","encounter_duo_code_review_error_during_review","error_answer","excluded_files_from_duo_code_review","execute_llm_method","find_no_issues_duo_code_review_after_review","find_nothing_to_review_duo_code_review_on_mr","finish_duo_workflow_execution","forced_high_temperature_commenting","i_quickactions_q","include_repository_xray_data_into_code_generation_prompt","mention_gitlabduo_in_mr_comment","post_comment_duo_code_review_on_diff","process_gitlab_duo_slash_command","react_thumbs_down_on_duo_code_review_comment","react_thumbs_up_on_duo_code_review_comment","request_ask_help","request_duo_chat_response","request_review_duo_code_review_on_mr_by_author","request_review_duo_code_review_on_mr_by_non_author","requested_comment_temperature","retry_duo_workflow_execution","start_duo_workflow_execution","submit_gitlab_duo_question","tokens_per_embedding","tokens_per_user_request_prompt","tokens_per_user_request_response","trigger_ai_catalog_item","troubleshoot_job","update_ai_catalog_item","update_ai_catalog_item_consumer","update_ai_self_hosted_model","update_model_selection_feature","update_self_hosted_ai_feature_to_vendored_model","view_ai_catalog_item","view_ai_catalog_item_index"];
+gl.onlySendDuoEvents = true;
+
+
+//]]>
+</script>
+<link rel="preload" href="/assets/application_utilities-e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855.css" as="style" type="text/css">
+<link rel="preload" href="/assets/application-28b2d5543e88f1014ab7196ad14dc0875032f7da8748709487e3b27453307101.css" as="style" type="text/css">
+<link rel="preload" href="/assets/highlight/themes/white-be4fdae1a25a255ed59f155dc9b7449697d7552a98dd3965643301056c8f426a.css" as="style" type="text/css">
+
+
+
+
+<script src="/assets/webpack/commons-pages.groups.settings.work_items.show-super_sidebar.d4fe5034.chunk.js" defer="defer"></script>
+<script src="/assets/webpack/commons-pages.search.show-super_sidebar.1f8f4d9e.chunk.js" defer="defer"></script>
+<script src="/assets/webpack/super_sidebar.aaaee164.chunk.js" defer="defer"></script>
+<script src="/assets/webpack/pages.sessions.new.f258eb21.chunk.js" defer="defer"></script>
+
+
+
+<meta name="csrf-param" content="authenticity_token" />
+<meta name="csrf-token" content="uH5sBt7Q_YMGrf79-0EKNiRtEoMx9mJFQH2PkqOuCqJlez8CKAkSlTVq50JxyxOqE_lOTZ671naS5IeAD-xHZQ" />
+<meta name="csp-nonce" />
+<meta name="action-cable-url" content="/-/cable" />
+<link href="/-/manifest.json" rel="manifest">
+<link rel="icon" type="image/png" href="/assets/favicon-72a2cad5025aa931d6ea56c3201d1f18e68a8cd39788c7c80d5b2b82aa5143ef.png" id="favicon" data-original-href="/assets/favicon-72a2cad5025aa931d6ea56c3201d1f18e68a8cd39788c7c80d5b2b82aa5143ef.png" />
+<link rel="apple-touch-icon" type="image/x-icon" href="/assets/apple-touch-icon-b049d4bc0dd9626f31db825d61880737befc7835982586d015bded10b4435460.png" />
+<link href="/search/opensearch.xml" rel="search" title="Search GitLab" type="application/opensearchdescription+xml">
+
+
+
+
+<meta content="GitLab of the RWTH Aachen University" name="description">
+<meta content="#ececef" name="theme-color">
+</head>
+
+<body class="gl-h-full login-page gl-browser-generic gl-platform-other" data-page="sessions:new" data-testid="login-page">
+
+<script>
+//<![CDATA[
+gl = window.gl || {};
+gl.client = {"isGeneric":true,"isOther":true};
+
+
+//]]>
+</script>
+
+
+
+
+<div class="gl-h-full gl-flex gl-flex-wrap">
+<div class="container gl-self-center">
+<main class="content">
+<div class="flash-container flash-container-page sticky" data-testid="flash-container">
+<div class="gl-alert gl-alert-info gl-alert-not-dismissible" role="alert">
+<div class="gl-alert-icon-container">
+<svg class="s16 gl-alert-icon gl-alert-icon-no-title" data-testid="information-o-icon"><use href="/assets/icons-62cd41f10569bb5050df02409792752f47c042aa91f8d59f11b48b79e724f90d.svg#information-o"></use></svg>
+</div>
+<div class="gl-alert-content" role="alert">
+<div class="gl-alert-body">
+<div class="gl-flex gl-items-center">
+<div class="gl-grow">
+Sign in or sign up before continuing. Don&#39;t have an account yet? Register now to get started.
+</div>
+</div>
+
+</div>
+<div class="gl-alert-actions">
+<a class="gl-button btn btn-md btn-default btn-confirm" href="/users/sign_up"><span class="gl-button-text">
+Register now
+</span>
+
+</a>
+
+</div>
+</div>
+</div>
+
+<div id="js-global-alerts"></div>
+</div>
+
+<div class="row gl-mt-5 gl-gap-y-6">
+<div class="col-md order-12">
+<div class="col-sm-12">
+<h1 class="gl-mb-5 gl-text-size-h2 gl-hidden md:gl-block">
+GitLab of the RWTH Aachen University
+</h1>
+<div id="js-custom-sign-in-description"><h3 data-sourcepos="1:1-1:43" dir="auto">&#x000A;<a id="user-content-willkommen-beim-gitlab-der-rwth-aachen" class="anchor" href="#willkommen-beim-gitlab-der-rwth-aachen" aria-hidden="true"></a>Willkommen beim GitLab der RWTH Aachen!</h3>&#x000A;<p data-sourcepos="3:1-3:346" dir="auto">Angehörige der RWTH Aachen (Studierende und Mitarbeitende), sowie Angehörige von Universitäten aus dem NFDI4Ing nutzen bitte ausschließlich den <strong data-sourcepos="3:149-3:174">DFN AAI Single Sign-On</strong> und wählen im darauffolgenden Fenster ihre Heimatuniversität aus. Nur über den Login über den Single Sign-On besteht die Möglichkeit, Projekte und Gruppen anzulegen.</p>&#x000A;<p data-sourcepos="5:1-5:117" dir="auto"><strong data-sourcepos="5:1-5:20">Externe Nutzende</strong> können sich über <strong data-sourcepos="5:41-5:50">GitHub</strong> authentifizieren, können aber keine Gruppen und Projekte anlegen.</p>&#x000A;<p data-sourcepos="7:1-8:97" dir="auto">Sie befinden sich auf der GitLab Instanz <em data-sourcepos="7:42-7:64">git-ce.rwth-aachen.de</em> der RWTH Aachen University.&#x000A;Weitere Informationen zur Unterscheidung der GitLab Instanzen finden Sie auf unseren Hilfeseiten.</p>&#x000A;<ul data-sourcepos="10:1-13:0" dir="auto">&#x000A;<li data-sourcepos="10:1-10:119"><a data-sourcepos="10:3-10:119" href="https://help.itc.rwth-aachen.de/service/ubrf9cmzd17m/article/1a0cfe327ffd46d7a62ab48df29c5b72/" rel="nofollow noreferrer noopener" target="_blank">Nutzungsbedingungen</a></li>&#x000A;<li data-sourcepos="11:1-11:122"><a data-sourcepos="11:3-11:122" href="https://help.itc.rwth-aachen.de/service/ubrf9cmzd17m/article/3980ad5182de4b71921b892651502d20/" rel="nofollow noreferrer noopener" target="_blank">Nutzungsberechtigungen</a></li>&#x000A;<li data-sourcepos="12:1-13:0"><a data-sourcepos="12:3-12:82" href="https://help.itc.rwth-aachen.de/service/ubrf9cmzd17m/" rel="nofollow noreferrer noopener" target="_blank">IT Center Help - GitLab</a></li>&#x000A;</ul>&#x000A;<p data-sourcepos="14:1-15:91" dir="auto">Weitere Informationen zum Dienst finden Sie im&#x000A;<a data-sourcepos="15:1-15:91" href="https://help.itc.rwth-aachen.de/service/ubrf9cmzd17m" rel="nofollow noreferrer noopener" target="_blank">Dokumentationsportal des IT Centers</a></p>&#x000A;<h3 data-sourcepos="17:1-17:56" dir="auto">&#x000A;<a id="user-content-welcome-to-the-gitlab-of-the-rwth-aachen-university" class="anchor" href="#welcome-to-the-gitlab-of-the-rwth-aachen-university" aria-hidden="true"></a>Welcome to the GitLab of the RWTH Aachen University!</h3>&#x000A;<p data-sourcepos="19:1-19:315" dir="auto">Members of the RWTH Aachen University (students and staff) please only use the <strong data-sourcepos="19:80-19:105">DFN AAI Single Sign-On</strong> and select the RWTH Aachen University in the following window. Only then will users be able to create projects and groups. External users can authenticate via <strong data-sourcepos="19:266-19:275">GitHub</strong>, but cannot create groups and projects.</p>&#x000A;<p data-sourcepos="21:1-22:95" dir="auto">You are on the GitLab instance <em data-sourcepos="21:32-21:54">git-ce.rwth-aachen.de</em> of RWTH Aachen University.&#x000A;For more information on how to distinguish between GitLab instances, please see our help pages.</p>&#x000A;<ul data-sourcepos="24:1-27:0" dir="auto">&#x000A;<li data-sourcepos="24:1-24:115"><a data-sourcepos="24:3-24:115" href="https://help.itc.rwth-aachen.de/en/service/ubrf9cmzd17m/article/1a0cfe327ffd46d7a62ab48df29c5b72/" rel="nofollow noreferrer noopener" target="_blank">Terms of Use</a></li>&#x000A;<li data-sourcepos="25:1-25:120"><a data-sourcepos="25:3-25:120" href="https://help.itc.rwth-aachen.de/en/service/ubrf9cmzd17m/article/3980ad5182de4b71921b892651502d20/" rel="nofollow noreferrer noopener" target="_blank">Usage Permissions</a></li>&#x000A;<li data-sourcepos="26:1-27:0"><a data-sourcepos="26:3-26:85" href="https://help.itc.rwth-aachen.de/en/service/ubrf9cmzd17m/" rel="nofollow noreferrer noopener" target="_blank">IT Center Help - GitLab</a></li>&#x000A;</ul>&#x000A;<p data-sourcepos="28:1-28:162" dir="auto">For further information about the GitLab service please visit the <a data-sourcepos="28:67-28:162" href="https://help.itc.rwth-aachen.de/en/service/ubrf9cmzd17m" rel="nofollow noreferrer noopener" target="_blank">documentation portal of the IT Center</a></p></div>
+</div>
+</div>
+<div class="col-md order-md-12">
+<div class="col-sm-12 bar">
+<div class="gl-text-center gl-mb-5">
+<img alt="GitLab of the RWTH Aachen University" class="gl-invisible gl-h-10 js-portrait-logo-detection lazy" data-src="/uploads/-/system/appearance/logo/1/ITC_RWTH_NFDi4ing.png" src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" />
+<h1 class="gl-mb-3 gl-text-size-h2 md:gl-hidden">
+GitLab of the RWTH Aachen University
+</h1>
+</div>
+
+<div class="js-non-oauth-login">
+</div>
+<div class="gl-mt-3">
+By signing in you accept the <a href='/-/users/terms' target='_blank' rel='noreferrer noopener'>Terms of Use and acknowledge the Privacy Statement and Cookie Policy</a>.
+</div>
+<div class="gl-mt-5 gl-text-center gl-flex gl-flex-col gl-gap-3 js-oauth-login">
+<form class="js-omniauth-form" method="post" action="/users/auth/github"><button class="gl-button btn btn-block btn-md btn-default " data-testid="github-login-button" type="submit"><span class="gl-button-text">
+<img alt="GitHub" title="Sign in with GitHub" class="gl-button-icon lazy" data-src="/assets/auth_buttons/github_64-84041cd0ea392220da96f0fb9b9473c08485c4924b98c776be1bd33b0daab8c0.png" src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" />
+<span class="gl-button-text">
+GitHub
+</span>
+
+</span>
+
+</button><input type="hidden" name="authenticity_token" value="4EXoI9MPb7AI6BKj9HC9LRPftToGCX9ABsDH_ueGZJs9QLsnJdaApjsvCxx--qSxJEvp9KlEy3PUWc_sS8QpXA" autocomplete="off" /></form>
+<form class="js-omniauth-form" method="post" action="/users/auth/saml"><button class="gl-button btn btn-block btn-md btn-default " data-testid="saml-login-button" type="submit"><span class="gl-button-text">
+<span class="gl-button-text">
+DFN-AAI Single Sign-On
+</span>
+
+</span>
+
+</button><input type="hidden" name="authenticity_token" value="NendQ9iuKd00-dmh2glERGrQrkQlGpoe3HNq2jY_ECro7I5HLnfGywc-wB5Qg13YXUTyiopXLi0O6mLImn1d7Q" autocomplete="off" /></form>
+<div class="gl-form-checkbox custom-control custom-checkbox">
+<input type="checkbox" name="js-remember-me-omniauth" id="js-remember-me-omniauth" class="custom-control-input" />
+<label class="custom-control-label" for="js-remember-me-omniauth"><span>Remember me
+</span></label>
+</div>
+</div>
+
+
+</div>
+</div>
+</div>
+</main>
+</div>
+<div class="footer-container gl-w-full gl-self-end">
+<hr class="gl-m-0">
+<div class="container gl-py-5 gl-flex gl-justify-between gl-items-start">
+<div class="gl-hidden md:gl-flex gl-gap-5 gl-flex-wrap">
+<a href="/explore">Explore</a>
+<a href="/help">Help</a>
+<a href="https://about.gitlab.com">About GitLab</a>
+<a target="_blank" class="text-nowrap" rel="noopener noreferrer" href="https://forum.gitlab.com">GitLab community forum</a>
+</div>
+<div class="js-language-switcher" data-locales="[{&quot;value&quot;:&quot;ga_IE&quot;,&quot;percentage&quot;:100,&quot;text&quot;:&quot;Irish&quot;},{&quot;value&quot;:&quot;en&quot;,&quot;percentage&quot;:100,&quot;text&quot;:&quot;English&quot;},{&quot;value&quot;:&quot;ko&quot;,&quot;percentage&quot;:99,&quot;text&quot;:&quot;한국어&quot;},{&quot;value&quot;:&quot;de&quot;,&quot;percentage&quot;:97,&quot;text&quot;:&quot;Deutsch&quot;},{&quot;value&quot;:&quot;pt_BR&quot;,&quot;percentage&quot;:96,&quot;text&quot;:&quot;português (Brasil)&quot;},{&quot;value&quot;:&quot;ja&quot;,&quot;percentage&quot;:96,&quot;text&quot;:&quot;日本語&quot;},{&quot;value&quot;:&quot;fr&quot;,&quot;percentage&quot;:96,&quot;text&quot;:&quot;français&quot;}]"></div>
+
+</div>
+</div>
+
+
+</div>
+</body>
+</html>
