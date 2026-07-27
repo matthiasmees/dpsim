@@ -144,15 +144,20 @@ set(INVERTER_SOURCES
 )
 
 set(SSN_SOURCES
-Components/EMT_Ph3_GenericTwoTerminalVTypeSSN.cpp
-Components/EMT_Ph3_PiecewiseLinearInductor.cpp
-Components/EMT_Ph3_AvVoltSourceInverterStateSpace.cpp
-Components/EMT_Ph3_2T_I_Type_SSN.cpp
-Components/DP_Ph1_MixedVariableSSN_vs_FixedSSN.cpp
-Components/DP_Ph1_AvVoltSourceInverterStateSpace.cpp
-Components/DP_Ph3_AvVoltSourceInverterStateSpace.cpp
-Components/EMT_SSN_GFM_Test.cpp
-Components/EMT_SSN_SynchronousGenerator_Test.cpp
+	Components/EMT_Ph3_GenericTwoTerminalVTypeSSN.cpp
+	Components/EMT_Ph3_PiecewiseLinearInductor.cpp
+	Components/EMT_Ph3_AvVoltSourceInverterStateSpace.cpp
+	Components/EMT_Ph3_2T_I_Type_SSN.cpp
+	Components/DP_Ph1_MixedVariableSSN_vs_FixedSSN.cpp
+	Components/DP_Ph1_AvVoltSourceInverterStateSpace.cpp
+	Components/DP_Ph3_AvVoltSourceInverterStateSpace.cpp
+	Components/EMT_SSN_GFM_Test.cpp
+	Components/EMT_SSN_SynchronousGenerator_Test.cpp
+	Components/EMT_SSN_MMC_ActivePowerControl.cpp
+	Components/EMT_SSN_MMC_Cap_VoltageControl.cpp
+	Components/EMT_SSN_MMC_PiLine.cpp
+	Components/EMT_SSN_MMC_Resistor_NegRefStep.cpp
+	Components/EMT_SSN_MMC_Trafo.cpp
 )
 
 set(STATE_SPACE_SOURCES

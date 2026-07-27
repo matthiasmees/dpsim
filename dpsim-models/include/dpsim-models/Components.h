@@ -156,6 +156,7 @@
 #include <dpsim-models/EMT/EMT_Ph3_SSN_Full_Serial_RLC.h>
 #include <dpsim-models/EMT/EMT_Ph3_SSN_GFM.h>
 #include <dpsim-models/EMT/EMT_Ph3_SSN_Inductor.h>
+#include <dpsim-models/EMT/EMT_Ph3_SSN_MMC.h>
 #include <dpsim-models/EMT/EMT_Ph3_SSN_SynchronousGenerator.h>
 #include <dpsim-models/EMT/EMT_Ph3_SeriesResistor.h>
 #include <dpsim-models/EMT/EMT_Ph3_SeriesSwitch.h>
@@ -167,13 +168,14 @@
 #include <dpsim-models/EMT/EMT_Ph3_SynchronGenerator6bOrderVBR.h>
 #include <dpsim-models/EMT/EMT_Ph3_SynchronGeneratorDQ.h>
 #include <dpsim-models/EMT/EMT_Ph3_SynchronGeneratorDQTrapez.h>
-#include <dpsim-models/EMT/EMT_Ph3_TwoTerminalITypeSSNComp.h>
-#include <dpsim-models/EMT/EMT_Ph3_TwoTerminalVTypeSSNComp.h>
+
 #include <dpsim-models/EMT/EMT_Ph3_VoltageSource.h>
 #include <dpsim-models/EMT/EMT_Ph3_VoltageSourceNorton.h>
 #ifdef WITH_SUNDIALS
 #include <dpsim-models/EMT/EMT_Ph3_SynchronGeneratorDQODE.h>
 #endif
+#include <dpsim-models/EMT/EMT_Ph3_FourTerminalVTypeSSNComp.h>
+#include <dpsim-models/EMT/EMT_Ph3_FourTerminalVTypeVariableSSNComp.h>
 #include <dpsim-models/EMT/EMT_Ph3_NetworkInjection.h>
 #include <dpsim-models/EMT/EMT_Ph3_PiLine.h>
 #include <dpsim-models/EMT/EMT_Ph3_PiecewiseLinearInductor.h>
@@ -185,6 +187,8 @@
 #include <dpsim-models/EMT/EMT_Ph3_SynchronGeneratorTrStab.h>
 #include <dpsim-models/EMT/EMT_Ph3_SynchronGeneratorVBR.h>
 #include <dpsim-models/EMT/EMT_Ph3_Transformer.h>
+#include <dpsim-models/EMT/EMT_Ph3_TwoTerminalITypeSSNComp.h>
+#include <dpsim-models/EMT/EMT_Ph3_TwoTerminalVTypeSSNComp.h>
 #include <dpsim-models/EMT/EMT_Ph3_TwoTerminalVTypeVariableSSNComp.h>
 #include <dpsim-models/EMT/EMT_Ph3_VSIVoltageControlVCO.h>
 

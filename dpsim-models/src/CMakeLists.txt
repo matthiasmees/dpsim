@@ -99,9 +99,15 @@ list(APPEND MODELS_SOURCES
 	EMT/EMT_DC_SSN_Capacitor.cpp
 	EMT/EMT_DC_SSN_Inductor.cpp
 	EMT/EMT_DC_SSN_PiLine.cpp
+	EMT/EMT_Ph3_SSN_GFM.cpp
+	EMT/EMT_Ph3_SSN_MMC.cpp
+	EMT/EMT_Ph3_SSN_SynchronousGenerator.cpp
 	EMT/EMT_DC_VoltageSource.cpp
 	EMT/EMT_DC_CurrentSource.cpp
-
+	EMT/EMT_Ph3_TwoTerminalVTypeVariableSSNComp.cpp
+	EMT/EMT_Ph3_FourTerminalVTypeSSNComp.cpp
+	EMT/EMT_Ph3_FourTerminalVTypeVariableSSNComp.cpp
+	EMT/EMT_Ph3_PiecewiseLinearInductor.cpp
 
 	EMT/EMT_Ph1_Capacitor.cpp
 	EMT/EMT_Ph1_CurrentSource.cpp
