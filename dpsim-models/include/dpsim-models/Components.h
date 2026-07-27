@@ -193,6 +193,7 @@
 #include <dpsim-models/EMT/EMT_Ph3_VSIVoltageControlVCO.h>
 
 #include <dpsim-models/Signal/CosineFMGenerator.h>
+#include <dpsim-models/Signal/DQSymControllerBlocks.h>
 #include <dpsim-models/Signal/DecouplingIdealTransformer_DP_Ph1.h>
 #include <dpsim-models/Signal/DecouplingIdealTransformer_EMT_Ph1.h>
 #include <dpsim-models/Signal/DecouplingIdealTransformer_EMT_Ph3.h>

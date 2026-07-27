@@ -236,6 +236,7 @@ list(APPEND MODELS_SOURCES
 	Signal/DCGenerator.cpp
 	Signal/VCO.cpp
 	Signal/VoltageControllerVSI.cpp
+	Signal/DQSymControllerBlocks.cpp
 )
 
 if(WITH_CIM)
