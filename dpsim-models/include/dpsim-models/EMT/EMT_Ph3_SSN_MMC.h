@@ -37,6 +37,7 @@ public:
 
   enum class ActiveControlMode { OpenLoop, ActivePower, DcVoltage, DcDroop };
   enum class ReactiveControlMode { OpenLoop, ReactivePower, AcVoltage };
+  enum class ControlSource { InternalControllers, ExternalDifferentialVoltage };
 
   static Ptr make(String name, Logger::Level logLevel = Logger::Level::off) {
     return std::make_shared<SSN_MMC>(name, name, logLevel);
@@ -113,6 +114,29 @@ public:
   /// while the active-controller integrator must still hold the non-zero
   /// d-axis current needed to transfer power.
   void setInitialOperatingPoint(Real activePower, Real reactivePower);
+
+  /// Select the differential converter-voltage reference source. The external
+  /// command is a 2x1 [d,q] vector in peak phase volts in the plant's nominal
+  /// positive-sequence dq frame. Internally SSN_MMC converts it with
+  /// mDelta_dq = -2*vMDelta_dq/(v_dc+ - v_dc-). InternalControllers is the
+  /// construction default and preserves all existing examples.
+  void setControlSource(ControlSource source);
+  ControlSource controlSource() const { return mControlSource; }
+  void setExternalDifferentialVoltageCommand(Real dVolts, Real qVolts);
+
+  Attribute<Matrix>::Ptr acTerminalVoltageAttribute() const;
+  Attribute<Matrix>::Ptr acTerminalCurrentAttribute() const;
+  Attribute<Matrix>::Ptr interfaceVoltageAttribute() const;
+  Attribute<Matrix>::Ptr interfaceCurrentAttribute() const;
+  Attribute<Real>::Ptr dcPositiveVoltageAttribute() const;
+  Attribute<Real>::Ptr dcNegativeVoltageAttribute() const;
+  Attribute<Real>::Ptr dcVoltageAttribute() const;
+  Attribute<Real>::Ptr dcCurrentAttribute() const;
+  Attribute<Real>::Ptr activePowerAttribute() const;
+  Attribute<Real>::Ptr reactivePowerAttribute() const;
+  Attribute<Real>::Ptr storedEnergyAttribute() const;
+  Attribute<Matrix>::Ptr externalDifferentialVoltageAttribute() const;
+  Attribute<Bool>::Ptr externalCommandActiveAttribute() const;
 
   /// Limits applied to current references and modulation commands.
   void setLimits(Real maximumAcCurrent, Real maximumCirculatingCurrent,
@@ -215,6 +239,8 @@ protected:
   };
 
   MatrixComp buildInitialInputFromNodes(Real frequency);
+  void validateTerminalArrangement() const;
+  void validateInterfaceDimensions() const;
 
   void mnaCompApplySystemMatrixStamp(SparseMatrixRow &systemMatrix) override;
   void mnaCompApplyRightSideVectorStamp(Matrix &rightVector) override;
@@ -222,6 +248,8 @@ protected:
 
   void initializeFromNodesAndTerminals(Real frequency) override;
   Bool updateComponentParameters() override;
+  void addHeldControlDependencies(
+      AttributeBase::List &prevStepDependencies) const override;
 
   void evaluateStateDerivative(const Matrix &x, const Matrix &u,
                                Matrix &stateDerivative) const;
@@ -275,6 +303,7 @@ protected:
   // Control configuration
   ActiveControlMode mActiveControlMode;
   ReactiveControlMode mReactiveControlMode;
+  ControlSource mControlSource;
 
   PIParameters mActiveController;
   PIParameters mReactiveController;
@@ -374,6 +403,10 @@ protected:
   Attribute<Real>::Ptr mNortonMatrixNorm;
   Attribute<Real>::Ptr mHistoryVectorNorm;
   Attribute<Real>::Ptr mDiagnosticsValid;
+  Attribute<Matrix>::Ptr mAcTerminalVoltage;
+  Attribute<Matrix>::Ptr mAcTerminalCurrent;
+  Attribute<Matrix>::Ptr mExternalDifferentialVoltage;
+  Attribute<Bool>::Ptr mExternalCommandActive;
 };
 
 } // namespace Ph3

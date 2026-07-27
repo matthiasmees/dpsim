@@ -173,3 +173,14 @@ implemented.
 
 Do not start station composition by silently substituting the existing DPsim
 PLL or by claiming exact SPS transform equivalence.
+
+## Phase 3 station integration status
+
+Phase 3 is in progress and is not committed. Full EMT stiff-source current,
+reactive-power, and active-power closure pass, as does scalar-capacitor Vdc/Q
+control. The closed scalar PiLine Vdc case diverges at both theta 0.5 and 0.55,
+so Phase 3 is not complete. See
+`docs/development/SSN_MMC_PHASE3_HANDOVER.md` for the inspected MMC command
+path, new external-command interface, station architecture, transform
+convention, task timing, initialization equations, validation results, and
+the first failing invariant and explicitly outstanding acceptance criteria.

@@ -46,6 +46,77 @@ void advanceConditionalPI(Real kp, Real ki, Real lowerLimit, Real upperLimit,
 }
 } // namespace
 
+ExternallyAngledDQAdapter::ExternallyAngledDQAdapter(String name,
+                                                     Logger::Level logLevel)
+    : SimSignalComp(name, name, logLevel),
+      mVoltageAbc(mAttributes->createDynamic<Matrix>("voltage_abc")),
+      mCurrentAbc(mAttributes->createDynamic<Matrix>("current_abc")),
+      mAngle(mAttributes->createDynamic<Real>("angle")),
+      mAngularFrequency(mAttributes->createDynamic<Real>("angular_frequency")),
+      mVd(mAttributes->create<Real>("vd", 0.0)),
+      mVq(mAttributes->create<Real>("vq", 0.0)),
+      mId(mAttributes->create<Real>("id", 0.0)),
+      mIq(mAttributes->create<Real>("iq", 0.0)),
+      mActivePower(mAttributes->create<Real>("active_power", 0.0)),
+      mReactivePower(mAttributes->create<Real>("reactive_power", 0.0)) {
+  **mVoltageAbc = Matrix::Zero(3, 1);
+  **mCurrentAbc = Matrix::Zero(3, 1);
+  **mAngle = 0.0;
+  **mAngularFrequency = 0.0;
+}
+
+void ExternallyAngledDQAdapter::step() {
+  if ((**mVoltageAbc).rows() != 3 || (**mVoltageAbc).cols() != 1 ||
+      !(**mVoltageAbc).allFinite() || (**mCurrentAbc).rows() != 3 ||
+      (**mCurrentAbc).cols() != 1 || !(**mCurrentAbc).allFinite() ||
+      !std::isfinite(**mAngle) || !std::isfinite(**mAngularFrequency))
+    throw std::invalid_argument(
+        "Externally angled dq adapter inputs must be finite 3x1 abc vectors "
+        "and finite angle/frequency.");
+
+  const Real theta = **mAngle;
+  auto transform = [theta](const Matrix &abc, Real &d, Real &q) {
+    d = 0.0;
+    q = 0.0;
+    for (UInt phase = 0; phase < 3; ++phase) {
+      const Real phaseAngle = theta - static_cast<Real>(phase) * 2.0 * PI / 3.0;
+      d += (2.0 / 3.0) * abc(phase, 0) * std::cos(phaseAngle);
+      q -= (2.0 / 3.0) * abc(phase, 0) * std::sin(phaseAngle);
+    }
+  };
+  transform(**mVoltageAbc, **mVd, **mVq);
+  transform(**mCurrentAbc, **mId, **mIq);
+  **mActivePower = 1.5 * (**mVd * **mId + **mVq * **mIq);
+  **mReactivePower = 1.5 * (**mVq * **mId - **mVd * **mIq);
+}
+
+Matrix ExternallyAngledDQAdapter::dqToAbc(Real d, Real q) const {
+  requireFinite(d, "inverse dq d");
+  requireFinite(q, "inverse dq q");
+  requireFinite(**mAngle, "inverse dq angle");
+  Matrix abc(3, 1);
+  for (UInt phase = 0; phase < 3; ++phase) {
+    const Real phaseAngle =
+        **mAngle - static_cast<Real>(phase) * 2.0 * PI / 3.0;
+    abc(phase, 0) = d * std::cos(phaseAngle) - q * std::sin(phaseAngle);
+  }
+  return abc;
+}
+
+ExternallyAngledDQAdapter::StepTask::StepTask(
+    ExternallyAngledDQAdapter &adapter)
+    : Task(**adapter.mName + ".Step"), mAdapter(adapter) {
+  mAttributeDependencies = {adapter.mVoltageAbc, adapter.mCurrentAbc,
+                            adapter.mAngle, adapter.mAngularFrequency};
+  mModifiedAttributes = {adapter.mVd,          adapter.mVq,
+                         adapter.mId,          adapter.mIq,
+                         adapter.mActivePower, adapter.mReactivePower};
+}
+
+Task::List ExternallyAngledDQAdapter::getTasks() {
+  return {std::make_shared<StepTask>(*this)};
+}
+
 DQSymPIController::DQSymPIController(String name, Logger::Level logLevel)
     : SimSignalComp(name, name, logLevel),
       mError(mAttributes->createDynamic<Real>("error")),
@@ -54,7 +125,9 @@ DQSymPIController::DQSymPIController(String name, Logger::Level logLevel)
       mIntegratorState(mAttributes->create<Real>("integrator_state", 0.0)),
       mUnsaturatedOutput(mAttributes->create<Real>("unsaturated_output", 0.0)),
       mOutput(mAttributes->create<Real>("output", 0.0)),
-      mSaturated(mAttributes->create<Bool>("saturated", false)) {
+      mSaturated(mAttributes->create<Bool>("saturated", false)),
+      mUpperSaturated(mAttributes->create<Bool>("upper_saturated", false)),
+      mLowerSaturated(mAttributes->create<Bool>("lower_saturated", false)) {
   **mError = 0.0;
   **mFeedforward = 0.0;
   **mEnable = true;
@@ -73,6 +146,12 @@ void DQSymPIController::setParameters(Real kp, Real ki, Real lowerLimit,
   mLowerLimit = lowerLimit;
   mUpperLimit = upperLimit;
   mParametersSet = true;
+}
+
+void DQSymOuterController::setInitialIntegratorState(Real state) {
+  requireFinite(state, "outer-controller initial integrator state");
+  mPI->setInitialState(state);
+  **mIntegratorState = state;
 }
 
 void DQSymPIController::setInitialState(Real integratorState, Real initialError,
@@ -111,6 +190,8 @@ void DQSymPIController::step() {
                        mInitialized, **mEnable, error, feedforward,
                        **mIntegratorState, mPreviousIntegratorInput,
                        **mUnsaturatedOutput, **mOutput, **mSaturated);
+  **mUpperSaturated = **mUnsaturatedOutput > mUpperLimit;
+  **mLowerSaturated = **mUnsaturatedOutput < mLowerLimit;
   requireFinite(**mOutput, "PI output");
 }
 
@@ -118,9 +199,10 @@ DQSymPIController::StepTask::StepTask(DQSymPIController &controller)
     : Task(**controller.mName + ".Step"), mController(controller) {
   mAttributeDependencies = {controller.mError, controller.mFeedforward,
                             controller.mEnable};
-  mModifiedAttributes = {controller.mIntegratorState,
-                         controller.mUnsaturatedOutput, controller.mOutput,
-                         controller.mSaturated};
+  mModifiedAttributes = {
+      controller.mIntegratorState, controller.mUnsaturatedOutput,
+      controller.mOutput,          controller.mSaturated,
+      controller.mUpperSaturated,  controller.mLowerSaturated};
 }
 
 Task::List DQSymPIController::getTasks() {
@@ -205,8 +287,11 @@ DQSymOuterController::DQSymOuterController(String name, Logger::Level logLevel)
       mEnable(mAttributes->createDynamic<Bool>("enable")),
       mError(mAttributes->create<Real>("error", 0.0)),
       mIntegratorState(mAttributes->create<Real>("integrator_state", 0.0)),
+      mUnsaturatedOutput(mAttributes->create<Real>("unsaturated_output", 0.0)),
       mOutput(mAttributes->create<Real>("output", 0.0)),
       mSaturated(mAttributes->create<Bool>("saturated", false)),
+      mUpperSaturated(mAttributes->create<Bool>("upper_saturated", false)),
+      mLowerSaturated(mAttributes->create<Bool>("lower_saturated", false)),
       mPI(DQSymPIController::make(name + ".PI", logLevel)) {
   **mEnable = true;
 }
@@ -250,16 +335,26 @@ void DQSymOuterController::step() {
   mPI->mEnable->set(**mEnable);
   mPI->step();
   **mIntegratorState = **mPI->mIntegratorState;
+  **mUnsaturatedOutput = mOutputScale * **mPI->mUnsaturatedOutput;
   **mOutput = mOutputScale * **mPI->mOutput;
   **mSaturated = **mPI->mSaturated;
+  **mUpperSaturated =
+      mOutputScale >= 0.0 ? **mPI->mUpperSaturated : **mPI->mLowerSaturated;
+  **mLowerSaturated =
+      mOutputScale >= 0.0 ? **mPI->mLowerSaturated : **mPI->mUpperSaturated;
 }
 
 DQSymOuterController::StepTask::StepTask(DQSymOuterController &controller)
     : Task(**controller.mName + ".Step"), mController(controller) {
   mAttributeDependencies = {controller.mReference, controller.mMeasurement,
                             controller.mEnable};
-  mModifiedAttributes = {controller.mError, controller.mIntegratorState,
-                         controller.mOutput, controller.mSaturated};
+  mModifiedAttributes = {controller.mError,
+                         controller.mIntegratorState,
+                         controller.mUnsaturatedOutput,
+                         controller.mOutput,
+                         controller.mSaturated,
+                         controller.mUpperSaturated,
+                         controller.mLowerSaturated};
 }
 
 Task::List DQSymOuterController::getTasks() {
@@ -279,10 +374,18 @@ DQSymCurrentController::DQSymCurrentController(String name,
       mEnable(mAttributes->createDynamic<Bool>("enable")),
       mDIntegratorState(mAttributes->create<Real>("d_integrator_state", 0.0)),
       mQIntegratorState(mAttributes->create<Real>("q_integrator_state", 0.0)),
+      mDUnsaturatedReference(
+          mAttributes->create<Real>("d_unsaturated_reference", 0.0)),
+      mQUnsaturatedReference(
+          mAttributes->create<Real>("q_unsaturated_reference", 0.0)),
       mVdReference(mAttributes->create<Real>("vd_reference", 0.0)),
       mVqReference(mAttributes->create<Real>("vq_reference", 0.0)),
       mDSaturated(mAttributes->create<Bool>("d_saturated", false)),
-      mQSaturated(mAttributes->create<Bool>("q_saturated", false)) {
+      mQSaturated(mAttributes->create<Bool>("q_saturated", false)),
+      mDUpperSaturated(mAttributes->create<Bool>("d_upper_saturated", false)),
+      mDLowerSaturated(mAttributes->create<Bool>("d_lower_saturated", false)),
+      mQUpperSaturated(mAttributes->create<Bool>("q_upper_saturated", false)),
+      mQLowerSaturated(mAttributes->create<Bool>("q_lower_saturated", false)) {
   **mEnable = true;
 }
 
@@ -329,21 +432,26 @@ void DQSymCurrentController::step() {
   const Real qFeedforward = **mVq + mParameters.rFeedforwardPu * **mIq +
                             omegaPu * mParameters.lFeedforwardPu * **mId;
 
-  auto updateAxis = [&](Real error, Real feedforward, Real &previousInput,
-                        Attribute<Real>::Ptr state, Attribute<Real>::Ptr output,
-                        Attribute<Bool>::Ptr saturated) {
-    Real unsaturated = 0.0;
-    advanceConditionalPI(mParameters.kp, mParameters.ki,
-                         mParameters.lowerLimitPu, mParameters.upperLimitPu,
-                         mTimeStep, true, **mEnable, error, feedforward,
-                         **state, previousInput, unsaturated, **output,
-                         **saturated);
-  };
+  auto updateAxis =
+      [&](Real error, Real feedforward, Real &previousInput,
+          Attribute<Real>::Ptr state, Attribute<Real>::Ptr unsaturated,
+          Attribute<Real>::Ptr output, Attribute<Bool>::Ptr saturated,
+          Attribute<Bool>::Ptr upper, Attribute<Bool>::Ptr lower) {
+        advanceConditionalPI(mParameters.kp, mParameters.ki,
+                             mParameters.lowerLimitPu, mParameters.upperLimitPu,
+                             mTimeStep, true, **mEnable, error, feedforward,
+                             **state, previousInput, **unsaturated, **output,
+                             **saturated);
+        **upper = **unsaturated > mParameters.upperLimitPu;
+        **lower = **unsaturated < mParameters.lowerLimitPu;
+      };
 
   updateAxis(ed, dFeedforward, mPreviousDIntegratorInput, mDIntegratorState,
-             mVdReference, mDSaturated);
+             mDUnsaturatedReference, mVdReference, mDSaturated,
+             mDUpperSaturated, mDLowerSaturated);
   updateAxis(eq, qFeedforward, mPreviousQIntegratorInput, mQIntegratorState,
-             mVqReference, mQSaturated);
+             mQUnsaturatedReference, mVqReference, mQSaturated,
+             mQUpperSaturated, mQLowerSaturated);
 }
 
 DQSymCurrentController::StepTask::StepTask(DQSymCurrentController &controller)
@@ -352,10 +460,18 @@ DQSymCurrentController::StepTask::StepTask(DQSymCurrentController &controller)
                             controller.mId,          controller.mIq,
                             controller.mVd,          controller.mVq,
                             controller.mFrequencyHz, controller.mEnable};
-  mModifiedAttributes = {
-      controller.mDIntegratorState, controller.mQIntegratorState,
-      controller.mVdReference,      controller.mVqReference,
-      controller.mDSaturated,       controller.mQSaturated};
+  mModifiedAttributes = {controller.mDIntegratorState,
+                         controller.mQIntegratorState,
+                         controller.mDUnsaturatedReference,
+                         controller.mQUnsaturatedReference,
+                         controller.mVdReference,
+                         controller.mVqReference,
+                         controller.mDSaturated,
+                         controller.mQSaturated,
+                         controller.mDUpperSaturated,
+                         controller.mDLowerSaturated,
+                         controller.mQUpperSaturated,
+                         controller.mQLowerSaturated};
 }
 
 Task::List DQSymCurrentController::getTasks() {
@@ -370,11 +486,19 @@ DQSymModulation::DQSymModulation(String name, Logger::Level logLevel)
       mAngle(mAttributes->createDynamic<Real>("angle")),
       mDCommand(mAttributes->create<Real>("d_command", 0.0)),
       mQCommand(mAttributes->create<Real>("q_command", 0.0)),
+      mDUnsaturatedCommand(
+          mAttributes->create<Real>("d_unsaturated_command", 0.0)),
+      mQUnsaturatedCommand(
+          mAttributes->create<Real>("q_unsaturated_command", 0.0)),
       mModulationMagnitude(
           mAttributes->create<Real>("modulation_magnitude", 0.0)),
       mAbcCommand(
           mAttributes->create<Matrix>("abc_command", Matrix::Zero(3, 1))),
-      mSaturated(mAttributes->create<Bool>("saturated", false)) {}
+      mSaturated(mAttributes->create<Bool>("saturated", false)),
+      mDUpperSaturated(mAttributes->create<Bool>("d_upper_saturated", false)),
+      mDLowerSaturated(mAttributes->create<Bool>("d_lower_saturated", false)),
+      mQUpperSaturated(mAttributes->create<Bool>("q_upper_saturated", false)),
+      mQLowerSaturated(mAttributes->create<Bool>("q_lower_saturated", false)) {}
 
 void DQSymModulation::setParameters(Real nominalDcVoltage,
                                     Real nominalAcLineLineRms,
@@ -400,8 +524,14 @@ void DQSymModulation::step() {
       (mNominalDcVoltage * 0.5 * std::sqrt(3.0 / 2.0) / mNominalAcLineLineRms);
   const Real rawD = scale * **mVdCommand;
   const Real rawQ = scale * **mVqCommand;
+  **mDUnsaturatedCommand = rawD;
+  **mQUnsaturatedCommand = rawQ;
   **mDCommand = clampValue(rawD, mLowerAxisLimit, mUpperAxisLimit);
   **mQCommand = clampValue(rawQ, mLowerAxisLimit, mUpperAxisLimit);
+  **mDUpperSaturated = rawD > mUpperAxisLimit;
+  **mDLowerSaturated = rawD < mLowerAxisLimit;
+  **mQUpperSaturated = rawQ > mUpperAxisLimit;
+  **mQLowerSaturated = rawQ < mLowerAxisLimit;
   **mSaturated = (**mDCommand != rawD || **mQCommand != rawQ);
   **mModulationMagnitude = std::hypot(**mDCommand, **mQCommand);
 
@@ -419,9 +549,17 @@ DQSymModulation::StepTask::StepTask(DQSymModulation &modulation)
     : Task(**modulation.mName + ".Step"), mModulation(modulation) {
   mAttributeDependencies = {modulation.mVdCommand, modulation.mVqCommand,
                             modulation.mDcVoltage, modulation.mAngle};
-  mModifiedAttributes = {modulation.mDCommand, modulation.mQCommand,
+  mModifiedAttributes = {modulation.mDCommand,
+                         modulation.mQCommand,
+                         modulation.mDUnsaturatedCommand,
+                         modulation.mQUnsaturatedCommand,
                          modulation.mModulationMagnitude,
-                         modulation.mAbcCommand, modulation.mSaturated};
+                         modulation.mAbcCommand,
+                         modulation.mSaturated,
+                         modulation.mDUpperSaturated,
+                         modulation.mDLowerSaturated,
+                         modulation.mQUpperSaturated,
+                         modulation.mQLowerSaturated};
 }
 
 Task::List DQSymModulation::getTasks() {

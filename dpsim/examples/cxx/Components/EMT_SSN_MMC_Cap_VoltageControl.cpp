@@ -7,8 +7,8 @@
 #include <complex>
 
 #include <DPsim.h>
-#include <dpsim-models/EMT/EMT_Ph1_CurrentSource.h>
-#include <dpsim-models/EMT/EMT_Ph1_SSNTypeI2T.h>
+#include <dpsim-models/EMT/EMT_DC_CurrentSource.h>
+#include <dpsim-models/EMT/EMT_DC_SSN_Capacitor.h>
 #include <dpsim-models/EMT/EMT_Ph3_NetworkInjection.h>
 #include <dpsim-models/EMT/EMT_Ph3_SSN_MMC.h>
 
@@ -143,7 +143,7 @@ int main(int argc, char *argv[]) {
   // Nodes
   // -----------------------------------------------------------------------
   auto nAc = SimNode<Real>::make("nAc", PhaseType::ABC);
-  auto nDc = SimNode<Real>::make("nDc", PhaseType::Single);
+  auto nDc = SimNode<Real>::make("nDc", PhaseType::DC);
 
   const Complex initialAcPhasor(acVoltageAmplitude / RMS3PH_TO_PEAK1PH, 0.0);
 
@@ -165,17 +165,17 @@ int main(int argc, char *argv[]) {
   // Controlled DC current source
   // -----------------------------------------------------------------------
   //
-  // EMT::Ph1::CurrentSource defines positive current from terminal 0 to
-  // terminal 1. Connecting {GND, nDc} therefore makes a positive reference
+  // EMT::DC::CurrentSource defines positive current from terminal 1 to
+  // terminal 0. Connecting {nDc, GND} therefore makes a positive reference
   // inject current into the positive DC bus.
   auto dcCurrentSource =
-      EMT::Ph1::CurrentSource::make("DcCurrentSource", Logger::Level::info);
+      EMT::DC::CurrentSource::make("DcCurrentSource", Logger::Level::info);
 
-  dcCurrentSource->setParameters(Complex(0.0, 0.0), -1.0);
+  dcCurrentSource->setParameters(0.0);
 
   dcCurrentSource->connect({
-      SimNode<Real>::GND,
       nDc,
+      SimNode<Real>::GND,
   });
 
   auto dcCurrentReferenceSignal =
@@ -185,29 +185,12 @@ int main(int argc, char *argv[]) {
   // Harmony-equivalent dynamic DC capacitance
   // -----------------------------------------------------------------------
   //
-  // Use SSNTypeI2T instead of EMT::Ph1::Capacitor to avoid interpreting
-  // 440 kV as an AC RMS phasor during initialization.
-  //
-  // State-space model:
-  //
-  //   x = Vdc
-  //   dx/dt = iC / Ce
-  //   y = Vdc.
-  Matrix capacitorA = Matrix::Zero(1, 1);
-  Matrix capacitorB = Matrix::Zero(1, 1);
-  Matrix capacitorC = Matrix::Zero(1, 1);
-  Matrix capacitorD = Matrix::Zero(1, 1);
+  auto effectiveDcCapacitor = EMT::DC::SSN::Capacitor::make(
+      "EffectiveDcCapacitor", Logger::Level::info);
 
-  capacitorB(0, 0) = 1.0 / effectiveDcCapacitance;
-  capacitorC(0, 0) = 1.0;
+  effectiveDcCapacitor->setParameters(effectiveDcCapacitance);
 
-  auto effectiveDcCapacitor =
-      EMT::Ph1::SSNTypeI2T::make("EffectiveDcCapacitor", Logger::Level::info);
-
-  effectiveDcCapacitor->setParameters(capacitorA, capacitorB, capacitorC,
-                                      capacitorD);
-
-  // SSNTypeI2T uses the voltage terminal1-terminal0. This connection gives
+  // The scalar DC capacitor uses voltage terminal1-terminal0. This gives
   // Vdc = V(nDc)-V(GND).
   effectiveDcCapacitor->connect({
       SimNode<Real>::GND,
@@ -359,18 +342,12 @@ int main(int argc, char *argv[]) {
                 "at t={:.6f} s.",
                 description, current, sim.time());
 
-    dcCurrentSource->setParameters(Complex(current, 0.0), -1.0);
+    dcCurrentSource->setParameters(current);
 
     dcCurrentReferenceSignal->set(current);
   };
 
   sim.initialize();
-
-  // SSNTypeI2T initializes its state to zero. Restore the charged DC-bus
-  // operating point after initialization and before the first simulation step.
-  effectiveDcCapacitor->manualInit(Matrix::Constant(1, 1, nominalDcVoltage),
-                                   Matrix::Zero(1, 1), Matrix::Zero(1, 1), 0.0,
-                                   nominalDcVoltage);
 
   sim.start();
 

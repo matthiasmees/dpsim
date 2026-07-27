@@ -157,6 +157,7 @@
 #include <dpsim-models/EMT/EMT_Ph3_SSN_GFM.h>
 #include <dpsim-models/EMT/EMT_Ph3_SSN_Inductor.h>
 #include <dpsim-models/EMT/EMT_Ph3_SSN_MMC.h>
+#include <dpsim-models/EMT/EMT_Ph3_SSN_MMCStation.h>
 #include <dpsim-models/EMT/EMT_Ph3_SSN_SynchronousGenerator.h>
 #include <dpsim-models/EMT/EMT_Ph3_SeriesResistor.h>
 #include <dpsim-models/EMT/EMT_Ph3_SeriesSwitch.h>

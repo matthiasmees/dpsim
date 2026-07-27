@@ -38,7 +38,13 @@ protected:
   Matrix mD;
 
   Matrix mdA;
+  /// Discrete coefficient multiplying the current-step input.
   Matrix mdB;
+  /// Discrete coefficient multiplying the previous-step input.
+  Matrix mdBOld;
+
+  /// Generalized-theta integration parameter. 0.5 is trapezoidal.
+  Real mTheta;
 
   const Attribute<Matrix>::Ptr mX;
 
@@ -62,6 +68,11 @@ protected:
 
   /// Hook for variable/time-varying SSN components.
   virtual void updateStateSpaceModel();
+
+  /// Optional held signal inputs consumed while rebuilding the next SSN
+  /// equivalent. Derived components add them as previous-step dependencies.
+  virtual void
+  addHeldControlDependencies(AttributeBase::List &prevStepDependencies) const;
 
   virtual Attribute<Matrix>::Ptr inputAttribute() const = 0;
   virtual Attribute<Matrix>::Ptr outputAttribute() const = 0;
@@ -101,6 +112,14 @@ public:
 
   /// Get discrete input matrix used by the trapezoidal SSN model.
   const Matrix &getDiscreteB() const;
+
+  /// Select generalized-theta state integration.
+  ///
+  /// theta=0.5 preserves the trapezoidal rule; theta=1 uses backward Euler.
+  /// The setting must be finite and in [0.5, 1]. The default is 0.5.
+  void setTheta(Real theta);
+
+  Real theta() const;
 
   /// Get continuous-time output matrix of the SSN model.
   const Matrix &getC() const;

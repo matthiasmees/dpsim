@@ -40,6 +40,7 @@ set(CIRCUIT_SOURCES
 	Circuits/EMT_Ph1_General2TerminalSSN.cpp
 	Circuits/EMT_DC_SSN_Validation.cpp
 	Circuits/DQSym_Controller_Validation.cpp
+	Circuits/MMC_ExternalCommand_Validation.cpp
 	Circuits/EMT_DC_SSN_PiLine_SourceStep.cpp
 	Circuits/EMT_RC_split_decoupled_node_DC.cpp
 	Circuits/EMT_RC_split_decoupled_node.cpp
@@ -159,6 +160,9 @@ set(SSN_SOURCES
 	Components/EMT_SSN_MMC_PiLine.cpp
 	Components/EMT_SSN_MMC_Resistor_NegRefStep.cpp
 	Components/EMT_SSN_MMC_Trafo.cpp
+	Components/EMT_SSN_MMCStation_ClosedLoop.cpp
+	Components/EMT_SSN_MMCStation_DCCapacitor.cpp
+	Components/EMT_SSN_MMCStation_DCPiLine.cpp
 )
 
 set(STATE_SPACE_SOURCES
@@ -317,6 +321,23 @@ foreach(SOURCE
 	target_include_directories(${TARGET} PRIVATE ${INCLUDE_DIRS})
 	target_compile_options(${TARGET} PUBLIC ${DPSIM_CXX_FLAGS})
 endforeach()
+
+foreach(STATION_VALIDATION
+		MMCStation_OpenLoop_Validation
+		MMCStation_CurrentControl_Validation
+		MMCStation_OuterControl_Validation)
+	add_executable(${STATION_VALIDATION}
+		Circuits/MMCStation_Signal_Validation.cpp)
+	target_link_libraries(${STATION_VALIDATION} ${LIBRARIES})
+	target_include_directories(${STATION_VALIDATION} PRIVATE ${INCLUDE_DIRS})
+	target_compile_options(${STATION_VALIDATION} PUBLIC ${DPSIM_CXX_FLAGS})
+endforeach()
+target_compile_definitions(MMCStation_OpenLoop_Validation
+	PRIVATE MMCSTATION_OPEN_LOOP)
+target_compile_definitions(MMCStation_CurrentControl_Validation
+	PRIVATE MMCSTATION_CURRENT)
+target_compile_definitions(MMCStation_OuterControl_Validation
+	PRIVATE MMCSTATION_OUTER)
 
 foreach(TEST_SOURCE ${TEST_SOURCES})
 	get_filename_component(TARGET ${TEST_SOURCE} NAME_WE)

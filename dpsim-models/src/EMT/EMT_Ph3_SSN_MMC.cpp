@@ -24,6 +24,7 @@ EMT::Ph3::SSN_MMC::SSN_MMC(String uid, String name, Logger::Level logLevel)
       mNumberOfSubmodules(0), mReactorInductance(0.0), mReactorResistance(0.0),
       mActiveControlMode(ActiveControlMode::OpenLoop),
       mReactiveControlMode(ReactiveControlMode::OpenLoop),
+      mControlSource(ControlSource::InternalControllers),
       mEnergyControllerEnabled(false), mPllEnabled(false),
       mModulationDelayEnabled(false), mActivePowerReference(0.0),
       mReactivePowerReference(0.0), mDcVoltageReference(0.0),
@@ -88,7 +89,15 @@ EMT::Ph3::SSN_MMC::SSN_MMC(String uid, String name, Logger::Level logLevel)
       mPowerBalanceError(mAttributes->create<Real>("power_balance_error")),
       mNortonMatrixNorm(mAttributes->create<Real>("norton_matrix_norm")),
       mHistoryVectorNorm(mAttributes->create<Real>("history_vector_norm")),
-      mDiagnosticsValid(mAttributes->create<Real>("diagnostics_valid")) {
+      mDiagnosticsValid(mAttributes->create<Real>("diagnostics_valid")),
+      mAcTerminalVoltage(mAttributes->create<Matrix>("ac_terminal_voltage",
+                                                     Matrix::Zero(3, 1))),
+      mAcTerminalCurrent(mAttributes->create<Matrix>("ac_terminal_current",
+                                                     Matrix::Zero(3, 1))),
+      mExternalDifferentialVoltage(
+          mAttributes->createDynamic<Matrix>("external_differential_voltage")),
+      mExternalCommandActive(
+          mAttributes->create<Bool>("external_command_active", false)) {
 
   **mDcVoltage = 0.0;
   **mDcPositiveVoltage = 0.0;
@@ -129,6 +138,7 @@ EMT::Ph3::SSN_MMC::SSN_MMC(String uid, String name, Logger::Level logLevel)
   **mNortonMatrixNorm = 0.0;
   **mHistoryVectorNorm = 0.0;
   **mDiagnosticsValid = 0.0;
+  **mExternalDifferentialVoltage = Matrix::Zero(2, 1);
 
   // DPsim currently stores one phase type for the complete component. The AC
   // terminal uses all ABC phases; DC+ and DC- use only phase index 0. The
@@ -138,6 +148,8 @@ EMT::Ph3::SSN_MMC::SSN_MMC(String uid, String name, Logger::Level logLevel)
 }
 
 MatrixComp EMT::Ph3::SSN_MMC::buildInitialInputFromNodes(Real) {
+  validateTerminalArrangement();
+
   MatrixComp u = MatrixComp::Zero(mInputSize, 1);
 
   const Complex vAcA = RMS3PH_TO_PEAK1PH * initialSingleVoltage(0);
@@ -152,7 +164,38 @@ MatrixComp EMT::Ph3::SSN_MMC::buildInitialInputFromNodes(Real) {
   return u;
 }
 
+void EMT::Ph3::SSN_MMC::validateTerminalArrangement() const {
+  auto *self = const_cast<SSN_MMC *>(this);
+
+  const auto acNode = self->node(0);
+  if (acNode->isGround() || acNode->phaseType() != PhaseType::ABC)
+    throw std::invalid_argument(
+        "SSN_MMC terminal 0 requires a non-grounded PhaseType::ABC node.");
+
+  for (UInt terminal = 1; terminal <= 2; ++terminal) {
+    const auto dcNode = self->node(terminal);
+    if (!dcNode->isGround() && dcNode->phaseType() != PhaseType::DC)
+      throw std::invalid_argument(
+          "SSN_MMC terminals 1 (dc+) and 2 (dc-) require PhaseType::DC "
+          "nodes or ground.");
+  }
+}
+
+void EMT::Ph3::SSN_MMC::validateInterfaceDimensions() const {
+  if (mW.rows() != mOutputSize || mW.cols() != mInputSize)
+    throw std::runtime_error("SSN_MMC Norton matrix must have size 5 x 5.");
+  if (mYHist.rows() != mOutputSize || mYHist.cols() != 1)
+    throw std::runtime_error("SSN_MMC history vector must have size 5 x 1.");
+  if ((**mIntfVoltage).rows() != mInputSize || (**mIntfVoltage).cols() != 1)
+    throw std::runtime_error(
+        "SSN_MMC interface-voltage vector must have size 5 x 1.");
+  if ((**mIntfCurrent).rows() != mOutputSize || (**mIntfCurrent).cols() != 1)
+    throw std::runtime_error(
+        "SSN_MMC interface-current vector must have size 5 x 1.");
+}
+
 void EMT::Ph3::SSN_MMC::mnaCompUpdateVoltage(const Matrix &leftVector) {
+  validateInterfaceDimensions();
   Matrix u = Matrix::Zero(mInputSize, 1);
 
   if (terminalNotGrounded(0)) {
@@ -171,6 +214,8 @@ void EMT::Ph3::SSN_MMC::mnaCompUpdateVoltage(const Matrix &leftVector) {
 
 void EMT::Ph3::SSN_MMC::mnaCompApplySystemMatrixStamp(
     SparseMatrixRow &systemMatrix) {
+  validateTerminalArrangement();
+  validateInterfaceDimensions();
   std::array<Int, mInputSize> indices = {-1, -1, -1, -1, -1};
 
   if (terminalNotGrounded(0)) {
@@ -197,6 +242,8 @@ void EMT::Ph3::SSN_MMC::mnaCompApplySystemMatrixStamp(
 }
 
 void EMT::Ph3::SSN_MMC::mnaCompApplyRightSideVectorStamp(Matrix &rightVector) {
+  validateTerminalArrangement();
+  validateInterfaceDimensions();
   std::array<Int, mOutputSize> indices = {-1, -1, -1, -1, -1};
 
   if (terminalNotGrounded(0)) {
@@ -428,6 +475,27 @@ void EMT::Ph3::SSN_MMC::setInitialOperatingPoint(Real activePower,
   mInitialOperatingPointEnabled = true;
   mInitialActivePower = activePower;
   mInitialReactivePower = reactivePower;
+}
+
+void EMT::Ph3::SSN_MMC::setControlSource(ControlSource source) {
+  if (source == ControlSource::ExternalDifferentialVoltage &&
+      ((**mExternalDifferentialVoltage).rows() != 2 ||
+       (**mExternalDifferentialVoltage).cols() != 1 ||
+       !(**mExternalDifferentialVoltage).allFinite()))
+    throw std::logic_error(
+        "MMC external differential-voltage command must be finite 2x1.");
+  mControlSource = source;
+  **mExternalCommandActive =
+      source == ControlSource::ExternalDifferentialVoltage;
+}
+
+void EMT::Ph3::SSN_MMC::setExternalDifferentialVoltageCommand(Real dVolts,
+                                                              Real qVolts) {
+  if (!std::isfinite(dVolts) || !std::isfinite(qVolts))
+    throw std::invalid_argument(
+        "MMC external differential-voltage command must be finite.");
+  (**mExternalDifferentialVoltage)(0, 0) = dVolts;
+  (**mExternalDifferentialVoltage)(1, 0) = qVolts;
 }
 
 void EMT::Ph3::SSN_MMC::setLimits(Real maximumAcCurrent,
@@ -1315,6 +1383,15 @@ void EMT::Ph3::SSN_MMC::evaluateStateDerivative(const Matrix &x,
   const Matrix vMDeltaNetwork = rotateDq(vMDeltaControl, pllAngle);
   Real vMDeltaDReference = vMDeltaNetwork(0, 0);
   Real vMDeltaQReference = vMDeltaNetwork(1, 0);
+  if (mControlSource == ControlSource::ExternalDifferentialVoltage) {
+    if ((**mExternalDifferentialVoltage).rows() != 2 ||
+        (**mExternalDifferentialVoltage).cols() != 1 ||
+        !(**mExternalDifferentialVoltage).allFinite())
+      throw std::runtime_error(
+          "MMC external differential-voltage command is not finite 2x1.");
+    vMDeltaDReference = (**mExternalDifferentialVoltage)(0, 0);
+    vMDeltaQReference = (**mExternalDifferentialVoltage)(1, 0);
+  }
 
   // -----------------------------------------------------------------------
   // Harmony circulating-current controller. The sigma dq quantities are
@@ -1530,8 +1607,10 @@ void EMT::Ph3::SSN_MMC::evaluateStateDerivative(const Matrix &x,
        mReactiveControlMode == ReactiveControlMode::AcVoltage)
           ? reactiveIntegratorError
           : 0.0;
-  f(XiOccD, 0) = occErrorD;
-  f(XiOccQ, 0) = occErrorQ;
+  f(XiOccD, 0) =
+      mControlSource == ControlSource::InternalControllers ? occErrorD : 0.0;
+  f(XiOccQ, 0) =
+      mControlSource == ControlSource::InternalControllers ? occErrorQ : 0.0;
   f(XiCccD, 0) = cccErrorD;
   f(XiCccQ, 0) = cccErrorQ;
   f(XiZcc, 0) = zccError;
@@ -1641,7 +1720,14 @@ Bool EMT::Ph3::SSN_MMC::updateComponentParameters() {
   return true;
 }
 
+void EMT::Ph3::SSN_MMC::addHeldControlDependencies(
+    AttributeBase::List &prevStepDependencies) const {
+  prevStepDependencies.push_back(mExternalDifferentialVoltage);
+}
+
 void EMT::Ph3::SSN_MMC::initializeFromNodesAndTerminals(Real frequency) {
+  validateTerminalArrangement();
+
   if (!mParametersSet)
     throw std::logic_error(
         "setParameters() must be called before MMC initialization.");
@@ -1769,6 +1855,8 @@ void EMT::Ph3::SSN_MMC::updateLogAttributes(const Matrix &u) const {
   **mReactivePower = q;
   **mAcVoltageMagnitude = std::hypot(vGridDq(0, 0), vGridDq(1, 0));
   **mStoredEnergy = calculateStoredEnergy(**mX);
+  **mAcTerminalVoltage = u.block(0, 0, 3, 1);
+  **mAcTerminalCurrent = (**mIntfCurrent).block(0, 0, 3, 1);
 
   const Real pllError = vControlDq(1, 0);
   const Real deltaOmega = mPllEnabled ? mPllController.kp * pllError +
@@ -1900,3 +1988,56 @@ Matrix EMT::Ph3::SSN_MMC::getStateDerivative() const {
 Matrix EMT::Ph3::SSN_MMC::getInterfaceVoltage() const { return **mIntfVoltage; }
 
 Matrix EMT::Ph3::SSN_MMC::getInterfaceCurrent() const { return **mIntfCurrent; }
+
+Attribute<Matrix>::Ptr EMT::Ph3::SSN_MMC::acTerminalVoltageAttribute() const {
+  return mAcTerminalVoltage;
+}
+
+Attribute<Matrix>::Ptr EMT::Ph3::SSN_MMC::acTerminalCurrentAttribute() const {
+  return mAcTerminalCurrent;
+}
+
+Attribute<Matrix>::Ptr EMT::Ph3::SSN_MMC::interfaceVoltageAttribute() const {
+  return mIntfVoltage;
+}
+
+Attribute<Matrix>::Ptr EMT::Ph3::SSN_MMC::interfaceCurrentAttribute() const {
+  return mIntfCurrent;
+}
+
+Attribute<Real>::Ptr EMT::Ph3::SSN_MMC::dcPositiveVoltageAttribute() const {
+  return mDcPositiveVoltage;
+}
+
+Attribute<Real>::Ptr EMT::Ph3::SSN_MMC::dcNegativeVoltageAttribute() const {
+  return mDcNegativeVoltage;
+}
+
+Attribute<Real>::Ptr EMT::Ph3::SSN_MMC::dcVoltageAttribute() const {
+  return mDcVoltage;
+}
+
+Attribute<Real>::Ptr EMT::Ph3::SSN_MMC::dcCurrentAttribute() const {
+  return mDcCurrent;
+}
+
+Attribute<Real>::Ptr EMT::Ph3::SSN_MMC::activePowerAttribute() const {
+  return mActivePower;
+}
+
+Attribute<Real>::Ptr EMT::Ph3::SSN_MMC::reactivePowerAttribute() const {
+  return mReactivePower;
+}
+
+Attribute<Real>::Ptr EMT::Ph3::SSN_MMC::storedEnergyAttribute() const {
+  return mStoredEnergy;
+}
+
+Attribute<Matrix>::Ptr
+EMT::Ph3::SSN_MMC::externalDifferentialVoltageAttribute() const {
+  return mExternalDifferentialVoltage;
+}
+
+Attribute<Bool>::Ptr EMT::Ph3::SSN_MMC::externalCommandActiveAttribute() const {
+  return mExternalCommandActive;
+}

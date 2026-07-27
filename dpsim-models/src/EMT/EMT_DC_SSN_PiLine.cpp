@@ -20,7 +20,18 @@ SimPowerComp<Real>::Ptr EMT::DC::SSN::PiLine::clone(String name) {
   copy->setParameters(**mSeriesResistance, **mSeriesInductance,
                       **mParallelCapacitance, **mParallelConductance,
                       **mInitialCurrent);
+  copy->setTheta(mTheta);
   return copy;
+}
+
+void EMT::DC::SSN::PiLine::setTheta(Real theta) {
+  if (!Math::isFinite(theta) || theta < 0.5 || theta > 1.0)
+    throw std::invalid_argument(
+        "DC pi-line theta must be finite and in [0.5, 1].");
+  if (mSubCompCreated)
+    throw std::logic_error(
+        "DC pi-line theta must be selected before subcomponent creation.");
+  mTheta = theta;
 }
 
 void EMT::DC::SSN::PiLine::setParameters(Real seriesResistance,
@@ -81,6 +92,7 @@ void EMT::DC::SSN::PiLine::createSubComponents() {
 
   mSeriesInductor = Inductor::make(**mName + "_series_L", mLogLevel);
   mSeriesInductor->setParameters(**mSeriesInductance, **mInitialCurrent);
+  mSeriesInductor->setTheta(mTheta);
   mSeriesInductor->connect({mVirtualNodes[0], mTerminals[1]->node()});
   addMNASubComponent(mSeriesInductor,
                      MNA_SUBCOMP_TASK_ORDER::TASK_BEFORE_PARENT,

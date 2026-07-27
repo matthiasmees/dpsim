@@ -7,7 +7,7 @@
 #include <complex>
 
 #include <DPsim.h>
-#include <dpsim-models/EMT/EMT_Ph1_VoltageSource.h>
+#include <dpsim-models/EMT/EMT_DC_VoltageSource.h>
 #include <dpsim-models/EMT/EMT_Ph3_Inductor.h>
 #include <dpsim-models/EMT/EMT_Ph3_NetworkInjection.h>
 #include <dpsim-models/EMT/EMT_Ph3_Resistor.h>
@@ -170,9 +170,9 @@ int main(int argc, char *argv[]) {
 
   auto nMmcAc = SimNode<Real>::make("nMmcAc", PhaseType::ABC);
 
-  auto nDcPositive = SimNode<Real>::make("nDcPositive", PhaseType::Single);
+  auto nDcPositive = SimNode<Real>::make("nDcPositive", PhaseType::DC);
 
-  auto nDcNegative = SimNode<Real>::make("nDcNegative", PhaseType::Single);
+  auto nDcNegative = SimNode<Real>::make("nDcNegative", PhaseType::DC);
 
   // Zero-power initial state:
   // no grid/transformer voltage drop and nominal transformer ratio.
@@ -245,9 +245,9 @@ int main(int argc, char *argv[]) {
   // Stiff bipolar +/-320-kV DC terminal
   // -----------------------------------------------------------------------
   auto positiveDcSource =
-      EMT::Ph1::VoltageSource::make("PositiveDcSource", Logger::Level::info);
+      EMT::DC::VoltageSource::make("PositiveDcSource", Logger::Level::info);
 
-  positiveDcSource->setParameters(Complex(+0.5 * nominalDcVoltage, 0.0), 0.0);
+  positiveDcSource->setParameters(+0.5 * nominalDcVoltage);
 
   positiveDcSource->connect({
       SimNode<Real>::GND,
@@ -255,9 +255,9 @@ int main(int argc, char *argv[]) {
   });
 
   auto negativeDcSource =
-      EMT::Ph1::VoltageSource::make("NegativeDcSource", Logger::Level::info);
+      EMT::DC::VoltageSource::make("NegativeDcSource", Logger::Level::info);
 
-  negativeDcSource->setParameters(Complex(+0.5 * nominalDcVoltage, 0.0), 0.0);
+  negativeDcSource->setParameters(+0.5 * nominalDcVoltage);
 
   // V(GND)-V(nDcNegative) = +320 kV.
   negativeDcSource->connect({

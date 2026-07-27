@@ -101,6 +101,7 @@ list(APPEND MODELS_SOURCES
 	EMT/EMT_DC_SSN_PiLine.cpp
 	EMT/EMT_Ph3_SSN_GFM.cpp
 	EMT/EMT_Ph3_SSN_MMC.cpp
+	EMT/EMT_Ph3_SSN_MMCStation.cpp
 	EMT/EMT_Ph3_SSN_SynchronousGenerator.cpp
 	EMT/EMT_DC_VoltageSource.cpp
 	EMT/EMT_DC_CurrentSource.cpp

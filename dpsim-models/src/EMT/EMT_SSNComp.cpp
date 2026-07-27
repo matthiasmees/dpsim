@@ -17,7 +17,8 @@ EMT::SSNComp::SSNComp(String uid, String name, Int inputSize, Int outputSize,
     : MNASimPowerComp<Real>(uid, name, true, true, logLevel), mTimeStep(0.0),
       mW(Matrix::Zero(outputSize, inputSize)),
       mYHist(Matrix::Zero(outputSize, 1)), mInputSize(inputSize),
-      mOutputSize(outputSize), mX(mAttributes->create<Matrix>("x")) {
+      mOutputSize(outputSize), mTheta(0.5),
+      mX(mAttributes->create<Matrix>("x")) {
   mParametersSet = false;
 }
 
@@ -39,6 +40,17 @@ const Matrix &EMT::SSNComp::getDiscreteA() const { return mdA; }
 const Matrix &EMT::SSNComp::getDiscreteB() const { return mdB; }
 
 const Matrix &EMT::SSNComp::getC() const { return mC; }
+
+void EMT::SSNComp::setTheta(Real theta) {
+  if (!Math::isFinite(theta) || theta < 0.5 || theta > 1.0)
+    throw std::invalid_argument(
+        "SSN theta must be finite and in the closed interval [0.5, 1].");
+  if (mTimeStep > 0.0)
+    throw std::logic_error("SSN theta cannot be changed after initialization.");
+  mTheta = theta;
+}
+
+Real EMT::SSNComp::theta() const { return mTheta; }
 
 void EMT::SSNComp::setParameters(const Matrix &A, const Matrix &B,
                                  const Matrix &C, const Matrix &D) {
@@ -70,6 +82,7 @@ void EMT::SSNComp::setParameters(const Matrix &A, const Matrix &B,
 
   mdA = Matrix::Zero(mA.rows(), mA.cols());
   mdB = Matrix::Zero(mB.rows(), mB.cols());
+  mdBOld = Matrix::Zero(mB.rows(), mB.cols());
 
   mW = Matrix::Zero(mOutputSize, mInputSize);
   mYHist = Matrix::Zero(mOutputSize, 1);
@@ -78,7 +91,7 @@ void EMT::SSNComp::setParameters(const Matrix &A, const Matrix &B,
 }
 
 Matrix EMT::SSNComp::calculateHistoryVector() const {
-  return mC * (mdA * (**mX) + mdB * (**inputAttribute()));
+  return mC * (mdA * (**mX) + mdBOld * (**inputAttribute()));
 }
 
 MatrixComp
@@ -102,7 +115,7 @@ EMT::SSNComp::calculateSteadyStateOutputFromInput(const MatrixComp &x,
 }
 
 void EMT::SSNComp::updateState(const Matrix &uOld, const Matrix &uNew) {
-  **mX = mdA * (**mX) + mdB * (uNew + uOld);
+  **mX = mdA * (**mX) + mdB * uNew + mdBOld * uOld;
   if (!(**mX).allFinite())
     throw std::runtime_error("SSN state update produced a non-finite value.");
 }
@@ -112,16 +125,24 @@ void EMT::SSNComp::updateLogAttributes(const Matrix &) const {
 }
 
 void EMT::SSNComp::recomputeDiscreteModel() {
-  Math::calculateStateSpaceTrapezoidalMatrices(mA, mB, mTimeStep, mdA, mdB);
+  const Matrix identity = Matrix::Identity(mA.rows(), mA.cols());
+  const Matrix implicit = identity - mTheta * mTimeStep * mA;
+  const Matrix implicitInverse = implicit.inverse();
+  mdA = implicitInverse * (identity + (1.0 - mTheta) * mTimeStep * mA);
+  mdB = implicitInverse * (mTheta * mTimeStep) * mB;
+  mdBOld = implicitInverse * ((1.0 - mTheta) * mTimeStep) * mB;
   mW = mC * mdB + mD;
-  if (!mdA.allFinite() || !mdB.allFinite() || !mW.allFinite())
+  if (!mdA.allFinite() || !mdB.allFinite() || !mdBOld.allFinite() ||
+      !mW.allFinite())
     throw std::runtime_error(
-        "SSN trapezoidal discretization produced a non-finite value.");
+        "SSN theta discretization produced a non-finite value.");
 }
 
 void EMT::SSNComp::updateStateSpaceModel() {
   // For linear components, the default implementation does nothing.
 }
+
+void EMT::SSNComp::addHeldControlDependencies(AttributeBase::List &) const {}
 
 void EMT::SSNComp::mnaCompInitialize(Real, Real timeStep,
                                      Attribute<Matrix>::Ptr) {
@@ -149,6 +170,7 @@ void EMT::SSNComp::mnaCompAddPreStepDependencies(
   modifiedAttributes.push_back(mRightVector);
   prevStepDependencies.push_back(mX);
   prevStepDependencies.push_back(inputAttribute());
+  addHeldControlDependencies(prevStepDependencies);
 }
 
 void EMT::SSNComp::mnaCompPreStep(Real time, Int timeStepCount) {

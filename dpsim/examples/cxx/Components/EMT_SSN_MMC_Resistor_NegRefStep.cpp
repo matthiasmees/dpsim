@@ -8,10 +8,12 @@
 #include <stdexcept>
 
 #include <DPsim.h>
-#include <dpsim-models/EMT/EMT_Ph1_VoltageSource.h>
+#include <dpsim-models/EMT/EMT_DC_SSN_Inductor.h>
+#include <dpsim-models/EMT/EMT_DC_SSN_Resistor.h>
+#include <dpsim-models/EMT/EMT_DC_VoltageSource.h>
+#include <dpsim-models/EMT/EMT_Ph3_Inductor.h>
 #include <dpsim-models/EMT/EMT_Ph3_NetworkInjection.h>
 #include <dpsim-models/EMT/EMT_Ph3_Resistor.h>
-#include <dpsim-models/EMT/EMT_Ph3_SSN_Full_Serial_RLC.h>
 #include <dpsim-models/EMT/EMT_Ph3_SSN_MMC.h>
 
 using namespace DPsim;
@@ -162,6 +164,9 @@ int main(int argc, char *argv[]) {
   const Real acVoltageAmplitude = 345.0e3;
   const Real dcPower = 50.0e6;
   const Real nominalDcVoltage = 440.0e3;
+  const Real dcLoadResistance = 44.0e3;
+  const Real dcLoadInductance = 1.0;
+  const Real dcLoadInitialCurrent = nominalDcVoltage / dcLoadResistance;
 
   const Real armInductance = 0.05;
   const Real armResistance = 1.07;
@@ -227,8 +232,11 @@ int main(int argc, char *argv[]) {
   auto nAcSource = SimNode<Real>::make("nAcSource", PhaseType::ABC);
   auto nAcAfterSourceResistance =
       SimNode<Real>::make("nAcAfterSourceResistance", PhaseType::ABC);
+  auto nAcAfterBranchResistance =
+      SimNode<Real>::make("nAcAfterBranchResistance", PhaseType::ABC);
   auto nMmcAc = SimNode<Real>::make("nMmcAc", PhaseType::ABC);
-  auto nDcPositive = SimNode<Real>::make("nDcPositive", PhaseType::Single);
+  auto nDcPositive = SimNode<Real>::make("nDcPositive", PhaseType::DC);
+  auto nDcLoadMid = SimNode<Real>::make("nDcLoadMid", PhaseType::DC);
 
   // Build one consistent loaded AC operating point using the unchanged total
   // external impedance:
@@ -246,21 +254,20 @@ int main(int argc, char *argv[]) {
       phasePeakToDpsimInitialPhasor(acOperatingPoint.sourceVoltagePeak));
   nAcAfterSourceResistance->setInitialVoltage(phasePeakToDpsimInitialPhasor(
       acOperatingPoint.afterSourceResistanceVoltagePeak));
+  nAcAfterBranchResistance->setInitialVoltage(phasePeakToDpsimInitialPhasor(
+      acOperatingPoint.afterBranchResistanceVoltagePeak));
   nMmcAc->setInitialVoltage(
       phasePeakToDpsimInitialPhasor(acOperatingPoint.mmcVoltagePeak));
   nDcPositive->setInitialVoltage(Complex(nominalDcVoltage, 0.0));
+  nDcLoadMid->setInitialVoltage(
+      Complex(dcLoadResistance * dcLoadInitialCurrent, 0.0));
 
   // -------------------------------------------------------------------------
   // Harmony AC source and network impedance
   //
   // Source -- 5 ohm -- [5 ohm + j140 ohm] -- MMC
   //
-  // The branch R and L are represented by one SSN state-space component:
-  //
-  //   L * di/dt = v_terminal1 - v_terminal0 - R * i
-  //
-  // Passing a zero capacitance matrix selects the RL-only mode of
-  // SSN::Full_Serial_RLC.
+  // The branch R and L use the existing EMT three-phase primitives.
   // -------------------------------------------------------------------------
   auto acSource =
       EMT::Ph3::NetworkInjection::make("AcSource", Logger::Level::info);
@@ -273,39 +280,44 @@ int main(int argc, char *argv[]) {
   sourceResistor->setParameters(
       Math::singlePhaseParameterToThreePhase(sourceResistance));
 
-  auto branchSeriesRL = EMT::Ph3::SSN::Full_Serial_RLC::make(
-      "BranchSeriesRL", Logger::Level::info);
+  auto branchResistor =
+      EMT::Ph3::Resistor::make("BranchResistance", Logger::Level::info);
+  branchResistor->setParameters(
+      Math::singlePhaseParameterToThreePhase(branchResistance));
 
-  branchSeriesRL->setIntegrationTheta(
-      0.55); // Slightly more damping than trapezoidal rule
-
-  branchSeriesRL->setParameters(
-      Math::singlePhaseParameterToThreePhase(branchResistance),
-      Math::singlePhaseParameterToThreePhase(branchInductance),
-      Matrix::Zero(3, 3));
+  auto branchInductor =
+      EMT::Ph3::Inductor::make("BranchInductance", Logger::Level::info);
+  branchInductor->setParameters(
+      Math::singlePhaseParameterToThreePhase(branchInductance));
 
   acSource->connect({nAcSource});
   sourceResistor->connect({nAcSource, nAcAfterSourceResistance});
 
-  // TwoTerminalVTypeSSNComp uses:
-  //
-  //   u = v_terminal1 - v_terminal0
-  //
-  // For current flowing from the AC source toward the MMC, connect terminal 0
-  // to the MMC side and terminal 1 to the source side.
-  branchSeriesRL->connect({nMmcAc, nAcAfterSourceResistance});
+  branchResistor->connect({nAcAfterSourceResistance, nAcAfterBranchResistance});
+  branchInductor->connect({nAcAfterBranchResistance, nMmcAc});
 
   // -------------------------------------------------------------------------
   // Stiff 440 kV DC terminal
   //
-  // EMT::Ph1::VoltageSource enforces v(terminal 1) - v(terminal 0) = Vref.
+  // EMT::DC::VoltageSource enforces v(terminal 1) - v(terminal 0) = Vref.
   // Connecting terminal 0 to ground therefore fixes nDcPositive at +440 kV.
-  // A source frequency of zero produces a constant DC voltage.
   // -------------------------------------------------------------------------
-  auto dcSource =
-      EMT::Ph1::VoltageSource::make("DcSource", Logger::Level::info);
-  dcSource->setParameters(Complex(nominalDcVoltage, 0.0), 0.0);
+  auto dcSource = EMT::DC::VoltageSource::make("DcSource", Logger::Level::info);
+  dcSource->setParameters(nominalDcVoltage);
   dcSource->connect({SimNode<Real>::GND, nDcPositive});
+
+  // Scalar-DC series R-L regression. Positive branch current flows
+  // nDcPositive -> inductor -> resistor -> ground, matching each component's
+  // terminal-1-to-terminal-0 passive convention.
+  auto dcLoadInductor =
+      EMT::DC::SSN::Inductor::make("DcLoadInductor", Logger::Level::info);
+  dcLoadInductor->setParameters(dcLoadInductance, dcLoadInitialCurrent);
+  dcLoadInductor->connect({nDcLoadMid, nDcPositive});
+
+  auto dcLoadResistor =
+      EMT::DC::SSN::Resistor::make("DcLoadResistor", Logger::Level::info);
+  dcLoadResistor->setParameters(dcLoadResistance);
+  dcLoadResistor->connect({SimNode<Real>::GND, nDcLoadMid});
 
   // -------------------------------------------------------------------------
   // Harmony MMC1
@@ -364,14 +376,19 @@ int main(int argc, char *argv[]) {
                                SystemNodeList{
                                    nAcSource,
                                    nAcAfterSourceResistance,
+                                   nAcAfterBranchResistance,
                                    nMmcAc,
                                    nDcPositive,
+                                   nDcLoadMid,
                                },
                                SystemComponentList{
                                    acSource,
                                    sourceResistor,
-                                   branchSeriesRL,
+                                   branchResistor,
+                                   branchInductor,
                                    dcSource,
+                                   dcLoadInductor,
+                                   dcLoadResistor,
                                    mmc,
                                });
 
@@ -383,12 +400,17 @@ int main(int argc, char *argv[]) {
   logger->logAttribute("Voltage_AC_Source", nAcSource->attribute("v"));
   logger->logAttribute("Voltage_AC_MMC", nMmcAc->attribute("v"));
   logger->logAttribute("Voltage_DC_Positive", nDcPositive->attribute("v"));
+  logger->logAttribute("Voltage_DC_LoadMid", nDcLoadMid->attribute("v"));
 
   logger->logAttribute("Current_SourceResistance",
                        sourceResistor->attribute("i_intf"));
   logger->logAttribute("Current_BranchSeriesRL",
-                       branchSeriesRL->attribute("i_intf"));
+                       branchInductor->attribute("i_intf"));
   logger->logAttribute("Current_DC_Source", dcSource->attribute("i_intf"));
+  logger->logAttribute("Current_DC_LoadInductor",
+                       dcLoadInductor->attribute("i_intf"));
+  logger->logAttribute("Current_DC_LoadResistor",
+                       dcLoadResistor->attribute("i_intf"));
 
   logger->logAttribute("MMC_InterfaceVoltage", mmc->attribute("v_intf"));
   logger->logAttribute("MMC_InterfaceCurrent", mmc->attribute("i_intf"));
@@ -503,6 +525,31 @@ int main(int argc, char *argv[]) {
   }
 
   sim.stop();
+
+  if (!mmc->getState().allFinite() || !mmc->getInterfaceVoltage().allFinite() ||
+      !mmc->getInterfaceCurrent().allFinite())
+    throw std::runtime_error("MMC state or interface contains NaN or Inf.");
+
+  const Real inductorCurrent = dcLoadInductor->intfCurrent()(0, 0);
+  const Real resistorCurrent = dcLoadResistor->intfCurrent()(0, 0);
+  const Real dcNodeKclResidual = inductorCurrent +
+                                 dcSource->intfCurrent()(0, 0) +
+                                 mmc->getInterfaceCurrent()(3, 0);
+  const Real finalPac = mmc->attributeTyped<Real>("p_ac")->get();
+  const Real finalPdc = mmc->attributeTyped<Real>("p_dc")->get();
+
+  if (!std::isfinite(dcNodeKclResidual) || std::abs(dcNodeKclResidual) > 1.0e-6)
+    throw std::runtime_error(
+        fmt::format("scalar DC-node KCL residual is {} A", dcNodeKclResidual));
+  if (std::abs(inductorCurrent - resistorCurrent) > 1.0e-6)
+    throw std::runtime_error(
+        fmt::format("scalar DC series R-L current discontinuity is {} A",
+                    inductorCurrent - resistorCurrent));
+
+  SPDLOG_INFO("Scalar-DC MMC R-L validation: Vdc={} V, IL={} A, IR={} A, "
+              "KCL residual={} A, Pac={} W, Pdc={} W, Pac-Pdc={} W",
+              nDcPositive->voltage()(0, 0), inductorCurrent, resistorCurrent,
+              dcNodeKclResidual, finalPac, finalPdc, finalPac - finalPdc);
 
   return 0;
 }

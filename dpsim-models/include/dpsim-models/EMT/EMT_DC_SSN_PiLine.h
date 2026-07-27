@@ -33,6 +33,9 @@ public:
   void setParameters(Real seriesResistance, Real seriesInductance,
                      Real parallelCapacitance = 0.0,
                      Real parallelConductance = 0.0, Real initialCurrent = 0.0);
+  /// Set the series-inductor generalized-theta integration parameter.
+  /// Default 0.5 preserves the existing trapezoidal behavior.
+  void setTheta(Real theta);
 
   void createSubComponents() override final;
   void initializeParentFromNodesAndTerminals(Real frequency) override final;
@@ -59,6 +62,7 @@ private:
   std::shared_ptr<Resistor> mShuntResistor1;
   std::shared_ptr<Capacitor> mShuntCapacitor0;
   std::shared_ptr<Capacitor> mShuntCapacitor1;
+  Real mTheta = 0.5;
 
   void validateDCTerminals() const;
 };

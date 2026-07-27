@@ -13,7 +13,7 @@ EMT::VTypeVariableSSNComp::VTypeVariableSSNComp(String uid, String name,
       mF(Matrix::Zero(outputSize, 1)) {}
 
 Matrix EMT::VTypeVariableSSNComp::calculateHistoryVector() const {
-  return mC * (mdA * (**mX) + mdB * (**inputAttribute()) + mdE) + mF;
+  return mC * (mdA * (**mX) + mdBOld * (**inputAttribute()) + mdE) + mF;
 }
 
 MatrixComp EMT::VTypeVariableSSNComp::calculateSteadyStateStateFromInput(
@@ -33,12 +33,19 @@ MatrixComp EMT::VTypeVariableSSNComp::calculateSteadyStateOutputFromInput(
 
 void EMT::VTypeVariableSSNComp::updateState(const Matrix &uOld,
                                             const Matrix &uNew) {
-  **mX = mdA * (**mX) + mdB * (uNew + uOld) + mdE;
+  **mX = mdA * (**mX) + mdB * uNew + mdBOld * uOld + mdE;
 }
 
 void EMT::VTypeVariableSSNComp::recomputeDiscreteModel() {
-  Math::calculateStateSpaceTrapezoidalMatrices(mA, mB, mE, mTimeStep, mdA, mdB,
-                                               mdE);
+  const Matrix identity = Matrix::Identity(mA.rows(), mA.cols());
+  const Matrix implicit = identity - mTheta * mTimeStep * mA;
+  const Matrix implicitInverse = implicit.inverse();
+  mdA = implicitInverse * (identity + (1.0 - mTheta) * mTimeStep * mA);
+  mdB = implicitInverse * (mTheta * mTimeStep) * mB;
+  mdBOld = implicitInverse * ((1.0 - mTheta) * mTimeStep) * mB;
+  // E is constant over the integration interval, so its theta weights sum
+  // to one.
+  mdE = implicitInverse * mTimeStep * mE;
   mW = mC * mdB + mD;
 }
 

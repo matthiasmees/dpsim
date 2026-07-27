@@ -32,6 +32,8 @@ void validatePI() {
   pi->mError->set(10.0);
   pi->step();
   near(**pi->mOutput, 1.0, 0.0, "PI upper saturation");
+  if (!(**pi->mUpperSaturated) || **pi->mLowerSaturated)
+    throw std::runtime_error("PI upper directional flags are invalid.");
   const Real heldState = **pi->mIntegratorState;
   for (UInt i = 0; i < 20; ++i)
     pi->step();
@@ -42,6 +44,11 @@ void validatePI() {
   pi->step();
   if (!(**pi->mOutput < 1.0))
     throw std::runtime_error("PI did not recover from upper saturation.");
+  pi->mError->set(-10.0);
+  pi->step();
+  near(**pi->mOutput, -1.0, 0.0, "PI lower saturation");
+  if (!(**pi->mLowerSaturated) || **pi->mUpperSaturated)
+    throw std::runtime_error("PI lower directional flags are invalid.");
 
   pi->mEnable->set(false);
   const Real disabledState = **pi->mIntegratorState;
@@ -115,6 +122,14 @@ void validateCurrentController() {
        "current-controller d-axis saturation");
   if (!(**controller->mDSaturated))
     throw std::runtime_error("Current-controller saturation flag not set.");
+  if (!(**controller->mDUpperSaturated) || **controller->mDLowerSaturated)
+    throw std::runtime_error(
+        "Current-controller upper directional flags are invalid.");
+  controller->mIdReference->set(-10.0);
+  controller->step();
+  if (!(**controller->mDLowerSaturated) || **controller->mDUpperSaturated)
+    throw std::runtime_error(
+        "Current-controller lower directional flags are invalid.");
 }
 
 void validateOuterControllers() {
@@ -179,6 +194,14 @@ void validateModulation() {
   modulation->mVdCommand->set(100.0 * inverseScale);
   modulation->step();
   near(**modulation->mDCommand, 2.0, 0.0, "DQsym modulation axis saturation");
+  if (!(**modulation->mDUpperSaturated) || **modulation->mDLowerSaturated)
+    throw std::runtime_error("Modulation upper directional flags are invalid.");
+  modulation->mVdCommand->set(-100.0 * inverseScale);
+  modulation->step();
+  near(**modulation->mDCommand, -2.0, 0.0,
+       "DQsym modulation lower-axis saturation");
+  if (!(**modulation->mDLowerSaturated) || **modulation->mDUpperSaturated)
+    throw std::runtime_error("Modulation lower directional flags are invalid.");
 }
 } // namespace
 

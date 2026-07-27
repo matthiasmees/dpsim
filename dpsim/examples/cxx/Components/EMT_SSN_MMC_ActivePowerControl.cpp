@@ -5,9 +5,11 @@
 
 #include <cmath>
 #include <complex>
+#include <stdexcept>
 
 #include <DPsim.h>
-#include <dpsim-models/EMT/EMT_Ph1_VoltageSource.h>
+#include <dpsim-models/EMT/EMT_DC_SSN_Resistor.h>
+#include <dpsim-models/EMT/EMT_DC_VoltageSource.h>
 #include <dpsim-models/EMT/EMT_Ph3_NetworkInjection.h>
 #include <dpsim-models/EMT/EMT_Ph3_SSN_MMC.h>
 
@@ -26,6 +28,11 @@ MatrixComp balancedVoltageReference(Real phaseVoltageAmplitude) {
   reference(1, 0) = phaseA * SHIFT_TO_PHASE_B;
   reference(2, 0) = phaseA * SHIFT_TO_PHASE_C;
   return reference;
+}
+
+void requireFinite(const Matrix &value, const String &name) {
+  if (!value.allFinite())
+    throw std::runtime_error(name + " contains NaN or Inf.");
 }
 
 } // namespace
@@ -72,6 +79,7 @@ int main(int argc, char *argv[]) {
   const Real nominalFrequency = 50.0;
   const Real acVoltageAmplitude = 345.0e3;
   const Real nominalDcVoltage = 440.0e3;
+  const Real dcLoadResistance = 44.0e3;
 
   const Real armInductance = 0.05;
   const Real armResistance = 1.07;
@@ -107,7 +115,7 @@ int main(int argc, char *argv[]) {
   // -----------------------------------------------------------------------
   auto nAc = SimNode<Real>::make("nAc", PhaseType::ABC);
 
-  auto nDc = SimNode<Real>::make("nDc", PhaseType::Single);
+  auto nDc = SimNode<Real>::make("nDc", PhaseType::DC);
 
   const Complex initialAcPhasor(acVoltageAmplitude / RMS3PH_TO_PEAK1PH, 0.0);
 
@@ -122,16 +130,21 @@ int main(int argc, char *argv[]) {
 
   acSource->connect({nAc});
 
-  auto dcSource =
-      EMT::Ph1::VoltageSource::make("DcSource", Logger::Level::info);
+  auto dcSource = EMT::DC::VoltageSource::make("DcSource", Logger::Level::info);
 
-  dcSource->setParameters(Complex(nominalDcVoltage, 0.0), 0.0);
+  dcSource->setParameters(nominalDcVoltage);
 
   // Positive DC voltage: V(nDc)-V(GND) = 440 kV.
   dcSource->connect({
       SimNode<Real>::GND,
       nDc,
   });
+
+  // Scalar-DC resistor regression. With the stiff 440 kV bus, the passive
+  // terminal convention v=v1-v0 and i:1->0 gives exactly +10 A and +4.4 MW.
+  auto dcLoad = EMT::DC::SSN::Resistor::make("DcLoad", Logger::Level::info);
+  dcLoad->setParameters(dcLoadResistance);
+  dcLoad->connect({SimNode<Real>::GND, nDc});
 
   // -----------------------------------------------------------------------
   // Active-power-controlled MMC
@@ -190,6 +203,7 @@ int main(int argc, char *argv[]) {
                                SystemComponentList{
                                    acSource,
                                    dcSource,
+                                   dcLoad,
                                    mmc,
                                });
 
@@ -198,6 +212,7 @@ int main(int argc, char *argv[]) {
   logger->logAttribute("Voltage_AC", nAc->attribute("v"));
 
   logger->logAttribute("Voltage_DC", nDc->attribute("v"));
+  logger->logAttribute("Current_DC_Resistor", dcLoad->attribute("i_intf"));
 
   logger->logAttribute("ActivePowerReference", powerReferenceSignal);
 
@@ -296,5 +311,29 @@ int main(int argc, char *argv[]) {
   }
 
   sim.stop();
+
+  requireFinite(mmc->getState(), "MMC state");
+  requireFinite(mmc->getInterfaceVoltage(), "MMC interface voltage");
+  requireFinite(mmc->getInterfaceCurrent(), "MMC interface current");
+
+  const Real loadCurrent = dcLoad->intfCurrent()(0, 0);
+  const Real dcNodeKclResidual = loadCurrent + dcSource->intfCurrent()(0, 0) +
+                                 mmc->getInterfaceCurrent()(3, 0);
+  const Real finalPac = mmc->attributeTyped<Real>("p_ac")->get();
+  const Real finalPdc = mmc->attributeTyped<Real>("p_dc")->get();
+
+  if (!std::isfinite(dcNodeKclResidual) || std::abs(dcNodeKclResidual) > 1.0e-6)
+    throw std::runtime_error(
+        fmt::format("scalar DC-node KCL residual is {} A", dcNodeKclResidual));
+  if (std::abs(loadCurrent - nominalDcVoltage / dcLoadResistance) > 1.0e-9)
+    throw std::runtime_error(
+        fmt::format("scalar DC resistor current is {} A, expected {} A",
+                    loadCurrent, nominalDcVoltage / dcLoadResistance));
+
+  SPDLOG_INFO("Scalar-DC MMC resistor validation: Vdc={} V, Iload={} A, "
+              "KCL residual={} A, Pac={} W, Pdc={} W, Pac-Pdc={} W",
+              nDc->voltage()(0, 0), loadCurrent, dcNodeKclResidual, finalPac,
+              finalPdc, finalPac - finalPdc);
+
   return 0;
 }

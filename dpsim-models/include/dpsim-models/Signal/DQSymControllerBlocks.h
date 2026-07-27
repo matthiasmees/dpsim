@@ -6,6 +6,46 @@
 
 namespace CPS::Signal {
 
+/// Explicit externally-angled transform boundary used by MMCStation.
+///
+/// Positive sequence is a-b-c, theta increases counter-clockwise, theta=0
+/// aligns phase-a with the cosine-oriented d axis, and the amplitude-invariant
+/// transform uses 2/3 scaling. Zero sequence is omitted. Voltage and current
+/// abc inputs use peak instantaneous SI values; current is positive out of the
+/// converter. P=1.5(vd*id+vq*iq), Q=1.5(vq*id-vd*iq).
+/// This adapter is not claimed equivalent to MathWorks SPS abc/dq blocks.
+class ExternallyAngledDQAdapter
+    : public SimSignalComp,
+      public SharedFactory<ExternallyAngledDQAdapter> {
+public:
+  const Attribute<Matrix>::Ptr mVoltageAbc;
+  const Attribute<Matrix>::Ptr mCurrentAbc;
+  const Attribute<Real>::Ptr mAngle;
+  const Attribute<Real>::Ptr mAngularFrequency;
+  const Attribute<Real>::Ptr mVd;
+  const Attribute<Real>::Ptr mVq;
+  const Attribute<Real>::Ptr mId;
+  const Attribute<Real>::Ptr mIq;
+  const Attribute<Real>::Ptr mActivePower;
+  const Attribute<Real>::Ptr mReactivePower;
+
+  ExternallyAngledDQAdapter(String name,
+                            Logger::Level logLevel = Logger::Level::off);
+  void step();
+  Matrix dqToAbc(Real d, Real q) const;
+  Task::List getTasks() override;
+
+private:
+  class StepTask : public Task {
+  public:
+    explicit StepTask(ExternallyAngledDQAdapter &adapter);
+    void execute(Real, Int) override { mAdapter.step(); }
+
+  private:
+    ExternallyAngledDQAdapter &mAdapter;
+  };
+};
+
 enum class DQSymOuterLoopType {
   ActivePowerToDcVoltage,
   DcVoltageToDCurrent,
@@ -26,6 +66,8 @@ public:
   const Attribute<Real>::Ptr mUnsaturatedOutput;
   const Attribute<Real>::Ptr mOutput;
   const Attribute<Bool>::Ptr mSaturated;
+  const Attribute<Bool>::Ptr mUpperSaturated;
+  const Attribute<Bool>::Ptr mLowerSaturated;
 
   DQSymPIController(String name, Logger::Level logLevel = Logger::Level::off);
   void setParameters(Real kp, Real ki, Real lowerLimit, Real upperLimit);
@@ -101,14 +143,18 @@ public:
   const Attribute<Bool>::Ptr mEnable;
   const Attribute<Real>::Ptr mError;
   const Attribute<Real>::Ptr mIntegratorState;
+  const Attribute<Real>::Ptr mUnsaturatedOutput;
   const Attribute<Real>::Ptr mOutput;
   const Attribute<Bool>::Ptr mSaturated;
+  const Attribute<Bool>::Ptr mUpperSaturated;
+  const Attribute<Bool>::Ptr mLowerSaturated;
 
   DQSymOuterController(String name,
                        Logger::Level logLevel = Logger::Level::off);
   void setParameters(DQSymOuterLoopType type, Real kp, Real ki, Real lowerLimit,
                      Real upperLimit, Real normalization, Real outputScale,
                      Real initialIntegratorState);
+  void setInitialIntegratorState(Real state);
   void initialize(Real timeStep) override;
   void step();
   Task::List getTasks() override;
@@ -160,10 +206,16 @@ public:
   const Attribute<Bool>::Ptr mEnable;
   const Attribute<Real>::Ptr mDIntegratorState;
   const Attribute<Real>::Ptr mQIntegratorState;
+  const Attribute<Real>::Ptr mDUnsaturatedReference;
+  const Attribute<Real>::Ptr mQUnsaturatedReference;
   const Attribute<Real>::Ptr mVdReference;
   const Attribute<Real>::Ptr mVqReference;
   const Attribute<Bool>::Ptr mDSaturated;
   const Attribute<Bool>::Ptr mQSaturated;
+  const Attribute<Bool>::Ptr mDUpperSaturated;
+  const Attribute<Bool>::Ptr mDLowerSaturated;
+  const Attribute<Bool>::Ptr mQUpperSaturated;
+  const Attribute<Bool>::Ptr mQLowerSaturated;
 
   DQSymCurrentController(String name,
                          Logger::Level logLevel = Logger::Level::off);
@@ -200,9 +252,15 @@ public:
   const Attribute<Real>::Ptr mAngle;
   const Attribute<Real>::Ptr mDCommand;
   const Attribute<Real>::Ptr mQCommand;
+  const Attribute<Real>::Ptr mDUnsaturatedCommand;
+  const Attribute<Real>::Ptr mQUnsaturatedCommand;
   const Attribute<Real>::Ptr mModulationMagnitude;
   const Attribute<Matrix>::Ptr mAbcCommand;
   const Attribute<Bool>::Ptr mSaturated;
+  const Attribute<Bool>::Ptr mDUpperSaturated;
+  const Attribute<Bool>::Ptr mDLowerSaturated;
+  const Attribute<Bool>::Ptr mQUpperSaturated;
+  const Attribute<Bool>::Ptr mQLowerSaturated;
 
   DQSymModulation(String name, Logger::Level logLevel = Logger::Level::off);
   /// DC base is pole-to-pole volts; AC base is line-line RMS volts. Axis
