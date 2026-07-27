@@ -76,6 +76,7 @@ docs/_doctrees/
 docs/html/
 docs/hugo/resources/
 docs/hugo/.hugo_build.lock
+AGENTS.md
 
 # Coverage
 *.gcda
