@@ -165,6 +165,7 @@ set(SSN_SOURCES
 	Components/EMT_SSN_MMCStation_DCPiLine.cpp
 	Components/EMT_SSN_MMC_Harmony_P2P_HotStart.cpp
 	Components/EMT_SSN_MMC_Matlab_P2P_HotStart.cpp
+	Components/EMT_SSN_MMC_Matlab_P2P_Results.cpp
 )
 
 set(STATE_SPACE_SOURCES

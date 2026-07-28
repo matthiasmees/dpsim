@@ -29,7 +29,16 @@ EMT::Ph3::SSN_MMC::SSN_MMC(String uid, String name, Logger::Level logLevel)
       mModulationDelayEnabled(false), mActivePowerReference(0.0),
       mReactivePowerReference(0.0), mDcVoltageReference(0.0),
       mAcVoltageReference(0.0), mDroopGain(0.0), mOpenLoopIDeltaDReference(0.0),
-      mOpenLoopIDeltaQReference(0.0), mISigmaDReference(0.0),
+      mOpenLoopIDeltaQReference(0.0),
+      mActivePowerFeedforwardFilterCutoffFrequency(0.0),
+      mActivePowerFeedforwardControlTimeStep(0.0),
+      mActivePowerFeedforwardMinimumDaxisVoltage(0.0),
+      mActivePowerFeedforwardFilteredVd(0.0),
+      mActivePowerFeedforwardFilteredVdDerivative(0.0),
+      mActivePowerFeedforwardHeldIDeltaDReference(0.0),
+      mActivePowerFeedforwardStepCounter(0),
+      mActivePowerFeedforwardInitialized(false),
+      mActivePowerFeedforwardRuntimeEnabled(false), mISigmaDReference(0.0),
       mISigmaQReference(0.0), mISigmaZReference(0.0), mInitialAngle(0.0),
       mInitialOperatingPointEnabled(false), mInitialActivePower(0.0),
       mInitialReactivePower(0.0), mAcVoltageDqFilterTimeConstant(0.0),
@@ -58,6 +67,10 @@ EMT::Ph3::SSN_MMC::SSN_MMC(String uid, String name, Logger::Level logLevel)
       mFilteredActivePower(mAttributes->create<Real>("p_filtered")),
       mFilteredReactivePower(mAttributes->create<Real>("q_filtered")),
       mFilteredDcVoltage(mAttributes->create<Real>("vdc_filtered")),
+      mFilteredDaxisVoltage(
+          mAttributes->create<Real>("v_d_feedforward_filtered")),
+      mHeldActiveCurrentReference(
+          mAttributes->create<Real>("i_delta_d_feedforward_held")),
       mStateNorm(mAttributes->create<Real>("state_norm")),
       mStateDerivativeNorm(mAttributes->create<Real>("state_derivative_norm")),
       mEquilibriumResidualNorm(
@@ -124,6 +137,8 @@ EMT::Ph3::SSN_MMC::SSN_MMC(String uid, String name, Logger::Level logLevel)
   **mFilteredActivePower = 0.0;
   **mFilteredReactivePower = 0.0;
   **mFilteredDcVoltage = 0.0;
+  **mFilteredDaxisVoltage = 0.0;
+  **mHeldActiveCurrentReference = 0.0;
   **mStateNorm = 0.0;
   **mStateDerivativeNorm = 0.0;
   **mEquilibriumResidualNorm = 0.0;
@@ -384,8 +399,54 @@ void EMT::Ph3::SSN_MMC::setActivePowerControl(Real reference, Real kp,
   if (kp < 0.0 || ki < 0.0)
     throw std::invalid_argument("Active-power gains must be non-negative.");
   mActiveControlMode = ActiveControlMode::ActivePower;
+  mActivePowerFeedforwardRuntimeEnabled = false;
   mActivePowerReference = reference;
   mActiveController = {kp, ki};
+}
+
+void EMT::Ph3::SSN_MMC::setActivePowerFeedforwardControl(
+    Real activePowerReference, Real voltageFilterCutoffFrequency,
+    Real controlTimeStep, Real minimumDaxisVoltage) {
+  if (!std::isfinite(activePowerReference))
+    throw std::invalid_argument(
+        "Active-power feedforward reference must be finite.");
+  if (!std::isfinite(voltageFilterCutoffFrequency) ||
+      voltageFilterCutoffFrequency <= 0.0)
+    throw std::invalid_argument(
+        "Active-power feedforward voltage-filter cutoff frequency must be "
+        "finite and positive.");
+  if (!std::isfinite(controlTimeStep) || controlTimeStep <= 0.0)
+    throw std::invalid_argument(
+        "Active-power feedforward control time step must be finite and "
+        "positive.");
+  if (!std::isfinite(minimumDaxisVoltage) || minimumDaxisVoltage < 0.0)
+    throw std::invalid_argument(
+        "Active-power feedforward minimum d-axis voltage must be finite and "
+        "non-negative.");
+
+  mActiveControlMode = ActiveControlMode::ActivePowerFeedforward;
+  mActivePowerReference = activePowerReference;
+  mActivePowerFeedforwardFilterCutoffFrequency = voltageFilterCutoffFrequency;
+  mActivePowerFeedforwardControlTimeStep = controlTimeStep;
+  mActivePowerFeedforwardMinimumDaxisVoltage = minimumDaxisVoltage;
+  mActivePowerFeedforwardFilteredVd = 0.0;
+  mActivePowerFeedforwardFilteredVdDerivative = 0.0;
+  mActivePowerFeedforwardHeldIDeltaDReference = 0.0;
+  mActivePowerFeedforwardStepCounter = 0;
+  mActivePowerFeedforwardInitialized = false;
+  mActivePowerFeedforwardRuntimeEnabled = false;
+}
+
+void EMT::Ph3::SSN_MMC::setActivePowerFeedforwardReference(
+    Real activePowerReference) {
+  if (!std::isfinite(activePowerReference))
+    throw std::invalid_argument(
+        "Active-power feedforward reference must be finite.");
+  if (mActiveControlMode != ActiveControlMode::ActivePowerFeedforward)
+    throw std::logic_error("setActivePowerFeedforwardReference() requires "
+                           "ActivePowerFeedforward mode.");
+
+  mActivePowerReference = activePowerReference;
 }
 
 void EMT::Ph3::SSN_MMC::setDcVoltageControl(Real reference, Real kp, Real ki) {
@@ -394,6 +455,7 @@ void EMT::Ph3::SSN_MMC::setDcVoltageControl(Real reference, Real kp, Real ki) {
   if (kp < 0.0 || ki < 0.0)
     throw std::invalid_argument("DC-voltage gains must be non-negative.");
   mActiveControlMode = ActiveControlMode::DcVoltage;
+  mActivePowerFeedforwardRuntimeEnabled = false;
   mDcVoltageReference = reference;
   mActiveController = {kp, ki};
 }
@@ -406,6 +468,7 @@ void EMT::Ph3::SSN_MMC::setDcDroopControl(Real activePowerReference,
   if (droopGain == 0.0)
     throw std::invalid_argument("droopGain must be non-zero.");
   mActiveControlMode = ActiveControlMode::DcDroop;
+  mActivePowerFeedforwardRuntimeEnabled = false;
   mActivePowerReference = activePowerReference;
   mDcVoltageReference = dcVoltageReference;
   mDroopGain = droopGain;
@@ -413,6 +476,7 @@ void EMT::Ph3::SSN_MMC::setDcDroopControl(Real activePowerReference,
 
 void EMT::Ph3::SSN_MMC::setActiveControlOpenLoop(Real reference) {
   mActiveControlMode = ActiveControlMode::OpenLoop;
+  mActivePowerFeedforwardRuntimeEnabled = false;
   mOpenLoopIDeltaDReference = reference;
 }
 
@@ -696,6 +760,110 @@ Real EMT::Ph3::SSN_MMC::applyPadeDelayChannel(const Matrix &x, Matrix &f,
   return input - 2.0 * a1 * x2;
 }
 
+void EMT::Ph3::SSN_MMC::initializeSampledActivePowerFeedforward(
+    const Matrix &x0, const Matrix &u0) {
+  if (mActiveControlMode != ActiveControlMode::ActivePowerFeedforward)
+    return;
+
+  if (mActivePowerFeedforwardFilterCutoffFrequency <= 0.0 ||
+      mActivePowerFeedforwardControlTimeStep <= 0.0)
+    throw std::logic_error(
+        "Active-power feedforward control must be configured before MMC "
+        "initialization.");
+
+  const Matrix vGridDq = abcToDq(u0.block(0, 0, 3, 1), x0(GridAngle, 0));
+  const Real initialVd = vGridDq(0, 0);
+  const Real minimumVd = mActivePowerFeedforwardMinimumDaxisVoltage > 0.0
+                             ? mActivePowerFeedforwardMinimumDaxisVoltage
+                             : 0.1 * std::sqrt(2.0 / 3.0) * mNominalAcVoltage;
+
+  if (!std::isfinite(initialVd) || initialVd <= minimumVd)
+    throw std::runtime_error(
+        "Active-power feedforward hot start has an invalid initial d-axis "
+        "voltage.");
+
+  mActivePowerFeedforwardFilteredVd = initialVd;
+  mActivePowerFeedforwardFilteredVdDerivative = 0.0;
+  mActivePowerFeedforwardHeldIDeltaDReference =
+      (2.0 / 3.0) * mActivePowerReference / initialVd;
+  mActivePowerFeedforwardStepCounter = 0;
+  mActivePowerFeedforwardInitialized = true;
+  mActivePowerFeedforwardRuntimeEnabled = false;
+
+  **mFilteredDaxisVoltage = mActivePowerFeedforwardFilteredVd;
+  **mHeldActiveCurrentReference = mActivePowerFeedforwardHeldIDeltaDReference;
+}
+
+void EMT::Ph3::SSN_MMC::advanceSampledActivePowerFeedforward() {
+  if (mActiveControlMode != ActiveControlMode::ActivePowerFeedforward ||
+      !mActivePowerFeedforwardRuntimeEnabled ||
+      mControlSource != ControlSource::InternalControllers)
+    return;
+
+  if (!mActivePowerFeedforwardInitialized)
+    throw std::logic_error(
+        "Active-power feedforward sampled controller was not initialized.");
+  if (!std::isfinite(mTimeStep) || mTimeStep <= 0.0)
+    throw std::logic_error(
+        "Active-power feedforward requires a valid EMT time step.");
+
+  const UInt stride = std::max<UInt>(
+      1, static_cast<UInt>(
+             std::llround(mActivePowerFeedforwardControlTimeStep / mTimeStep)));
+  const Real effectiveControlTimeStep = static_cast<Real>(stride) * mTimeStep;
+
+  if (mActivePowerFeedforwardStepCounter == 0) {
+    const Real gridAngle = (**mX)(GridAngle, 0);
+    const Matrix vGridDq =
+        abcToDq((**mIntfVoltage).block(0, 0, 3, 1), gridAngle);
+    const Real measuredVd = vGridDq(0, 0);
+    if (!std::isfinite(measuredVd))
+      throw std::runtime_error(
+          "Active-power feedforward measured d-axis voltage is not finite.");
+
+    // Exact zero-order-hold update of:
+    //
+    //   H(s) = wn^2 / (s^2 + 2*wn*s + wn^2), zeta = 1.
+    //
+    // For e = y - u and a = exp(-wn*T):
+    //   e+    = a*((1 + wn*T)*e + T*ydot)
+    //   ydot+ = a*((1 - wn*T)*ydot - wn^2*T*e).
+    const Real omega = 2.0 * PI * mActivePowerFeedforwardFilterCutoffFrequency;
+    const Real decay = std::exp(-omega * effectiveControlTimeStep);
+    const Real filterError = mActivePowerFeedforwardFilteredVd - measuredVd;
+
+    const Real updatedFilterError =
+        decay * ((1.0 + omega * effectiveControlTimeStep) * filterError +
+                 effectiveControlTimeStep *
+                     mActivePowerFeedforwardFilteredVdDerivative);
+    const Real updatedFilterDerivative =
+        decay * ((1.0 - omega * effectiveControlTimeStep) *
+                     mActivePowerFeedforwardFilteredVdDerivative -
+                 omega * omega * effectiveControlTimeStep * filterError);
+
+    mActivePowerFeedforwardFilteredVd = measuredVd + updatedFilterError;
+    mActivePowerFeedforwardFilteredVdDerivative = updatedFilterDerivative;
+
+    const Real minimumVd = mActivePowerFeedforwardMinimumDaxisVoltage > 0.0
+                               ? mActivePowerFeedforwardMinimumDaxisVoltage
+                               : 0.1 * std::sqrt(2.0 / 3.0) * mNominalAcVoltage;
+    if (!std::isfinite(mActivePowerFeedforwardFilteredVd) ||
+        mActivePowerFeedforwardFilteredVd <= minimumVd)
+      throw std::runtime_error(
+          "Active-power feedforward received an invalid filtered d-axis "
+          "voltage.");
+
+    mActivePowerFeedforwardHeldIDeltaDReference =
+        (2.0 / 3.0) * mActivePowerReference / mActivePowerFeedforwardFilteredVd;
+
+    **mFilteredDaxisVoltage = mActivePowerFeedforwardFilteredVd;
+    **mHeldActiveCurrentReference = mActivePowerFeedforwardHeldIDeltaDReference;
+  }
+
+  mActivePowerFeedforwardStepCounter =
+      (mActivePowerFeedforwardStepCounter + 1) % stride;
+}
+
 void EMT::Ph3::SSN_MMC::validateFinite(const Matrix &value,
                                        const char *name) const {
   if (value.allFinite())
@@ -804,7 +972,8 @@ void EMT::Ph3::SSN_MMC::initializeAnalyticalOperatingPoint(
   Real pTarget = 0.0;
   if (mInitialOperatingPointEnabled)
     pTarget = mInitialActivePower;
-  else if (mActiveControlMode == ActiveControlMode::ActivePower)
+  else if (mActiveControlMode == ActiveControlMode::ActivePower ||
+           mActiveControlMode == ActiveControlMode::ActivePowerFeedforward)
     pTarget = mActivePowerReference;
 
   Real qTarget = 0.0;
@@ -818,6 +987,7 @@ void EMT::Ph3::SSN_MMC::initializeAnalyticalOperatingPoint(
   if (voltageSquared > 0.0 &&
       (mInitialOperatingPointEnabled ||
        mActiveControlMode == ActiveControlMode::ActivePower ||
+       mActiveControlMode == ActiveControlMode::ActivePowerFeedforward ||
        mActiveControlMode == ActiveControlMode::DcVoltage ||
        mReactiveControlMode == ReactiveControlMode::ReactivePower)) {
     // Same P/Q-to-current operating-point mapping as Harmony::update_MMC().
@@ -829,6 +999,7 @@ void EMT::Ph3::SSN_MMC::initializeAnalyticalOperatingPoint(
   if (mEnergyControllerEnabled &&
       (mInitialOperatingPointEnabled ||
        mActiveControlMode == ActiveControlMode::ActivePower ||
+       mActiveControlMode == ActiveControlMode::ActivePowerFeedforward ||
        mActiveControlMode == ActiveControlMode::DcVoltage))
     // Positive pTarget exports AC power. Positive iSigmaZ is DC current
     // absorbed by the converter, so both have the same sign at equilibrium.
@@ -1323,6 +1494,9 @@ void EMT::Ph3::SSN_MMC::evaluateStateDerivative(const Matrix &x,
     iDeltaDReferenceRaw = mActiveController.kp * activeError +
                           mActiveController.ki * x(XiActive, 0);
     break;
+  case ActiveControlMode::ActivePowerFeedforward:
+    iDeltaDReferenceRaw = mActivePowerFeedforwardHeldIDeltaDReference;
+    break;
   case ActiveControlMode::DcVoltage:
     // MATLAB VDC regulator: e_vdc = Vdc_measured - Vdc_reference.
     // At the rectifier, positive error increases iDelta_d (makes it less
@@ -1812,6 +1986,8 @@ void EMT::Ph3::SSN_MMC::buildStateSpaceModel(const Matrix &x, const Matrix &u,
 }
 
 Bool EMT::Ph3::SSN_MMC::updateComponentParameters() {
+  advanceSampledActivePowerFeedforward();
+
   Matrix stateOffset;
   Matrix outputOffset;
   buildStateSpaceModel(**mX, **mIntfVoltage, mA, mB, mC, mD, stateOffset,
@@ -1867,6 +2043,7 @@ void EMT::Ph3::SSN_MMC::initializeFromNodesAndTerminals(Real frequency) {
 
   Matrix x0 = Matrix::Zero(mStateSize, 1);
   initializeAnalyticalOperatingPoint(x0, u0);
+  initializeSampledActivePowerFeedforward(x0, u0);
 
   Real normalizedResidual = 0.0;
   Real absoluteResidual = 0.0;
@@ -1934,6 +2111,11 @@ void EMT::Ph3::SSN_MMC::initializeFromNodesAndTerminals(Real frequency) {
       Logger::matrixToString(nonlinearOutput),
       Logger::matrixToString(ssnOutput), (nonlinearOutput - ssnOutput).norm(),
       **mJacobianMaximumRealEigenvalue, **mJacobianDominantFrequency);
+
+  if (mActiveControlMode == ActiveControlMode::ActivePowerFeedforward) {
+    mActivePowerFeedforwardStepCounter = 0;
+    mActivePowerFeedforwardRuntimeEnabled = true;
+  }
 }
 
 void EMT::Ph3::SSN_MMC::updateLogAttributes(const Matrix &u) const {
@@ -2001,6 +2183,9 @@ void EMT::Ph3::SSN_MMC::updateLogAttributes(const Matrix &u) const {
     iDeltaDReference =
         mActiveController.kp * (mActivePowerReference - pControl) +
         mActiveController.ki * (**mX)(XiActive, 0);
+    break;
+  case ActiveControlMode::ActivePowerFeedforward:
+    iDeltaDReference = mActivePowerFeedforwardHeldIDeltaDReference;
     break;
   case ActiveControlMode::DcVoltage:
     iDeltaDReference =
@@ -2081,6 +2266,14 @@ void EMT::Ph3::SSN_MMC::updateLogAttributes(const Matrix &u) const {
   **mFilteredDcVoltage = mDcVoltageFilterTimeConstant > 0.0
                              ? (**mX)(FilterVdc2, 0)
                              : u(Vdcp, 0) - u(Vdcn, 0);
+  **mFilteredDaxisVoltage =
+      mActiveControlMode == ActiveControlMode::ActivePowerFeedforward
+          ? mActivePowerFeedforwardFilteredVd
+          : vControlDForOuterLoop;
+  **mHeldActiveCurrentReference =
+      mActiveControlMode == ActiveControlMode::ActivePowerFeedforward
+          ? mActivePowerFeedforwardHeldIDeltaDReference
+          : iDeltaDReference;
 
   Matrix derivative = Matrix::Zero(mStateSize, 1);
   evaluateStateDerivative(**mX, u, derivative);
@@ -2149,6 +2342,15 @@ Attribute<Real>::Ptr EMT::Ph3::SSN_MMC::reactivePowerAttribute() const {
 
 Attribute<Real>::Ptr EMT::Ph3::SSN_MMC::storedEnergyAttribute() const {
   return mStoredEnergy;
+}
+
+Attribute<Real>::Ptr EMT::Ph3::SSN_MMC::filteredDaxisVoltageAttribute() const {
+  return mFilteredDaxisVoltage;
+}
+
+Attribute<Real>::Ptr
+EMT::Ph3::SSN_MMC::heldActiveCurrentReferenceAttribute() const {
+  return mHeldActiveCurrentReference;
 }
 
 Attribute<Matrix>::Ptr

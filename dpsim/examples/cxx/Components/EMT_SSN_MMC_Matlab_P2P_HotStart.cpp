@@ -128,6 +128,7 @@ struct MatlabCaseParameters {
   Real powerReferencePu = 0.99;
   Real reactivePowerReferencePu = 0.0;
   Real controlTimeStep = 40e-6;
+  Real dqMeasurementFilterFrequency = 1000.0;
 
   Real pllKpPu = 180.0;
   Real pllKiPu = 3200.0;
@@ -523,6 +524,8 @@ struct MmcDiagnosticSnapshot {
   Real deltaCurrentReferenceD = 0.0;
   Real deltaCurrentReferenceQ = 0.0;
   Real sigmaCurrentReferenceZ = 0.0;
+  Real filteredDaxisVoltage = 0.0;
+  Real heldActiveCurrentReference = 0.0;
 
   String largestStateName = "none";
   String largestDerivativeName = "none";
@@ -566,6 +569,10 @@ MmcDiagnosticSnapshot captureMmcSnapshot(const EMT::Ph3::SSN_MMC::Ptr &mmc,
   snapshot.deltaCurrentReferenceD = scalarAttribute(mmc, "i_delta_d_ref");
   snapshot.deltaCurrentReferenceQ = scalarAttribute(mmc, "i_delta_q_ref");
   snapshot.sigmaCurrentReferenceZ = scalarAttribute(mmc, "i_sigma_z_ref");
+  snapshot.filteredDaxisVoltage =
+      scalarAttribute(mmc, "v_d_feedforward_filtered");
+  snapshot.heldActiveCurrentReference =
+      scalarAttribute(mmc, "i_delta_d_feedforward_held");
 
   const auto stateNames = mmc->getLocalStateNames();
   if (snapshot.state.rows() > 0) {
@@ -742,34 +749,37 @@ void printLocalJacobianDiagnostic(const String &name,
 void printCompactDiagnostic(const P2PDiagnosticSample &sample,
                             Real initialRectifierEnergy,
                             Real initialInverterEnergy) {
-  SPDLOG_INFO("MATLAB P2P diagnostic t={} s: "
-              "REC[Vdc={},Idc={},P={},Q={},dE={},pll_err={},"
-              "max_x={}({}),max_dx={}({}),|m|max={}] "
-              "INV[Vdc={},Idc={},P={},Q={},dE={},pll_err={},"
-              "max_x={}({}),max_dx={}({}),|m|max={}] "
-              "DC[I+=[{},{}],I-=[{},{}],Vcm=[{},{}],"
-              "loss={},power_residual={},max_KCL={}]",
-              sample.time, sample.rectifier.vdc, sample.rectifier.idc,
-              sample.rectifier.activePower, sample.rectifier.reactivePower,
-              sample.rectifier.storedEnergy - initialRectifierEnergy,
-              sample.rectifier.pllError, sample.rectifier.largestStateMagnitude,
-              sample.rectifier.largestStateName,
-              sample.rectifier.largestDerivativeMagnitude,
-              sample.rectifier.largestDerivativeName,
-              maximumAbsoluteValue(sample.rectifier.modulation),
-              sample.inverter.vdc, sample.inverter.idc,
-              sample.inverter.activePower, sample.inverter.reactivePower,
-              sample.inverter.storedEnergy - initialInverterEnergy,
-              sample.inverter.pllError, sample.inverter.largestStateMagnitude,
-              sample.inverter.largestStateName,
-              sample.inverter.largestDerivativeMagnitude,
-              sample.inverter.largestDerivativeName,
-              maximumAbsoluteValue(sample.inverter.modulation),
-              sample.positiveLocalCurrent, sample.positiveRemoteCurrent,
-              sample.negativeLocalCurrent, sample.negativeRemoteCurrent,
-              sample.rectifierCommonMode, sample.inverterCommonMode,
-              sample.cableLoss + sample.groundingLoss, sample.dcPowerResidual,
-              sample.maximumKclResidual);
+  SPDLOG_INFO(
+      "MATLAB P2P diagnostic t={} s: "
+      "REC[Vdc={},Idc={},P={},Q={},dE={},pll_err={},Vd_f={},Id_ref_h={},"
+      "max_x={}({}),max_dx={}({}),|m|max={}] "
+      "INV[Vdc={},Idc={},P={},Q={},dE={},pll_err={},Vd_f={},Id_ref_h={},"
+      "max_x={}({}),max_dx={}({}),|m|max={}] "
+      "DC[I+=[{},{}],I-=[{},{}],Vcm=[{},{}],"
+      "loss={},power_residual={},max_KCL={}]",
+      sample.time, sample.rectifier.vdc, sample.rectifier.idc,
+      sample.rectifier.activePower, sample.rectifier.reactivePower,
+      sample.rectifier.storedEnergy - initialRectifierEnergy,
+      sample.rectifier.pllError, sample.rectifier.filteredDaxisVoltage,
+      sample.rectifier.heldActiveCurrentReference,
+      sample.rectifier.largestStateMagnitude, sample.rectifier.largestStateName,
+      sample.rectifier.largestDerivativeMagnitude,
+      sample.rectifier.largestDerivativeName,
+      maximumAbsoluteValue(sample.rectifier.modulation), sample.inverter.vdc,
+      sample.inverter.idc, sample.inverter.activePower,
+      sample.inverter.reactivePower,
+      sample.inverter.storedEnergy - initialInverterEnergy,
+      sample.inverter.pllError, sample.inverter.filteredDaxisVoltage,
+      sample.inverter.heldActiveCurrentReference,
+      sample.inverter.largestStateMagnitude, sample.inverter.largestStateName,
+      sample.inverter.largestDerivativeMagnitude,
+      sample.inverter.largestDerivativeName,
+      maximumAbsoluteValue(sample.inverter.modulation),
+      sample.positiveLocalCurrent, sample.positiveRemoteCurrent,
+      sample.negativeLocalCurrent, sample.negativeRemoteCurrent,
+      sample.rectifierCommonMode, sample.inverterCommonMode,
+      sample.cableLoss + sample.groundingLoss, sample.dcPowerResidual,
+      sample.maximumKclResidual);
 }
 
 void writeMmcColumns(std::ofstream &stream, const String &prefix,
@@ -783,9 +793,10 @@ void writeMmcColumns(std::ofstream &stream, const String &prefix,
          << prefix << "_i_delta_q" << ',' << prefix << "_i_sigma_z" << ','
          << prefix << "_i_delta_d_ref" << ',' << prefix << "_i_delta_q_ref"
          << ',' << prefix << "_i_sigma_z_ref" << ',' << prefix
-         << "_modulation_max" << ',' << prefix << "_differential_voltage_max"
-         << ',' << prefix << "_common_voltage_max" << ',' << prefix
-         << "_realized_voltage_max";
+         << "_v_d_feedforward_filtered" << ',' << prefix
+         << "_i_delta_d_feedforward_held" << ',' << prefix << "_modulation_max"
+         << ',' << prefix << "_differential_voltage_max" << ',' << prefix
+         << "_common_voltage_max" << ',' << prefix << "_realized_voltage_max";
   for (const auto &stateName : stateNames)
     stream << ',' << prefix << "_x_" << stateName;
   for (const auto &stateName : stateNames)
@@ -804,6 +815,8 @@ void writeMmcValues(std::ofstream &stream,
          << snapshot.sigmaCurrentZ << ',' << snapshot.deltaCurrentReferenceD
          << ',' << snapshot.deltaCurrentReferenceQ << ','
          << snapshot.sigmaCurrentReferenceZ << ','
+         << snapshot.filteredDaxisVoltage << ','
+         << snapshot.heldActiveCurrentReference << ','
          << maximumAbsoluteValue(snapshot.modulation) << ','
          << maximumAbsoluteValue(snapshot.differentialVoltage) << ','
          << maximumAbsoluteValue(snapshot.commonModeVoltage) << ','
@@ -1249,15 +1262,19 @@ int main(int argc, char **argv) {
   rectifier->setReactivePowerControl(0.0, gains.reactivePowerKp,
                                      gains.reactivePowerKi);
 
-  // Receiving-end inverter: Controllers3 computes Id_ref = Pref/Vd
-  // algebraically rather than closing an active-power PI. Positive Pref gives
-  // positive converter-to-grid current and generated power. SSN_MMC exposes
-  // that path as an open-loop current reference, updated below at the 40-us
-  // control rate using the held previous-step v_grid_d.
+  // Receiving-end inverter: permanent MATLAB Controllers3 path.
+  //
+  //   Id_ref = (2/3) * Pref / Vd_filtered
+  //
+  // The critically damped 1-kHz second-order voltage filter, 40-us sampled
+  // execution and zero-order-held current reference are implemented inside
+  // SSN_MMC. The example only changes Pref at the MATLAB event times.
   const Real initialInverterIdReference =
       (2.0 / 3.0) * op.inverterPower.real() /
       (std::sqrt(2.0) * std::abs(op.inverter.secondaryPhaseRms));
-  inverter->setActiveControlOpenLoop(initialInverterIdReference);
+  inverter->setActivePowerFeedforwardControl(op.inverterPower.real(),
+                                             p.dqMeasurementFilterFrequency,
+                                             p.controlTimeStep);
   inverter->setReactivePowerControl(0.0, gains.reactivePowerKp,
                                     gains.reactivePowerKi);
 
@@ -1601,28 +1618,15 @@ int main(int argc, char **argv) {
   require(std::abs(initialSample.dcPowerResidual) < 10.0,
           "Initial DC-network power residual exceeds 10 W.");
 
-  const UInt controlStride = std::max<UInt>(
-      1, static_cast<UInt>(std::llround(p.controlTimeStep / timeStep)));
-  // Diagnostic test: restore Pref/Vd, but use the MATLAB measurement-filter
-  // parameters before the division. This is an exact-ZOH discretization of
-  //
-  //   H(s) = wn^2 / (s^2 + 2*wn*s + wn^2)
-  //
-  // for zeta=1, fn=1000 Hz, sampled at the effective controller period.
-  const Real controlSampleTime = controlStride * timeStep;
-  const Real inverterVdFilterOmega = 2.0 * PI * 1000.0;
-  const Real inverterVdFilterDecay =
-      std::exp(-inverterVdFilterOmega * controlSampleTime);
+  SPDLOG_INFO("Permanent inverter sampled Pref/Vd control enabled: "
+              "Pref={} W, filter=[fn={} Hz,zeta=1], TsControl={} s, "
+              "initial_Id_ref={} A",
+              op.inverterPower.real(), p.dqMeasurementFilterFrequency,
+              p.controlTimeStep, initialInverterIdReference);
 
-  Real inverterFilteredVd =
-      std::sqrt(2.0) * std::abs(op.inverter.secondaryPhaseRms);
-  Real inverterFilteredVdDerivative = 0.0;
-
-  SPDLOG_INFO("Inverter filtered Pref/Vd diagnostic enabled: "
-              "Vd_filter=[fn=1000 Hz,zeta=1,Ts={} s], "
-              "initial_Vd={} V, initial_Id_ref={} A",
-              controlSampleTime, inverterFilteredVd,
-              initialInverterIdReference);
+  Bool matlabStepAt4SecondsApplied = false;
+  Bool matlabStepAt6SecondsApplied = false;
+  Bool matlabStepAt8SecondsApplied = false;
 
   Bool failed = false;
   String failureMessage;
@@ -1639,40 +1643,32 @@ int main(int argc, char **argv) {
   sim.start();
   while (sim.time() < sim.finalTime()) {
     try {
-      if (diagnosticMode == ClosedLoopDiagnosticMode::InternalControllers &&
-          stepCount % controlStride == 0) {
-        const Real measuredVd = scalarAttribute(inverter, "v_grid_d");
-        if (!std::isfinite(measuredVd))
-          throw std::runtime_error("Inverter Vd measurement is not finite.");
+      if (diagnosticMode == ClosedLoopDiagnosticMode::InternalControllers) {
+        const Real currentTime = sim.time();
 
-        // Exact zero-order-hold update of a critically damped second-order
-        // low-pass filter. The input measuredVd is held over one controller
-        // interval. State 1 is the filtered Vd; state 2 is its derivative.
-        const Real filterError = inverterFilteredVd - measuredVd;
-        const Real updatedFilterError =
-            inverterVdFilterDecay *
-            ((1.0 + inverterVdFilterOmega * controlSampleTime) * filterError +
-             controlSampleTime * inverterFilteredVdDerivative);
-        const Real updatedFilterDerivative =
-            inverterVdFilterDecay *
-            ((1.0 - inverterVdFilterOmega * controlSampleTime) *
-                 inverterFilteredVdDerivative -
-             inverterVdFilterOmega * inverterVdFilterOmega * controlSampleTime *
-                 filterError);
+        if (!matlabStepAt4SecondsApplied &&
+            currentTime >= 4.0 - 0.5 * timeStep) {
+          inverter->setActivePowerFeedforwardReference(0.20 * p.ratedPower);
+          matlabStepAt4SecondsApplied = true;
+          SPDLOG_INFO("MATLAB Pref step at t={} s: Pref={} W", currentTime,
+                      0.20 * p.ratedPower);
+        }
 
-        inverterFilteredVd = measuredVd + updatedFilterError;
-        inverterFilteredVdDerivative = updatedFilterDerivative;
+        if (!matlabStepAt6SecondsApplied &&
+            currentTime >= 6.0 - 0.5 * timeStep) {
+          inverter->setActivePowerFeedforwardReference(-0.35 * p.ratedPower);
+          matlabStepAt6SecondsApplied = true;
+          SPDLOG_INFO("MATLAB Pref step at t={} s: Pref={} W", currentTime,
+                      -0.35 * p.ratedPower);
+        }
 
-        const Real minimumValidFilteredVd =
-            0.1 * std::sqrt(2.0 / 3.0) * p.secondaryVoltage;
-        if (!std::isfinite(inverterFilteredVd) ||
-            inverterFilteredVd < minimumValidFilteredVd)
-          throw std::runtime_error("Inverter filtered Pref/Vd control received "
-                                   "an invalid filtered d-axis voltage.");
-
-        const Real idReference =
-            (2.0 / 3.0) * op.inverterPower.real() / inverterFilteredVd;
-        inverter->setActiveControlOpenLoop(idReference);
+        if (!matlabStepAt8SecondsApplied &&
+            currentTime >= 8.0 - 0.5 * timeStep) {
+          inverter->setActivePowerFeedforwardReference(0.50 * p.ratedPower);
+          matlabStepAt8SecondsApplied = true;
+          SPDLOG_INFO("MATLAB Pref step at t={} s: Pref={} W", currentTime,
+                      0.50 * p.ratedPower);
+        }
       }
 
       sim.step();
