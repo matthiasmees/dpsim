@@ -96,6 +96,18 @@ EMT::Ph3::SSN_MMC::SSN_MMC(String uid, String name, Logger::Level logLevel)
                                                      Matrix::Zero(3, 1))),
       mExternalDifferentialVoltage(
           mAttributes->createDynamic<Matrix>("external_differential_voltage")),
+      mExternalCommonModeVoltage(
+          mAttributes->createDynamic<Matrix>("external_common_mode_voltage")),
+      mAppliedDifferentialVoltage(mAttributes->create<Matrix>(
+          "applied_differential_voltage", Matrix::Zero(2, 1))),
+      mInternalDifferentialVoltage(mAttributes->create<Matrix>(
+          "internal_differential_voltage", Matrix::Zero(2, 1))),
+      mAppliedCommonModeVoltage(mAttributes->create<Matrix>(
+          "applied_common_mode_voltage", Matrix::Zero(3, 1))),
+      mAppliedModulation(mAttributes->create<Matrix>("applied_modulation",
+                                                     Matrix::Zero(5, 1))),
+      mRealizedConverterVoltage(mAttributes->create<Matrix>(
+          "realized_converter_voltage", Matrix::Zero(5, 1))),
       mExternalCommandActive(
           mAttributes->create<Bool>("external_command_active", false)) {
 
@@ -139,6 +151,7 @@ EMT::Ph3::SSN_MMC::SSN_MMC(String uid, String name, Logger::Level logLevel)
   **mHistoryVectorNorm = 0.0;
   **mDiagnosticsValid = 0.0;
   **mExternalDifferentialVoltage = Matrix::Zero(2, 1);
+  **mExternalCommonModeVoltage = Matrix::Zero(3, 1);
 
   // DPsim currently stores one phase type for the complete component. The AC
   // terminal uses all ABC phases; DC+ and DC- use only phase index 0. The
@@ -478,15 +491,25 @@ void EMT::Ph3::SSN_MMC::setInitialOperatingPoint(Real activePower,
 }
 
 void EMT::Ph3::SSN_MMC::setControlSource(ControlSource source) {
-  if (source == ControlSource::ExternalDifferentialVoltage &&
-      ((**mExternalDifferentialVoltage).rows() != 2 ||
-       (**mExternalDifferentialVoltage).cols() != 1 ||
-       !(**mExternalDifferentialVoltage).allFinite()))
+  const Bool externalDifferential =
+      source == ControlSource::ExternalDifferentialVoltage ||
+      source == ControlSource::ExternalFullConverterVoltage;
+
+  if (externalDifferential && ((**mExternalDifferentialVoltage).rows() != 2 ||
+                               (**mExternalDifferentialVoltage).cols() != 1 ||
+                               !(**mExternalDifferentialVoltage).allFinite()))
     throw std::logic_error(
         "MMC external differential-voltage command must be finite 2x1.");
+
+  if (source == ControlSource::ExternalFullConverterVoltage &&
+      ((**mExternalCommonModeVoltage).rows() != 3 ||
+       (**mExternalCommonModeVoltage).cols() != 1 ||
+       !(**mExternalCommonModeVoltage).allFinite()))
+    throw std::logic_error(
+        "MMC external common-mode voltage command must be finite 3x1.");
+
   mControlSource = source;
-  **mExternalCommandActive =
-      source == ControlSource::ExternalDifferentialVoltage;
+  **mExternalCommandActive = source != ControlSource::InternalControllers;
 }
 
 void EMT::Ph3::SSN_MMC::setExternalDifferentialVoltageCommand(Real dVolts,
@@ -496,6 +519,18 @@ void EMT::Ph3::SSN_MMC::setExternalDifferentialVoltageCommand(Real dVolts,
         "MMC external differential-voltage command must be finite.");
   (**mExternalDifferentialVoltage)(0, 0) = dVolts;
   (**mExternalDifferentialVoltage)(1, 0) = qVolts;
+}
+
+void EMT::Ph3::SSN_MMC::setExternalCommonModeVoltageCommand(Real dVolts,
+                                                            Real qVolts,
+                                                            Real zVolts) {
+  if (!std::isfinite(dVolts) || !std::isfinite(qVolts) ||
+      !std::isfinite(zVolts))
+    throw std::invalid_argument(
+        "MMC external common-mode voltage command must be finite.");
+  (**mExternalCommonModeVoltage)(0, 0) = dVolts;
+  (**mExternalCommonModeVoltage)(1, 0) = qVolts;
+  (**mExternalCommonModeVoltage)(2, 0) = zVolts;
 }
 
 void EMT::Ph3::SSN_MMC::setLimits(Real maximumAcCurrent,
@@ -795,6 +830,8 @@ void EMT::Ph3::SSN_MMC::initializeAnalyticalOperatingPoint(
       (mInitialOperatingPointEnabled ||
        mActiveControlMode == ActiveControlMode::ActivePower ||
        mActiveControlMode == ActiveControlMode::DcVoltage))
+    // Positive pTarget exports AC power. Positive iSigmaZ is DC current
+    // absorbed by the converter, so both have the same sign at equilibrium.
     iSigmaZ = pTarget / (3.0 * vDc);
 
   x0(IDeltaD, 0) = iDeltaD;
@@ -835,10 +872,10 @@ void EMT::Ph3::SSN_MMC::initializeAnalyticalOperatingPoint(
   const Real rEqAc = mArmResistance / 2.0 + mReactorResistance;
 
   if (mOutputCurrentController.ki > 0.0) {
-    // OCC feedforward contains the grid voltage and dq decoupling. Its
-    // integrators provide the steady-state Req*i voltage drop.
-    x0(XiOccD, 0) = rEqAc * iDeltaD / mOutputCurrentController.ki;
-    x0(XiOccQ, 0) = rEqAc * iDeltaQ / mOutputCurrentController.ki;
+    // The MATLAB current regulator explicitly feedforwards R*i_ref and
+    // omega*L*i_ref, so the PI integrators are zero at a matched equilibrium.
+    x0(XiOccD, 0) = 0.0;
+    x0(XiOccQ, 0) = 0.0;
   }
 
   if (mCirculatingCurrentController.ki > 0.0) {
@@ -858,11 +895,11 @@ void EMT::Ph3::SSN_MMC::initializeAnalyticalOperatingPoint(
 
   if (mModulationDelayEnabled) {
     const Real omega = mOmegaN;
-    const Real vMDeltaD = vGd + rEqAc * iDeltaD + lEqAc * omega * iDeltaQ;
-    const Real vMDeltaQ = vGq + rEqAc * iDeltaQ - lEqAc * omega * iDeltaD;
-    const Real vMSigmaD = -mArmResistance * x0(ISigmaD, 0) +
+    const Real vMDeltaD = vGd + rEqAc * iDeltaD - lEqAc * omega * iDeltaQ;
+    const Real vMDeltaQ = vGq + rEqAc * iDeltaQ + lEqAc * omega * iDeltaD;
+    const Real vMSigmaD = -mArmResistance * x0(ISigmaD, 0) -
                           2.0 * mArmInductance * omega * x0(ISigmaQ, 0);
-    const Real vMSigmaQ = -mArmResistance * x0(ISigmaQ, 0) -
+    const Real vMSigmaQ = -mArmResistance * x0(ISigmaQ, 0) +
                           2.0 * mArmInductance * omega * x0(ISigmaD, 0);
     const Real vMSigmaZ = vDc / 2.0 - mArmResistance * iSigmaZ;
 
@@ -1287,12 +1324,10 @@ void EMT::Ph3::SSN_MMC::evaluateStateDerivative(const Matrix &x,
                           mActiveController.ki * x(XiActive, 0);
     break;
   case ActiveControlMode::DcVoltage:
-    // In this MMC convention, positive iDeltaD gives positive Pac and positive
-    // DC-port power injection. Therefore a DC overvoltage must command
-    // negative iDeltaD, while a DC undervoltage must command positive
-    // iDeltaD. This is also consistent with Harmony's explicit negative sign
-    // on the DC-voltage controller output.
-    activeError = mDcVoltageReference - vDc;
+    // MATLAB VDC regulator: e_vdc = Vdc_measured - Vdc_reference.
+    // At the rectifier, positive error increases iDelta_d (makes it less
+    // negative), thereby reducing AC absorption and DC-side charging.
+    activeError = vDc - mDcVoltageReference;
     iDeltaDReferenceRaw = mActiveController.kp * activeError +
                           mActiveController.ki * x(XiActive, 0);
     break;
@@ -1366,24 +1401,31 @@ void EMT::Ph3::SSN_MMC::evaluateStateDerivative(const Matrix &x,
   const Real rEqAc = mArmResistance / 2.0 + mReactorResistance;
 
   // -----------------------------------------------------------------------
-  // Harmony output-current controller in PLL coordinates
+  // MATLAB output-current regulator in PLL coordinates:
+  //   vMd = vGd + PI_d + R*iD_ref - omega*L*iQ_ref
+  //   vMq = vGq + PI_q + R*iQ_ref + omega*L*iD_ref
+  // with PI error i_ref - i_measured.
   // -----------------------------------------------------------------------
   const Real occErrorD = iDeltaReferenceControl(0, 0) - iDeltaControl(0, 0);
   const Real occErrorQ = iDeltaReferenceControl(1, 0) - iDeltaControl(1, 0);
 
   Matrix vMDeltaControl(2, 1);
-  vMDeltaControl(0, 0) = mOutputCurrentController.kp * occErrorD +
+  vMDeltaControl(0, 0) = vControlD + mOutputCurrentController.kp * occErrorD +
                          mOutputCurrentController.ki * x(XiOccD, 0) +
-                         omegaControl * lEqAc * iDeltaControl(1, 0) + vControlD;
-  vMDeltaControl(1, 0) = mOutputCurrentController.kp * occErrorQ +
-                         mOutputCurrentController.ki * x(XiOccQ, 0) -
-                         omegaControl * lEqAc * iDeltaControl(0, 0) + vControlQ;
+                         rEqAc * iDeltaReferenceControl(0, 0) -
+                         omegaControl * lEqAc * iDeltaReferenceControl(1, 0);
+  vMDeltaControl(1, 0) = vControlQ + mOutputCurrentController.kp * occErrorQ +
+                         mOutputCurrentController.ki * x(XiOccQ, 0) +
+                         rEqAc * iDeltaReferenceControl(1, 0) +
+                         omegaControl * lEqAc * iDeltaReferenceControl(0, 0);
 
   // Controller command back to the nominal network dq frame.
   const Matrix vMDeltaNetwork = rotateDq(vMDeltaControl, pllAngle);
+  **mInternalDifferentialVoltage = vMDeltaNetwork;
   Real vMDeltaDReference = vMDeltaNetwork(0, 0);
   Real vMDeltaQReference = vMDeltaNetwork(1, 0);
-  if (mControlSource == ControlSource::ExternalDifferentialVoltage) {
+  if (mControlSource == ControlSource::ExternalDifferentialVoltage ||
+      mControlSource == ControlSource::ExternalFullConverterVoltage) {
     if ((**mExternalDifferentialVoltage).rows() != 2 ||
         (**mExternalDifferentialVoltage).cols() != 1 ||
         !(**mExternalDifferentialVoltage).allFinite())
@@ -1392,6 +1434,8 @@ void EMT::Ph3::SSN_MMC::evaluateStateDerivative(const Matrix &x,
     vMDeltaDReference = (**mExternalDifferentialVoltage)(0, 0);
     vMDeltaQReference = (**mExternalDifferentialVoltage)(1, 0);
   }
+  (**mAppliedDifferentialVoltage)(0, 0) = vMDeltaDReference;
+  (**mAppliedDifferentialVoltage)(1, 0) = vMDeltaQReference;
 
   // -----------------------------------------------------------------------
   // Harmony circulating-current controller. The sigma dq quantities are
@@ -1412,11 +1456,11 @@ void EMT::Ph3::SSN_MMC::evaluateStateDerivative(const Matrix &x,
   Matrix vMSigmaControl(2, 1);
   vMSigmaControl(0, 0) =
       -(mCirculatingCurrentController.kp * cccErrorD +
-        mCirculatingCurrentController.ki * x(XiCccD, 0) -
+        mCirculatingCurrentController.ki * x(XiCccD, 0) +
         2.0 * omegaControl * mArmInductance * iSigmaControl(1, 0));
   vMSigmaControl(1, 0) =
       -(mCirculatingCurrentController.kp * cccErrorQ +
-        mCirculatingCurrentController.ki * x(XiCccQ, 0) +
+        mCirculatingCurrentController.ki * x(XiCccQ, 0) -
         2.0 * omegaControl * mArmInductance * iSigmaControl(0, 0));
 
   const Matrix vMSigmaNetwork = rotateDq(vMSigmaControl, 2.0 * pllAngle);
@@ -1465,6 +1509,21 @@ void EMT::Ph3::SSN_MMC::evaluateStateDerivative(const Matrix &x,
       -(mZeroSequenceCurrentController.kp * zccError +
         mZeroSequenceCurrentController.ki * x(XiZcc, 0) - vDc / 2.0);
 
+  if (mControlSource == ControlSource::ExternalFullConverterVoltage) {
+    if ((**mExternalCommonModeVoltage).rows() != 3 ||
+        (**mExternalCommonModeVoltage).cols() != 1 ||
+        !(**mExternalCommonModeVoltage).allFinite())
+      throw std::runtime_error(
+          "MMC external common-mode voltage command is not finite 3x1.");
+    vMSigmaDReference = (**mExternalCommonModeVoltage)(0, 0);
+    vMSigmaQReference = (**mExternalCommonModeVoltage)(1, 0);
+    vMSigmaZReference = (**mExternalCommonModeVoltage)(2, 0);
+  }
+
+  (**mAppliedCommonModeVoltage)(0, 0) = vMSigmaDReference;
+  (**mAppliedCommonModeVoltage)(1, 0) = vMSigmaQReference;
+  (**mAppliedCommonModeVoltage)(2, 0) = vMSigmaZReference;
+
   const Real vDcReg = regularizedDcVoltage(vDc);
   Real mDeltaD = -2.0 * vMDeltaDReference / vDcReg;
   Real mDeltaQ = -2.0 * vMDeltaQReference / vDcReg;
@@ -1474,9 +1533,35 @@ void EMT::Ph3::SSN_MMC::evaluateStateDerivative(const Matrix &x,
   Real mSigmaQ = 2.0 * vMSigmaQReference / vDcReg;
   Real mSigmaZ = 2.0 * vMSigmaZReference / vDcReg;
 
+  Real occIntegratorErrorD = occErrorD;
+  Real occIntegratorErrorQ = occErrorQ;
+
   const Real differentialMagnitude = std::hypot(mDeltaD, mDeltaQ);
   if (differentialMagnitude > mMaximumModulationMagnitude) {
     const Real scale = mMaximumModulationMagnitude / differentialMagnitude;
+
+    // Vector anti-windup for the internal output-current controller. The
+    // modulation limiter is radial, so freeze both OCC integrators only when
+    // their combined drive would push the voltage command farther outside the
+    // feasible modulation circle.
+    if (mControlSource == ControlSource::InternalControllers) {
+      Matrix saturationExcessNetwork(2, 1);
+      saturationExcessNetwork << (1.0 - scale) * vMDeltaDReference,
+          (1.0 - scale) * vMDeltaQReference;
+
+      Matrix integratorDriveControl(2, 1);
+      integratorDriveControl << mOutputCurrentController.ki * occErrorD,
+          mOutputCurrentController.ki * occErrorQ;
+      const Matrix integratorDriveNetwork =
+          rotateDq(integratorDriveControl, pllAngle);
+
+      if (saturationExcessNetwork.cwiseProduct(integratorDriveNetwork).sum() >
+          0.0) {
+        occIntegratorErrorD = 0.0;
+        occIntegratorErrorQ = 0.0;
+      }
+    }
+
     mDeltaD *= scale;
     mDeltaQ *= scale;
   }
@@ -1495,6 +1580,11 @@ void EMT::Ph3::SSN_MMC::evaluateStateDerivative(const Matrix &x,
   mSigmaD = applyPadeDelayChannel(x, f, DelayMSigmaD1, DelayMSigmaD2, mSigmaD);
   mSigmaQ = applyPadeDelayChannel(x, f, DelayMSigmaQ1, DelayMSigmaQ2, mSigmaQ);
   mSigmaZ = applyPadeDelayChannel(x, f, DelayMSigmaZ1, DelayMSigmaZ2, mSigmaZ);
+  (**mAppliedModulation)(0, 0) = mDeltaD;
+  (**mAppliedModulation)(1, 0) = mDeltaQ;
+  (**mAppliedModulation)(2, 0) = mSigmaD;
+  (**mAppliedModulation)(3, 0) = mSigmaQ;
+  (**mAppliedModulation)(4, 0) = mSigmaZ;
 
   // Harmony averaged MMC modulation-voltage equations.
   const Real vMDeltaD =
@@ -1528,18 +1618,24 @@ void EMT::Ph3::SSN_MMC::evaluateStateDerivative(const Matrix &x,
       (mDeltaZd * vCDeltaZd) / 4.0 + (mDeltaZq * vCDeltaZq) / 4.0 +
       (mSigmaD * vCSigmaD) / 4.0 + (mSigmaQ * vCSigmaQ) / 4.0 +
       (mSigmaZ * vCSigmaZ) / 2.0;
+  (**mRealizedConverterVoltage)(0, 0) = vMDeltaD;
+  (**mRealizedConverterVoltage)(1, 0) = vMDeltaQ;
+  (**mRealizedConverterVoltage)(2, 0) = vMSigmaD;
+  (**mRealizedConverterVoltage)(3, 0) = vMSigmaQ;
+  (**mRealizedConverterVoltage)(4, 0) = vMSigmaZ;
 
-  // The electrical plant states are expressed in the nominal network dq
-  // frame, so their rotational cross-couplings use omega_0. The Harmony PLL
-  // deviation affects only the controller-frame transformations.
+  // The electrical plant states use the same q=-sin(theta) Park convention
+  // as the MATLAB controller. iDelta is positive from converter to AC grid:
+  //   vMd = vGd + R*iD + L*diD/dt - omega*L*iQ
+  //   vMq = vGq + R*iQ + L*diQ/dt + omega*L*iD
   f(IDeltaD, 0) =
-      -(vGd - vMDeltaD + rEqAc * iDeltaD + lEqAc * iDeltaQ * mOmegaN) / lEqAc;
+      (vMDeltaD - vGd - rEqAc * iDeltaD + lEqAc * iDeltaQ * mOmegaN) / lEqAc;
   f(IDeltaQ, 0) =
-      -(vGq - vMDeltaQ + rEqAc * iDeltaQ - lEqAc * iDeltaD * mOmegaN) / lEqAc;
-  f(ISigmaD, 0) = -(vMSigmaD + mArmResistance * iSigmaD -
+      (vMDeltaQ - vGq - rEqAc * iDeltaQ - lEqAc * iDeltaD * mOmegaN) / lEqAc;
+  f(ISigmaD, 0) = -(vMSigmaD + mArmResistance * iSigmaD +
                     2.0 * mArmInductance * iSigmaQ * mOmegaN) /
                   mArmInductance;
-  f(ISigmaQ, 0) = -(vMSigmaQ + mArmResistance * iSigmaQ +
+  f(ISigmaQ, 0) = -(vMSigmaQ + mArmResistance * iSigmaQ -
                     2.0 * mArmInductance * iSigmaD * mOmegaN) /
                   mArmInductance;
   f(ISigmaZ, 0) =
@@ -1551,14 +1647,14 @@ void EMT::Ph3::SSN_MMC::evaluateStateDerivative(const Matrix &x,
   f(VCSigmaD, 0) = n *
                    (iSigmaD * mSigmaZ + iSigmaZ * mSigmaD +
                     iDeltaD * (mDeltaD / 4.0 + mDeltaZd / 4.0) -
-                    iDeltaQ * (mDeltaQ / 4.0 - mDeltaZq / 4.0) +
+                    iDeltaQ * (mDeltaQ / 4.0 - mDeltaZq / 4.0) -
                     (4.0 * cArm * vCSigmaQ * mOmegaN) / n) /
                    (2.0 * cArm);
 
   f(VCSigmaQ, 0) =
       -n *
       (iDeltaQ * (mDeltaD / 4.0 - mDeltaZd / 4.0) - iSigmaZ * mSigmaQ -
-       iSigmaQ * mSigmaZ + iDeltaD * (mDeltaQ / 4.0 + mDeltaZq / 4.0) +
+       iSigmaQ * mSigmaZ + iDeltaD * (mDeltaQ / 4.0 + mDeltaZq / 4.0) -
        (4.0 * cArm * vCSigmaD * mOmegaN) / n) /
       (2.0 * cArm);
 
@@ -1572,7 +1668,7 @@ void EMT::Ph3::SSN_MMC::evaluateStateDerivative(const Matrix &x,
                    (iSigmaZ * mDeltaD - (iDeltaQ * mSigmaQ) / 4.0 +
                     iSigmaD * (mDeltaD / 2.0 + mDeltaZd / 2.0) -
                     iSigmaQ * (mDeltaQ / 2.0 + mDeltaZq / 2.0) +
-                    iDeltaD * (mSigmaD / 4.0 + mSigmaZ / 2.0) -
+                    iDeltaD * (mSigmaD / 4.0 + mSigmaZ / 2.0) +
                     (2.0 * cArm * vCDeltaQ * mOmegaN) / n) /
                    (2.0 * cArm);
 
@@ -1580,7 +1676,7 @@ void EMT::Ph3::SSN_MMC::evaluateStateDerivative(const Matrix &x,
                    ((iDeltaD * mSigmaQ) / 4.0 - iSigmaZ * mDeltaQ +
                     iSigmaQ * (mDeltaD / 2.0 - mDeltaZd / 2.0) +
                     iSigmaD * (mDeltaQ / 2.0 - mDeltaZq / 2.0) +
-                    iDeltaQ * (mSigmaD / 4.0 - mSigmaZ / 2.0) -
+                    iDeltaQ * (mSigmaD / 4.0 - mSigmaZ / 2.0) +
                     (2.0 * cArm * vCDeltaD * mOmegaN) / n) /
                    (2.0 * cArm);
 
@@ -1588,11 +1684,11 @@ void EMT::Ph3::SSN_MMC::evaluateStateDerivative(const Matrix &x,
       n *
           (iDeltaD * mSigmaD + 2.0 * iSigmaD * mDeltaD + iDeltaQ * mSigmaQ +
            2.0 * iSigmaQ * mDeltaQ + 4.0 * iSigmaZ * mDeltaZd) /
-          (8.0 * cArm) -
+          (8.0 * cArm) +
       3.0 * vCDeltaZq * mOmegaN;
 
   f(VCDeltaZq, 0) =
-      3.0 * vCDeltaZd * mOmegaN +
+      -3.0 * vCDeltaZd * mOmegaN +
       n *
           (iDeltaQ * mSigmaD - iDeltaD * mSigmaQ + 2.0 * iSigmaD * mDeltaQ -
            2.0 * iSigmaQ * mDeltaD + 4.0 * iSigmaZ * mDeltaZq) /
@@ -1607,13 +1703,17 @@ void EMT::Ph3::SSN_MMC::evaluateStateDerivative(const Matrix &x,
        mReactiveControlMode == ReactiveControlMode::AcVoltage)
           ? reactiveIntegratorError
           : 0.0;
-  f(XiOccD, 0) =
-      mControlSource == ControlSource::InternalControllers ? occErrorD : 0.0;
-  f(XiOccQ, 0) =
-      mControlSource == ControlSource::InternalControllers ? occErrorQ : 0.0;
-  f(XiCccD, 0) = cccErrorD;
-  f(XiCccQ, 0) = cccErrorQ;
-  f(XiZcc, 0) = zccError;
+  f(XiOccD, 0) = mControlSource == ControlSource::InternalControllers
+                     ? occIntegratorErrorD
+                     : 0.0;
+  f(XiOccQ, 0) = mControlSource == ControlSource::InternalControllers
+                     ? occIntegratorErrorQ
+                     : 0.0;
+  const Bool internalCommonModeControl =
+      mControlSource != ControlSource::ExternalFullConverterVoltage;
+  f(XiCccD, 0) = internalCommonModeControl ? cccErrorD : 0.0;
+  f(XiCccQ, 0) = internalCommonModeControl ? cccErrorQ : 0.0;
+  f(XiZcc, 0) = internalCommonModeControl ? zccError : 0.0;
   f(XiEnergy, 0) = mEnergyControllerEnabled ? energyIntegratorError : 0.0;
 
   validateFinite(f, "MMC state derivative");
@@ -1630,15 +1730,17 @@ void EMT::Ph3::SSN_MMC::evaluateOutput(const Matrix &x, const Matrix &u,
   validateFinite(u, "MMC output input");
   output.setZero(mOutputSize, 1);
 
-  // iDelta is the external three-phase AC current in the Harmony model.
+  // MATLAB iDelta is positive from converter to AC grid. DPsim's interface
+  // current is positive from the MNA node into the component.
   const Matrix iAcAbc = dqToAbc(x(IDeltaD, 0), x(IDeltaQ, 0), x(GridAngle, 0));
-  output.block(0, 0, 3, 1) = iAcAbc;
+  output.block(0, 0, 3, 1) = -iAcAbc;
 
-  // Positive idc flows from DC+ through the converter toward DC-. The two
-  // nodal injections therefore have opposite signs.
+  // Positive iSigmaZ is current absorbed from the DC network: current
+  // enters the converter at dc+ and leaves it at dc-. DPsim interface current
+  // is positive from the MNA node into the component.
   const Real iDc = 3.0 * x(ISigmaZ, 0);
-  output(Idcp, 0) = -iDc;
-  output(Idcn, 0) = iDc;
+  output(Idcp, 0) = iDc;
+  output(Idcn, 0) = -iDc;
   validateFinite(output, "MMC output");
 }
 
@@ -1723,6 +1825,7 @@ Bool EMT::Ph3::SSN_MMC::updateComponentParameters() {
 void EMT::Ph3::SSN_MMC::addHeldControlDependencies(
     AttributeBase::List &prevStepDependencies) const {
   prevStepDependencies.push_back(mExternalDifferentialVoltage);
+  prevStepDependencies.push_back(mExternalCommonModeVoltage);
 }
 
 void EMT::Ph3::SSN_MMC::initializeFromNodesAndTerminals(Real frequency) {
@@ -1900,11 +2003,8 @@ void EMT::Ph3::SSN_MMC::updateLogAttributes(const Matrix &u) const {
         mActiveController.ki * (**mX)(XiActive, 0);
     break;
   case ActiveControlMode::DcVoltage:
-    // Keep the diagnostic reference identical to the implemented controller.
-    // DC overvoltage commands negative iDeltaD; undervoltage commands positive
-    // iDeltaD.
     iDeltaDReference =
-        mActiveController.kp * (mDcVoltageReference - vDcControl) +
+        mActiveController.kp * (vDcControl - mDcVoltageReference) +
         mActiveController.ki * (**mX)(XiActive, 0);
     break;
   case ActiveControlMode::DcDroop:
@@ -1959,7 +2059,20 @@ void EMT::Ph3::SSN_MMC::updateLogAttributes(const Matrix &u) const {
 
   const Real pDc = (**mDcVoltage) * (**mDcCurrent);
   **mDcPower = pDc;
-  **mPowerBalanceError = p - pDc;
+
+  // p is AC power exported by the converter. pDc is DC power absorbed by
+  // the converter because mDcCurrent = 3*iSigmaZ is positive from dc+ into
+  // the converter. At a stationary operating point:
+  //   p - pDc + represented copper losses = 0.
+  // During transients the stored-energy derivative is intentionally omitted.
+  const Real differentialLoss =
+      1.5 * (mArmResistance / 2.0 + mReactorResistance) * (iD * iD + iQ * iQ);
+  const Real circulatingLoss =
+      3.0 * mArmResistance *
+          ((**mX)(ISigmaD, 0) * (**mX)(ISigmaD, 0) +
+           (**mX)(ISigmaQ, 0) * (**mX)(ISigmaQ, 0)) +
+      6.0 * mArmResistance * (**mX)(ISigmaZ, 0) * (**mX)(ISigmaZ, 0);
+  **mPowerBalanceError = p - pDc + differentialLoss + circulatingLoss;
 
   **mFilteredActivePower =
       mActivePowerFilterTimeConstant > 0.0 ? (**mX)(FilterP2, 0) : p;
@@ -1988,6 +2101,11 @@ Matrix EMT::Ph3::SSN_MMC::getStateDerivative() const {
 Matrix EMT::Ph3::SSN_MMC::getInterfaceVoltage() const { return **mIntfVoltage; }
 
 Matrix EMT::Ph3::SSN_MMC::getInterfaceCurrent() const { return **mIntfCurrent; }
+
+void EMT::Ph3::SSN_MMC::getLocalLinearization(Matrix &A, Matrix &B, Matrix &C,
+                                              Matrix &D) const {
+  calculateNumericalJacobians(**mX, **mIntfVoltage, A, B, C, D);
+}
 
 Attribute<Matrix>::Ptr EMT::Ph3::SSN_MMC::acTerminalVoltageAttribute() const {
   return mAcTerminalVoltage;
@@ -2036,6 +2154,35 @@ Attribute<Real>::Ptr EMT::Ph3::SSN_MMC::storedEnergyAttribute() const {
 Attribute<Matrix>::Ptr
 EMT::Ph3::SSN_MMC::externalDifferentialVoltageAttribute() const {
   return mExternalDifferentialVoltage;
+}
+
+Attribute<Matrix>::Ptr
+EMT::Ph3::SSN_MMC::externalCommonModeVoltageAttribute() const {
+  return mExternalCommonModeVoltage;
+}
+
+Attribute<Matrix>::Ptr
+EMT::Ph3::SSN_MMC::appliedDifferentialVoltageAttribute() const {
+  return mAppliedDifferentialVoltage;
+}
+
+Attribute<Matrix>::Ptr
+EMT::Ph3::SSN_MMC::internalDifferentialVoltageAttribute() const {
+  return mInternalDifferentialVoltage;
+}
+
+Attribute<Matrix>::Ptr
+EMT::Ph3::SSN_MMC::appliedCommonModeVoltageAttribute() const {
+  return mAppliedCommonModeVoltage;
+}
+
+Attribute<Matrix>::Ptr EMT::Ph3::SSN_MMC::appliedModulationAttribute() const {
+  return mAppliedModulation;
+}
+
+Attribute<Matrix>::Ptr
+EMT::Ph3::SSN_MMC::realizedConverterVoltageAttribute() const {
+  return mRealizedConverterVoltage;
 }
 
 Attribute<Bool>::Ptr EMT::Ph3::SSN_MMC::externalCommandActiveAttribute() const {

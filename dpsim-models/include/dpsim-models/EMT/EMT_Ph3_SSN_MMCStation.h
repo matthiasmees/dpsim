@@ -16,6 +16,8 @@ struct SSN_MMCStationParameters {
   Real measurementFilterDamping = 1.0;
   Real armResistancePu = 0.0;
   Real armInductancePu = 0.0;
+  /// Diagnostic override; the pinned production value is 100 1/s.
+  Real dcVoltageIntegralGain = 100.0;
 };
 
 /// Signal-domain composition around one existing SSN_MMC plant.
@@ -59,6 +61,10 @@ public:
   const Attribute<Matrix>::Ptr mConverterPhaseCommand;
   const Attribute<Matrix>::Ptr mPlantDifferentialVoltageCommand;
   const Attribute<Real>::Ptr mModulationMagnitude;
+  const Attribute<Real>::Ptr mModulationD;
+  const Attribute<Real>::Ptr mModulationQ;
+  const Attribute<Real>::Ptr mModulationDUnsaturated;
+  const Attribute<Real>::Ptr mModulationQUnsaturated;
   const Attribute<Real>::Ptr mAcPower;
   const Attribute<Real>::Ptr mDcPower;
   const Attribute<Real>::Ptr mPowerBalanceError;
@@ -84,6 +90,11 @@ public:
   const Attribute<Bool>::Ptr mDcOuterLowerSaturated;
   const Attribute<Bool>::Ptr mReactiveOuterUpperSaturated;
   const Attribute<Bool>::Ptr mReactiveOuterLowerSaturated;
+  const Attribute<Real>::Ptr mDcOuterErrorPu;
+  const Attribute<Real>::Ptr mDcOuterProportionalContribution;
+  const Attribute<Real>::Ptr mDcOuterIntegralContribution;
+  const Attribute<Real>::Ptr mDcOuterUnsaturatedOutput;
+  const Attribute<Real>::Ptr mDcOuterOutput;
 
   SSN_MMCStation(String name, SSN_MMC::Ptr plant,
                  Logger::Level logLevel = Logger::Level::off);

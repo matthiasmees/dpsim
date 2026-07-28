@@ -28,9 +28,13 @@ void require(Bool condition, const String &message) {
 }
 } // namespace
 
-int main() {
+int main(int argc, char **argv) {
+  const Bool gainSign = argc > 1 && String(argv[1]) == "gain-sign";
+  if (argc > 1 && !gainSign)
+    throw std::invalid_argument(
+        "usage: EMT_SSN_MMCStation_DCCapacitor [gain-sign]");
   const Real timeStep = 40e-6;
-  const Real finalTime = 0.30;
+  const Real finalTime = gainSign ? 0.08 : 0.30;
   const Real frequency = 50.0;
   const Real omega = 2.0 * PI * frequency;
   const Real acVoltage = 345e3;
@@ -83,6 +87,8 @@ int main() {
   station->setParameters(parameters);
   station->setControlMode(
       EMT::Ph3::SSN_MMCStation::ControlMode::DCVoltageReactivePower);
+  if (gainSign)
+    station->setOuterLoopsEnabled(false);
   station->mAngle->set(0.0);
   station->mAngularFrequency->set(omega);
 
@@ -98,6 +104,8 @@ int main() {
   sim.doSystemMatrixRecomputation(true);
   sim.doInitFromNodesAndTerminals(true);
   sim.initialize();
+  if (gainSign)
+    station->setCurrentReferences(**station->mIdPu, **station->mIqPu);
   require(station->requestEnable(2e-5, 1.0),
           "DC-capacitor station enable rejected; diagnostic=" +
               std::to_string(**station->mEnableDiagnostic));
@@ -112,11 +120,23 @@ int main() {
   Real positiveQ = -std::numeric_limits<Real>::infinity();
   Real finalVdc = nominalDcVoltage;
   Real finalQ = 0.0;
+  Real positiveStartVdc = nominalDcVoltage;
+  Real positiveEndVdc = nominalDcVoltage;
+  Real negativeStartVdc = nominalDcVoltage;
+  Real negativeEndVdc = nominalDcVoltage;
 
   sim.start();
   while (sim.time() < sim.finalTime()) {
     station->mAngle->set(omega * sim.time());
-    if (sim.time() >= 0.03 && sim.time() < 0.05)
+    if (gainSign) {
+      if (sim.time() >= 0.02 && sim.time() < 0.024)
+        station->mIdReferencePu->set(0.001);
+      else if (sim.time() >= 0.06 && sim.time() < 0.064)
+        station->mIdReferencePu->set(-0.001);
+      else
+        station->mIdReferencePu->set(0.0);
+      disturbance->mCurrentRef->set(0.0);
+    } else if (sim.time() >= 0.03 && sim.time() < 0.05)
       disturbance->mCurrentRef->set(10.0);
     else if (sim.time() >= 0.07 && sim.time() < 0.09)
       disturbance->mCurrentRef->set(-10.0);
@@ -147,6 +167,16 @@ int main() {
     maximumEnergy = std::max(maximumEnergy, energy);
     finalVdc = vdc;
     finalQ = **station->mReactivePowerPu;
+    if (gainSign) {
+      if (sim.time() >= 0.02 && sim.time() < 0.02005)
+        positiveStartVdc = vdc;
+      if (sim.time() >= 0.02395 && sim.time() < 0.02405)
+        positiveEndVdc = vdc;
+      if (sim.time() >= 0.06 && sim.time() < 0.06005)
+        negativeStartVdc = vdc;
+      if (sim.time() >= 0.06395 && sim.time() < 0.06405)
+        negativeEndVdc = vdc;
+    }
   }
   sim.stop();
 
@@ -159,17 +189,31 @@ int main() {
       **station->mIdReferencePu, **station->mIdPu, **station->mActivePowerPu,
       **mmc->dcCurrentAttribute());
 
+  if (gainSign) {
+    const Real positiveSlope = (positiveEndVdc - positiveStartVdc) / 0.004;
+    const Real negativeSlope = (negativeEndVdc - negativeStartVdc) / 0.004;
+    SPDLOG_INFO("Capacitor id/Vdc gain: positive_slope={} V/s, "
+                "negative_slope={} V/s",
+                positiveSlope, negativeSlope);
+    require(positiveSlope * negativeSlope < 0.0,
+            "Capacitor id perturbations did not produce opposite Vdc slopes.");
+  }
+
   require(maximumKcl < 1e-6, "DC-capacitor KCL residual exceeds 1e-6 A.");
-  require(positiveDeviation > 1.0,
-          "Positive injected current did not raise DC voltage.");
-  require(negativeDeviation < -1.0,
-          "Negative injected current did not lower DC voltage.");
+  if (!gainSign)
+    require(positiveDeviation > 1.0,
+            "Positive injected current did not raise DC voltage.");
+  if (!gainSign)
+    require(negativeDeviation < -1.0,
+            "Negative injected current did not lower DC voltage.");
   require(std::abs(finalVdc - nominalDcVoltage) < 200.0,
           "DC-voltage loop did not restore the capacitor voltage.");
-  require(positiveQ > 0.001,
-          "Positive Q reference did not produce positive reactive power.");
-  require(std::abs(finalQ) < 0.002,
-          "Reactive power did not recover after the capacitor test.");
+  if (!gainSign)
+    require(positiveQ > 0.001,
+            "Positive Q reference did not produce positive reactive power.");
+  if (!gainSign)
+    require(std::abs(finalQ) < 0.002,
+            "Reactive power did not recover after the capacitor test.");
   require(minimumEnergy > 0.0 && maximumEnergy / minimumEnergy < 1.1,
           "MMC energy is unbounded in the DC-capacitor test.");
   return 0;

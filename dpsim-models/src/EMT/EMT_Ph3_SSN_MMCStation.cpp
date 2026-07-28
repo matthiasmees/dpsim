@@ -46,6 +46,12 @@ SSN_MMCStation::SSN_MMCStation(String name, SSN_MMC::Ptr plant,
           "plant_differential_voltage_command", Matrix::Zero(2, 1))),
       mModulationMagnitude(
           mAttributes->create<Real>("modulation_magnitude", 0.0)),
+      mModulationD(mAttributes->create<Real>("modulation_d", 0.0)),
+      mModulationQ(mAttributes->create<Real>("modulation_q", 0.0)),
+      mModulationDUnsaturated(
+          mAttributes->create<Real>("modulation_d_unsaturated", 0.0)),
+      mModulationQUnsaturated(
+          mAttributes->create<Real>("modulation_q_unsaturated", 0.0)),
       mAcPower(mAttributes->create<Real>("ac_power", 0.0)),
       mDcPower(mAttributes->create<Real>("dc_power", 0.0)),
       mPowerBalanceError(mAttributes->create<Real>("power_balance_error", 0.0)),
@@ -94,6 +100,14 @@ SSN_MMCStation::SSN_MMCStation(String name, SSN_MMC::Ptr plant,
           mAttributes->create<Bool>("reactive_outer_upper_saturated", false)),
       mReactiveOuterLowerSaturated(
           mAttributes->create<Bool>("reactive_outer_lower_saturated", false)),
+      mDcOuterErrorPu(mAttributes->create<Real>("dc_outer_error_pu", 0.0)),
+      mDcOuterProportionalContribution(
+          mAttributes->create<Real>("dc_outer_proportional", 0.0)),
+      mDcOuterIntegralContribution(
+          mAttributes->create<Real>("dc_outer_integral", 0.0)),
+      mDcOuterUnsaturatedOutput(
+          mAttributes->create<Real>("dc_outer_unsaturated_output", 0.0)),
+      mDcOuterOutput(mAttributes->create<Real>("dc_outer_output", 0.0)),
       mPlant(std::move(plant)),
       mTransform(Signal::ExternallyAngledDQAdapter::make(name + ".Transform")),
       mPFilter(Signal::DQSymSecondOrderFilter::make(name + ".PFilter")),
@@ -123,7 +137,9 @@ void SSN_MMCStation::setParameters(const SSN_MMCStationParameters &parameters) {
       parameters.nominalFrequencyHz <= 0.0 ||
       parameters.controllerTimeStep <= 0.0 ||
       parameters.measurementFilterFrequencyHz <= 0.0 ||
-      parameters.measurementFilterDamping <= 0.0)
+      parameters.measurementFilterDamping <= 0.0 ||
+      !std::isfinite(parameters.dcVoltageIntegralGain) ||
+      parameters.dcVoltageIntegralGain < 0.0)
     throw std::invalid_argument("Invalid SSN_MMCStation parameters.");
   mParameters = parameters;
 
@@ -137,8 +153,9 @@ void SSN_MMCStation::setParameters(const SSN_MMCStationParameters &parameters) {
       Signal::DQSymOuterLoopType::ActivePowerToDcVoltage, 0.5 / 3.0, 1.0, 0.8,
       1.2, 1.0, parameters.nominalDcVoltage, 1.0);
   mDcVoltageController->setParameters(
-      Signal::DQSymOuterLoopType::DcVoltageToDCurrent, 4.0, 100.0, -2.0, 2.0,
-      parameters.nominalDcVoltage, 1.0, 0.0);
+      Signal::DQSymOuterLoopType::DcVoltageToDCurrent, 4.0,
+      parameters.dcVoltageIntegralGain, -2.0, 2.0, parameters.nominalDcVoltage,
+      1.0, 0.0);
   mReactiveController->setParameters(
       Signal::DQSymOuterLoopType::ReactivePowerToQCurrent, 0.5 / 3.0, 1.0,
       -0.25, 0.25, 1.0, 1.0, 0.0);
@@ -339,8 +356,10 @@ void SSN_MMCStation::measurementStep() {
   **mReactivePowerPu = **mTransform->mReactivePower / mParameters.nominalPower;
   **mAcPower = **mTransform->mActivePower;
   **mDcPower = **mPlant->dcVoltageAttribute() * **mPlant->dcCurrentAttribute();
-  // With both logged port powers positive out of the converter, Pac-Pdc is
-  // the instantaneous conversion/loss/energy residual used by SSN_MMC.
+  // SSN_MMC uses Pac > 0 for AC-side power transfer and Pdc = Vdc*Idc in
+  // the model's DC-current orientation. Pac-Pdc is only a port-power
+  // mismatch; it intentionally excludes stored-energy derivatives and
+  // represented converter losses.
   **mPowerBalanceError = **mAcPower - **mDcPower;
 }
 
@@ -387,6 +406,11 @@ void SSN_MMCStation::filterAndOuterStep() {
   mDcVoltageController->mMeasurement->set(**mFilteredDcVoltage);
   mDcVoltageController->mEnable->set(enabled);
   mDcVoltageController->step();
+  **mDcOuterErrorPu = **mDcVoltageController->mError;
+  **mDcOuterProportionalContribution = 4.0 * **mDcOuterErrorPu;
+  **mDcOuterIntegralContribution = **mDcVoltageController->mIntegratorState;
+  **mDcOuterUnsaturatedOutput = **mDcVoltageController->mUnsaturatedOutput;
+  **mDcOuterOutput = **mDcVoltageController->mOutput;
   **mDcOuterUpperSaturated = **mDcVoltageController->mUpperSaturated;
   **mDcOuterLowerSaturated = **mDcVoltageController->mLowerSaturated;
   if (**mOuterLoopsEnabled) {
@@ -433,6 +457,10 @@ void SSN_MMCStation::commandStep() {
   mModulation->step();
   **mConverterPhaseCommand = **mModulation->mAbcCommand;
   **mModulationMagnitude = **mModulation->mModulationMagnitude;
+  **mModulationD = **mModulation->mDCommand;
+  **mModulationQ = **mModulation->mQCommand;
+  **mModulationDUnsaturated = **mModulation->mDUnsaturatedCommand;
+  **mModulationQUnsaturated = **mModulation->mQUnsaturatedCommand;
   **mModulationSaturated = **mModulation->mSaturated;
   **mModulationDUpperSaturated = **mModulation->mDUpperSaturated;
   **mModulationDLowerSaturated = **mModulation->mDLowerSaturated;
@@ -441,8 +469,25 @@ void SSN_MMCStation::commandStep() {
 
   if (**mState == static_cast<Int>(State::Enabled)) {
     const Real vBase = std::sqrt(2.0 / 3.0) * mParameters.nominalAcLineLineRms;
-    (**mPlantDifferentialVoltageCommand)(0, 0) = **mVdReferencePu * vBase;
-    (**mPlantDifferentialVoltageCommand)(1, 0) = **mVqReferencePu * vBase;
+
+    // Apply the modulation block's saturation to the voltage command that is
+    // actually sent to the MMC. Previously the saturated modulation was only
+    // logged while the plant still received the unsaturated current-controller
+    // reference.
+    auto realizedAxisVoltage = [](Real voltageReferencePu,
+                                  Real unsaturatedModulation,
+                                  Real saturatedModulation, Real baseVoltage) {
+      if (std::abs(unsaturatedModulation) <= 1e-12)
+        return voltageReferencePu * baseVoltage;
+      return voltageReferencePu * baseVoltage *
+             (saturatedModulation / unsaturatedModulation);
+    };
+
+    (**mPlantDifferentialVoltageCommand)(0, 0) = realizedAxisVoltage(
+        **mVdReferencePu, **mModulationDUnsaturated, **mModulationD, vBase);
+    (**mPlantDifferentialVoltageCommand)(1, 0) = realizedAxisVoltage(
+        **mVqReferencePu, **mModulationQUnsaturated, **mModulationQ, vBase);
+
     mPlant->setExternalDifferentialVoltageCommand(
         (**mPlantDifferentialVoltageCommand)(0, 0),
         (**mPlantDifferentialVoltageCommand)(1, 0));
@@ -487,7 +532,12 @@ SSN_MMCStation::OuterTask::OuterTask(SSN_MMCStation &station)
                          station.mDcOuterUpperSaturated,
                          station.mDcOuterLowerSaturated,
                          station.mReactiveOuterUpperSaturated,
-                         station.mReactiveOuterLowerSaturated};
+                         station.mReactiveOuterLowerSaturated,
+                         station.mDcOuterErrorPu,
+                         station.mDcOuterProportionalContribution,
+                         station.mDcOuterIntegralContribution,
+                         station.mDcOuterUnsaturatedOutput,
+                         station.mDcOuterOutput};
 }
 
 SSN_MMCStation::CurrentTask::CurrentTask(SSN_MMCStation &station)
@@ -516,6 +566,10 @@ SSN_MMCStation::CommandTask::CommandTask(SSN_MMCStation &station)
       station.mConverterPhaseCommand,
       station.mPlantDifferentialVoltageCommand,
       station.mModulationMagnitude,
+      station.mModulationD,
+      station.mModulationQ,
+      station.mModulationDUnsaturated,
+      station.mModulationQUnsaturated,
       station.mModulationSaturated,
       station.mModulationDUpperSaturated,
       station.mModulationDLowerSaturated,
