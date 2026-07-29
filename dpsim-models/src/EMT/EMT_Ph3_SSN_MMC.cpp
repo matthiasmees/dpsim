@@ -2269,11 +2269,12 @@ void EMT::Ph3::SSN_MMC::updateLogAttributes(const Matrix &u) const {
   **mFilteredDaxisVoltage =
       mActiveControlMode == ActiveControlMode::ActivePowerFeedforward
           ? mActivePowerFeedforwardFilteredVd
-          : vControlDForOuterLoop;
+          : 0.0;
+
   **mHeldActiveCurrentReference =
       mActiveControlMode == ActiveControlMode::ActivePowerFeedforward
           ? mActivePowerFeedforwardHeldIDeltaDReference
-          : iDeltaDReference;
+          : 0.0;
 
   Matrix derivative = Matrix::Zero(mStateSize, 1);
   evaluateStateDerivative(**mX, u, derivative);

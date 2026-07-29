@@ -171,6 +171,8 @@ list(APPEND MODELS_SOURCES
 	EMT/EMT_Ph3_FourTerminalVTypeSSNComp.cpp
 	EMT/EMT_Ph3_PiecewiseLinearInductor.cpp
 	EMT/EMT_Ph3_VSIVoltageControlVCO.cpp
+	EMT/EMT_Ph3_MMC_ModularStateSpaceModel.cpp
+	EMT/EMT_Ph3_MMC_Modular.cpp
 
 	SP/SP_Ph1_ControlledCurrentSource.cpp
 	SP/SP_Ph1_VoltageSource.cpp
@@ -238,6 +240,18 @@ list(APPEND MODELS_SOURCES
 	Signal/VCO.cpp
 	Signal/VoltageControllerVSI.cpp
 	Signal/DQSymControllerBlocks.cpp
+	Signal/MMCFirstOrderFilter.cpp
+	Signal/MMCSecondOrderFilter.cpp
+	Signal/MMCSrfPll.cpp
+	Signal/MMCActiveOuterController.cpp
+	Signal/MMCReactiveOuterController.cpp
+	Signal/MMCOutputCurrentController.cpp
+	Signal/MMCCirculatingCurrentController.cpp
+	Signal/MMCEnergyController.cpp
+	Signal/MMCZeroSequenceCurrentController.cpp
+	Signal/MMCPadeDelay.cpp
+	Signal/MMCSampledPowerFeedforward.cpp
+	Signal/MMCControllerSystem.cpp
 )
 
 if(WITH_CIM)

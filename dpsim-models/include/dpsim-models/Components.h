@@ -177,6 +177,8 @@
 #endif
 #include <dpsim-models/EMT/EMT_Ph3_FourTerminalVTypeSSNComp.h>
 #include <dpsim-models/EMT/EMT_Ph3_FourTerminalVTypeVariableSSNComp.h>
+#include <dpsim-models/EMT/EMT_Ph3_MMC_Modular.h>
+#include <dpsim-models/EMT/EMT_Ph3_MMC_ModularStateSpaceModel.h>
 #include <dpsim-models/EMT/EMT_Ph3_NetworkInjection.h>
 #include <dpsim-models/EMT/EMT_Ph3_PiLine.h>
 #include <dpsim-models/EMT/EMT_Ph3_PiecewiseLinearInductor.h>
@@ -211,6 +213,19 @@
 #include <dpsim-models/Signal/HydroTurbine.h>
 #include <dpsim-models/Signal/HydroTurbineGovernor.h>
 #include <dpsim-models/Signal/Integrator.h>
+#include <dpsim-models/Signal/MMCActiveOuterController.h>
+#include <dpsim-models/Signal/MMCCirculatingCurrentController.h>
+#include <dpsim-models/Signal/MMCControllerSystem.h>
+#include <dpsim-models/Signal/MMCEnergyController.h>
+#include <dpsim-models/Signal/MMCFirstOrderFilter.h>
+#include <dpsim-models/Signal/MMCOutputCurrentController.h>
+#include <dpsim-models/Signal/MMCPadeDelay.h>
+#include <dpsim-models/Signal/MMCReactiveOuterController.h>
+#include <dpsim-models/Signal/MMCSampledPowerFeedforward.h>
+#include <dpsim-models/Signal/MMCSecondOrderFilter.h>
+#include <dpsim-models/Signal/MMCSrfPll.h>
+#include <dpsim-models/Signal/MMCStateSpaceBlock.h>
+#include <dpsim-models/Signal/MMCZeroSequenceCurrentController.h>
 #include <dpsim-models/Signal/PSS1A.h>
 #include <dpsim-models/Signal/SignalGenerator.h>
 #include <dpsim-models/Signal/SineWaveGenerator.h>
