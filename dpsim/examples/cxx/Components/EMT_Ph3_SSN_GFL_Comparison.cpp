@@ -1,14 +1,24 @@
 // SPDX-FileCopyrightText: 2026 Institute for Automation of Complex Power Systems, EONERC, RWTH Aachen University
 // SPDX-License-Identifier: MPL-2.0
 
+#include <cmath>
+#include <stdexcept>
+#include <utility>
+
 #include <DPsim.h>
 
 using namespace DPsim;
 using namespace CPS;
 
-class Example_AvVoltSourceInverterStateSpace {
+/// \brief EMT comparison example for the refactored SSN_GFL inverter.
+///
+/// This example intentionally uses the same topology, parameters, power-flow
+/// initialization, load-switch disturbance, and logger signal names as the
+/// AvVoltSourceInverterStateSpace reference example. Consequently, the CSV
+/// results of both examples can be compared directly.
+class Example_SSN_GFL {
 public:
-  Example_AvVoltSourceInverterStateSpace()
+  Example_SSN_GFL()
       : mTimeStepEMT(100e-6), mFinalTimeEMT(10.0), mLoadSwitchTime(3.0),
         mSystemFrequency(50.0), mSystemOmega(2.0 * PI * mSystemFrequency),
         mGridVoltageRMSLineToLine(400.0), mLineResistance(0.3),
@@ -20,7 +30,7 @@ public:
         mKpCurrCtrl(0.25), mKiCurrCtrl(1.0) {}
 
   void run() const {
-    const String simNameBase = "EMT_Ph3_AvVoltSourceInverterStateSpace";
+    const String simNameBase = "EMT_Ph3_SSN_GFL";
 
     const auto systemPF = runPowerFlow(simNameBase + "_PF");
     runEMTSimulation(simNameBase + "_EMT", systemPF);
@@ -43,16 +53,22 @@ private:
                         mLineConductance);
     line->setBaseVoltage(mGridVoltageRMSLineToLine);
 
-    // The inverter controller regulates filter-side power, i.e. the power at
-    // Vc through Rc. The power-flow injection is therefore corrected to the
-    // corresponding PCC-side power. The switchable EMT load is intentionally
-    // not included in the SP power-flow initialization.
+    // SSN_GFL uses the same controller equations as the reference inverter.
+    // It therefore regulates filter-side power at Vc through Rc. Convert the
+    // requested filter-side reference to the corresponding PCC-side injection
+    // used for power-flow initialization.
+    //
+    // The switchable EMT load is intentionally excluded from the initial
+    // power-flow operating point.
     const auto [pPccRef, qPccRef] =
         pccPowerFromFilterPowerReference(mPref, mQref);
 
-    // Negative load = injected P/Q at PCC.
+    // Negative load represents injected active and reactive power at the PCC.
+    //
+    // The component name is identical to the EMT inverter name so
+    // initWithPowerflow() can transfer the operating point.
     auto inverterInjection =
-        SP::Ph1::Load::make("INV_SSN_PLL", Logger::Level::info);
+        SP::Ph1::Load::make("INV_SSN_GFL", Logger::Level::info);
     inverterInjection->setParameters(-pPccRef, -qPccRef,
                                      mGridVoltageRMSLineToLine);
     inverterInjection->modifyPowerFlowBusType(PowerflowBusType::PQ);
@@ -103,8 +119,9 @@ private:
         Math::singlePhaseParameterToThreePhase(mLineCapacitance),
         Math::singlePhaseParameterToThreePhase(mLineConductance));
 
-    auto inverter = EMT::Ph3::AvVoltSourceInverterStateSpace::make(
-        "INV_SSN_PLL", Logger::Level::info);
+    // Refactored GFL component. The setParameters() signature and all parameter
+    // meanings intentionally match AvVoltSourceInverterStateSpace.
+    auto inverter = EMT::Ph3::SSN_GFL::make("INV_SSN_GFL", Logger::Level::info);
     inverter->setParameters(mLf, mCf, mRf, mRc, mSystemOmega, mKpPLL, mKiPLL,
                             mOmegaCutoff, mPref, mQref, mKpPowerCtrl,
                             mKiPowerCtrl, mKpCurrCtrl, mKiCurrCtrl);
@@ -126,7 +143,8 @@ private:
     inverter->connect({EMT::SimNode::GND, nPcc});
 
     // The resistor load is connected to ground and initially isolated from
-    // the PCC by an open switch. Closing the switch creates disturbance.
+    // the PCC by an open switch. Closing the switch at t = 3 s creates the
+    // same disturbance as in the reference example.
     loadSwitch->connect({nPcc, nLoad});
     loadResistor->connect({nLoad, EMT::SimNode::GND});
 
@@ -137,6 +155,9 @@ private:
     system.initWithPowerflow(systemPF, Domain::EMT);
 
     auto logger = DataLogger::make(simName);
+
+    // Keep the same signal names as the reference example. This allows direct
+    // comparison or overlay of the two CSV result sets.
     logger->logAttribute("v_pcc", nPcc->attribute("v"));
     logger->logAttribute("i_inv", inverter->attribute("i_intf"));
     logger->logAttribute("i_load", loadResistor->attribute("i_intf"));
@@ -151,6 +172,9 @@ private:
     sim.addLogger(logger);
     sim.setDomain(Domain::EMT);
     sim.setSolverType(Solver::Type::MNA);
+
+    // SSN_GFL is locally linearized at every time step, exactly as required by
+    // the time-varying dq/abc transformation and controller operating point.
     sim.doSystemMatrixRecomputation(true);
     sim.doInitFromNodesAndTerminals(true);
 
@@ -173,9 +197,11 @@ private:
     if (std::abs(mRc) < 1e-12 || vPccPeakPhase < 1e-9)
       return {pFilterRef, qFilterRef};
 
-    // With peak phase phasors:
+    // With peak-valued phase phasors:
     //
-    // P_filter = P_pcc + Rc / (1.5 * |U|^2) * (P_pcc^2 + Q_pcc^2)
+    // P_filter =
+    //     P_pcc + Rc / (1.5 * |U|^2) * (P_pcc^2 + Q_pcc^2)
+    //
     // Q_filter = Q_pcc
     const Real qPccRef = qFilterRef;
     const Real a = mRc / (1.5 * vPccPeakPhase * vPccPeakPhase);
@@ -193,8 +219,8 @@ private:
     const Real p1 = (-1.0 + sqrtDisc) / (2.0 * a);
     const Real p2 = (-1.0 - sqrtDisc) / (2.0 * a);
 
-    // Select the root close to pFilterRef, which is the physically relevant
-    // branch for small Rc.
+    // Select the root close to pFilterRef. This is the physically relevant
+    // branch for a small coupling resistance.
     const Real pPccRef =
         std::abs(p1 - pFilterRef) < std::abs(p2 - pFilterRef) ? p1 : p2;
 
@@ -237,7 +263,7 @@ private:
 };
 
 int main(int argc, char *argv[]) {
-  Example_AvVoltSourceInverterStateSpace example;
+  Example_SSN_GFL example;
   example.run();
   return 0;
 }

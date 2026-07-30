@@ -161,6 +161,8 @@ list(APPEND MODELS_SOURCES
 	EMT/EMT_Ph3_SSN_Inductor.cpp
 	EMT/EMT_Ph3_SSN_Full_Serial_RLC.cpp
 	EMT/EMT_Ph3_SSN_GFM.cpp
+	EMT/EMT_Ph3_SSN_GFM_VCO.cpp
+	EMT/EMT_Ph3_SSN_GFL.cpp
 	EMT/EMT_Ph3_SSN_SynchronousGenerator.cpp
 	EMT/EMT_Ph3_GenericTwoTerminalVTypeSSN.cpp
 	EMT/EMT_Ph3_GenericTwoTerminalITypeSSN.cpp
@@ -173,6 +175,7 @@ list(APPEND MODELS_SOURCES
 	EMT/EMT_Ph3_VSIVoltageControlVCO.cpp
 	EMT/EMT_Ph3_MMC_ModularStateSpaceModel.cpp
 	EMT/EMT_Ph3_MMC_Modular.cpp
+	EMT/EMT_Ph3_GFM_Droop.cpp
 
 	SP/SP_Ph1_ControlledCurrentSource.cpp
 	SP/SP_Ph1_VoltageSource.cpp

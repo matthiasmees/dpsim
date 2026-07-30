@@ -525,7 +525,7 @@ SystemTopology buildTopology(CommandLineArgs &args,
 int main(int argc, char *argv[]) {
 
   CommandLineArgs args(argc, argv, "EMT_Ph3_IEEE9_SSN_InverterMix", 0.00005,
-                       0.01 * 60, 60, -1, CPS::Logger::Level::info,
+                       0.1 * 60, 600, -1, CPS::Logger::Level::info,
                        CPS::Logger::Level::off, false, false, false,
                        CPS::Domain::EMT);
 

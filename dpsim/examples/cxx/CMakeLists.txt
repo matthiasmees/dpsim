@@ -143,6 +143,7 @@ set(INVERTER_SOURCES
 	Components/DP_Inverter_Grid_Parallel_FreqSplit.cpp
 	Components/DP_Inverter_Grid_Sequential_FreqSplit.cpp
 	Components/EMT_Ph3_GFM_Test.cpp
+	Components/EMT_GFM_Droop_LoadStep.cpp
 )
 
 set(SSN_SOURCES
@@ -167,6 +168,9 @@ set(SSN_SOURCES
 	Components/EMT_SSN_MMC_Matlab_P2P_HotStart.cpp
 	Components/EMT_SSN_MMC_Matlab_P2P_Results.cpp
 	Components/EMT_SSN_MMC_Modular_Matlab_P2P_Results.cpp
+	Components/EMT_Ph3_SSN_GFL_Comparison.cpp
+	Circuits/EMT_Ph3_IEEE9_SSN_GFM_GFL_Diagnostics.cpp
+	Circuits/scenario_A_step_A_Matthias.cpp
 )
 
 set(STATE_SPACE_SOURCES

@@ -112,9 +112,11 @@ private:
   Real mReactiveDroopCutoff;
   Real mVoltageSetpoint;
 
-  // Numerical linearization settings
-  Real mJacobianRelativeStep;
-  Real mJacobianAbsoluteStep;
+  // Local-linearization scheduling. The default interval of one preserves the
+  // original behaviour and rebuilds the exact local model every EMT step.
+  UInt mLinearizationUpdateInterval;
+  UInt mStepsSinceLinearization;
+  Bool mLinearizationInitialized;
 
   // Logging attributes
   const Attribute<Real>::Ptr mPInst;
@@ -146,9 +148,9 @@ private:
   /// \brief Evaluate the nonlinear output y = g(x,u).
   void evaluateOutput(const Matrix &x, const Matrix &u, Matrix &output) const;
 
-  /// \brief Numerically calculate A, B, C and D by central differences.
-  void calculateNumericalJacobians(const Matrix &x, const Matrix &u, Matrix &A,
-                                   Matrix &B, Matrix &C, Matrix &D) const;
+  /// \brief Calculate the exact A, B, C and D Jacobian matrices.
+  void calculateAnalyticalJacobians(const Matrix &x, const Matrix &u, Matrix &A,
+                                    Matrix &B, Matrix &C, Matrix &D) const;
 
   /// \brief Construct the complete local affine state-space model.
   void buildStateSpaceModel(const Matrix &x, const Matrix &u, Matrix &A,
@@ -157,6 +159,8 @@ private:
 
   /// \brief Return a safe denominator for the VSG swing equation.
   Real regularizedOmega(Real omega) const;
+
+  void markLinearizationDirty();
 
 protected:
   Bool updateComponentParameters() override final;
@@ -194,9 +198,19 @@ public:
                      Real kpCurrent, Real kiCurrent, Real activeDampingGain,
                      Real powerFilterCutoff, Real delayBandwidth);
 
-  /// \brief Configure finite-difference steps for local linearization.
+  /// \brief Compatibility no-op retained for existing examples.
+  ///
+  /// The implementation now uses analytical Jacobians, so these values are
+  /// validated but otherwise ignored.
   void setNumericalLinearizationParameters(Real relativeStep,
                                            Real absoluteStep);
+
+  /// \brief Rebuild the local model every updateInterval EMT steps.
+  ///
+  /// The default is one and preserves the previous accurate every-step
+  /// relinearization. Values above one are an explicit approximation intended
+  /// for performance studies and can change the trajectory.
+  void setLinearizationUpdateInterval(UInt updateInterval);
 
   /// \brief Opt-in virtual output impedance Zv = Rv + jXv, subtracted from the
   /// EMF reference across the filter current. Zero (default) is the islanded

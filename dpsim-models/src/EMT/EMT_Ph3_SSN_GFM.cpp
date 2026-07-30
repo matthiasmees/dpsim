@@ -19,7 +19,8 @@ EMT::Ph3::SSN_GFM::SSN_GFM(String uid, String name, Logger::Level logLevel)
       mVirtualResistance(0.0), mVirtualReactance(0.0),
       mGridCurrentFeedforward(1.0), mReactivePowerDroop(0.0),
       mReactiveDroopCutoff(0.0), mVoltageSetpoint(0.0),
-      mJacobianRelativeStep(1e-6), mJacobianAbsoluteStep(1e-8),
+      mLinearizationUpdateInterval(1), mStepsSinceLinearization(0),
+      mLinearizationInitialized(false),
       mPInst(mAttributes->create<Real>("p_inst")),
       mQInst(mAttributes->create<Real>("q_inst")),
       mOmegaGFM(mAttributes->create<Real>("omega_gfm")),
@@ -166,6 +167,8 @@ void EMT::Ph3::SSN_GFM::setParameters(
   mPowerFilterCutoff = powerFilterCutoff;
   mDelayBandwidth = delayBandwidth;
 
+  markLinearizationDirty();
+
   // Only establish the dimensions here. Linearizing at x = 0, u = 0 is
   // invalid for this model because omega, voltage magnitude and the Park
   // transformation do not represent a physical operating point there.
@@ -179,9 +182,16 @@ void EMT::Ph3::SSN_GFM::setParameters(
                                       Matrix::Zero(mOutputSize, 1));
 }
 
+void EMT::Ph3::SSN_GFM::markLinearizationDirty() {
+  mLinearizationInitialized = false;
+  mStepsSinceLinearization = 0;
+}
+
 void EMT::Ph3::SSN_GFM::setNumericalLinearizationParameters(Real relativeStep,
                                                             Real absoluteStep) {
-
+  // Compatibility function retained so that existing examples compile
+  // unchanged. The model now uses exact analytical Jacobians, therefore the
+  // finite-difference step sizes no longer affect the simulation.
   if (relativeStep <= 0.0)
     throw std::invalid_argument(
         "Relative finite-difference step must be positive.");
@@ -189,9 +199,15 @@ void EMT::Ph3::SSN_GFM::setNumericalLinearizationParameters(Real relativeStep,
   if (absoluteStep <= 0.0)
     throw std::invalid_argument(
         "Absolute finite-difference step must be positive.");
+}
 
-  mJacobianRelativeStep = relativeStep;
-  mJacobianAbsoluteStep = absoluteStep;
+void EMT::Ph3::SSN_GFM::setLinearizationUpdateInterval(UInt updateInterval) {
+  if (updateInterval == 0)
+    throw std::invalid_argument(
+        "Linearization update interval must be at least one step.");
+
+  mLinearizationUpdateInterval = updateInterval;
+  markLinearizationDirty();
 }
 
 void EMT::Ph3::SSN_GFM::setVirtualImpedance(Real virtualResistance,
@@ -201,10 +217,12 @@ void EMT::Ph3::SSN_GFM::setVirtualImpedance(Real virtualResistance,
 
   mVirtualResistance = virtualResistance;
   mVirtualReactance = virtualReactance;
+  markLinearizationDirty();
 }
 
 void EMT::Ph3::SSN_GFM::setGridCurrentFeedforward(Real scale) {
   mGridCurrentFeedforward = scale;
+  markLinearizationDirty();
 }
 
 void EMT::Ph3::SSN_GFM::setReactivePowerDroop(Real droopGain, Real cutoff) {
@@ -215,6 +233,7 @@ void EMT::Ph3::SSN_GFM::setReactivePowerDroop(Real droopGain, Real cutoff) {
 
   mReactivePowerDroop = droopGain;
   mReactiveDroopCutoff = cutoff;
+  markLinearizationDirty();
 }
 
 Matrix EMT::Ph3::SSN_GFM::getParkTransformMatrix(Real theta) const {
@@ -478,65 +497,220 @@ void EMT::Ph3::SSN_GFM::evaluateOutput(const Matrix &x, const Matrix &u,
   output = (u - vcAbc) / mRc;
 }
 
-void EMT::Ph3::SSN_GFM::calculateNumericalJacobians(const Matrix &x,
-                                                    const Matrix &u, Matrix &A,
-                                                    Matrix &B, Matrix &C,
-                                                    Matrix &D) const {
+void EMT::Ph3::SSN_GFM::calculateAnalyticalJacobians(const Matrix &x,
+                                                     const Matrix &u, Matrix &A,
+                                                     Matrix &B, Matrix &C,
+                                                     Matrix &D) const {
+  if (x.rows() != mStateSize || x.cols() != 1)
+    throw std::invalid_argument(
+        "SSN_GFM state vector has an invalid dimension.");
+
+  if (u.rows() != mInputSize || u.cols() != 1)
+    throw std::invalid_argument(
+        "SSN_GFM input vector has an invalid dimension.");
+
+  const Real pFiltered = x(PFiltered, 0);
+  const Real omega = x(Omega, 0);
+  const Real theta = x(Theta, 0);
+  const Real delayVoltageD = x(DelayVoltageD, 0);
+  const Real delayVoltageQ = x(DelayVoltageQ, 0);
+
+  const Matrix vcAbc = x.block(VcA, 0, 3, 1);
+  const Matrix ifAbc = x.block(IfA, 0, 3, 1);
+
+  const Matrix parkTransform = getParkTransformMatrix(theta);
+  const Matrix inverseParkTransform = getInverseParkTransformMatrix(theta);
+
+  const Matrix tD = parkTransform.row(0);
+  const Matrix tQ = parkTransform.row(1);
+  const Matrix sD = inverseParkTransform.col(0);
+  const Matrix sQ = inverseParkTransform.col(1);
+
+  // Exact transform derivatives:
+  //   d(tD)/dtheta =  tQ,  d(tQ)/dtheta = -tD
+  //   d(sD)/dtheta =  sQ,  d(sQ)/dtheta = -sD
+  const Matrix iGridAbc = (vcAbc - u) / mRc;
+
+  const Real vcD = (tD * vcAbc)(0, 0);
+  const Real vcQ = (tQ * vcAbc)(0, 0);
+  const Real ifD = (tD * ifAbc)(0, 0);
+  const Real ifQ = (tQ * ifAbc)(0, 0);
+  const Real iGridD = (tD * iGridAbc)(0, 0);
+  const Real iGridQ = (tQ * iGridAbc)(0, 0);
+
+  Matrix dVcDByX = Matrix::Zero(1, mStateSize);
+  Matrix dVcQByX = Matrix::Zero(1, mStateSize);
+  Matrix dIfDByX = Matrix::Zero(1, mStateSize);
+  Matrix dIfQByX = Matrix::Zero(1, mStateSize);
+  Matrix dIGridDByX = Matrix::Zero(1, mStateSize);
+  Matrix dIGridQByX = Matrix::Zero(1, mStateSize);
+
+  dVcDByX(0, Theta) = vcQ;
+  dVcDByX.block(0, VcA, 1, 3) = tD;
+  dVcQByX(0, Theta) = -vcD;
+  dVcQByX.block(0, VcA, 1, 3) = tQ;
+
+  dIfDByX(0, Theta) = ifQ;
+  dIfDByX.block(0, IfA, 1, 3) = tD;
+  dIfQByX(0, Theta) = -ifD;
+  dIfQByX.block(0, IfA, 1, 3) = tQ;
+
+  dIGridDByX(0, Theta) = iGridQ;
+  dIGridDByX.block(0, VcA, 1, 3) = tD / mRc;
+  dIGridQByX(0, Theta) = -iGridD;
+  dIGridQByX.block(0, VcA, 1, 3) = tQ / mRc;
+
+  const Matrix dIGridDByU = -tD / mRc;
+  const Matrix dIGridQByU = -tQ / mRc;
+
+  Matrix dPByX = 1.5 * (iGridD * dVcDByX + vcD * dIGridDByX + iGridQ * dVcQByX +
+                        vcQ * dIGridQByX);
+  const Matrix dPByU = 1.5 * (vcD * dIGridDByU + vcQ * dIGridQByU);
+
+  Matrix dQByX = 1.5 * (iGridD * dVcQByX + vcQ * dIGridDByX - iGridQ * dVcDByX -
+                        vcD * dIGridQByX);
+  const Matrix dQByU = 1.5 * (vcQ * dIGridDByU - vcD * dIGridQByU);
+
+  // Active power, reactive power and dq-voltage magnitude are invariant under
+  // a common rotation of the dq frame. Set these entries exactly to zero to
+  // avoid the cancellation noise present in finite-difference Jacobians.
+  dPByX(0, Theta) = 0.0;
+  dQByX(0, Theta) = 0.0;
+
+  const Real pccVoltageMagnitude = std::sqrt(vcD * vcD + vcQ * vcQ);
+  Matrix dPccVoltageMagnitudeByX = Matrix::Zero(1, mStateSize);
+  if (pccVoltageMagnitude > 1.0e-12) {
+    dPccVoltageMagnitudeByX =
+        (vcD * dVcDByX + vcQ * dVcQByX) / pccVoltageMagnitude;
+    dPccVoltageMagnitudeByX(0, Theta) = 0.0;
+  }
+
+  Matrix unitOmega = Matrix::Zero(1, mStateSize);
+  Matrix unitVoltageMagnitude = Matrix::Zero(1, mStateSize);
+  Matrix unitVoltageIntegratorD = Matrix::Zero(1, mStateSize);
+  Matrix unitVoltageIntegratorQ = Matrix::Zero(1, mStateSize);
+  Matrix unitCurrentIntegratorD = Matrix::Zero(1, mStateSize);
+  Matrix unitCurrentIntegratorQ = Matrix::Zero(1, mStateSize);
+
+  unitOmega(0, Omega) = 1.0;
+  unitVoltageMagnitude(0, VoltageMagnitude) = 1.0;
+  unitVoltageIntegratorD(0, VoltageIntegratorD) = 1.0;
+  unitVoltageIntegratorQ(0, VoltageIntegratorQ) = 1.0;
+  unitCurrentIntegratorD(0, CurrentIntegratorD) = 1.0;
+  unitCurrentIntegratorQ(0, CurrentIntegratorQ) = 1.0;
+
+  const Matrix dVoltageErrorDByX = unitVoltageMagnitude -
+                                   mVirtualResistance * dIfDByX +
+                                   mVirtualReactance * dIfQByX - dVcDByX;
+  const Matrix dVoltageErrorQByX =
+      -mVirtualResistance * dIfQByX - mVirtualReactance * dIfDByX - dVcQByX;
+
+  const Matrix dCurrentReferenceDByX =
+      mGridCurrentFeedforward * dIGridDByX -
+      mCf * (vcQ * unitOmega + omega * dVcQByX) +
+      mKpVoltage * dVoltageErrorDByX + mKiVoltage * unitVoltageIntegratorD;
+  const Matrix dCurrentReferenceDByU = mGridCurrentFeedforward * dIGridDByU;
+
+  const Matrix dCurrentReferenceQByX =
+      mGridCurrentFeedforward * dIGridQByX +
+      mCf * (vcD * unitOmega + omega * dVcDByX) +
+      mKpVoltage * dVoltageErrorQByX + mKiVoltage * unitVoltageIntegratorQ;
+  const Matrix dCurrentReferenceQByU = mGridCurrentFeedforward * dIGridQByU;
+
+  const Matrix dCurrentErrorDByX = dCurrentReferenceDByX - dIfDByX;
+  const Matrix dCurrentErrorQByX = dCurrentReferenceQByX - dIfQByX;
+  const Matrix dCurrentErrorDByU = dCurrentReferenceDByU;
+  const Matrix dCurrentErrorQByU = dCurrentReferenceQByU;
+
+  const Matrix dCapacitorCurrentDByX = dIfDByX - dIGridDByX;
+  const Matrix dCapacitorCurrentQByX = dIfQByX - dIGridQByX;
+  const Matrix dCapacitorCurrentDByU = -dIGridDByU;
+  const Matrix dCapacitorCurrentQByU = -dIGridQByU;
+
+  const Matrix dConverterVoltageReferenceDByX =
+      dVcDByX - mLf * (ifQ * unitOmega + omega * dIfQByX) +
+      mKpCurrent * dCurrentErrorDByX + mKiCurrent * unitCurrentIntegratorD -
+      mActiveDampingGain * dCapacitorCurrentDByX;
+  const Matrix dConverterVoltageReferenceDByU =
+      mKpCurrent * dCurrentErrorDByU -
+      mActiveDampingGain * dCapacitorCurrentDByU;
+
+  const Matrix dConverterVoltageReferenceQByX =
+      dVcQByX + mLf * (ifD * unitOmega + omega * dIfDByX) +
+      mKpCurrent * dCurrentErrorQByX + mKiCurrent * unitCurrentIntegratorQ -
+      mActiveDampingGain * dCapacitorCurrentQByX;
+  const Matrix dConverterVoltageReferenceQByU =
+      mKpCurrent * dCurrentErrorQByU -
+      mActiveDampingGain * dCapacitorCurrentQByU;
 
   A.setZero(mStateSize, mStateSize);
   B.setZero(mStateSize, mInputSize);
   C.setZero(mOutputSize, mStateSize);
   D.setZero(mOutputSize, mInputSize);
 
-  Matrix fPlus = Matrix::Zero(mStateSize, 1);
-  Matrix fMinus = Matrix::Zero(mStateSize, 1);
+  // Measurement filters.
+  A.row(PFiltered) = mPowerFilterCutoff * dPByX;
+  A(PFiltered, PFiltered) -= mPowerFilterCutoff;
+  B.row(PFiltered) = mPowerFilterCutoff * dPByU;
 
-  Matrix gPlus = Matrix::Zero(mOutputSize, 1);
-  Matrix gMinus = Matrix::Zero(mOutputSize, 1);
+  A.row(QFiltered) = mPowerFilterCutoff * dQByX;
+  A(QFiltered, QFiltered) -= mPowerFilterCutoff;
+  B.row(QFiltered) = mPowerFilterCutoff * dQByU;
 
-  // State Jacobians A and C.
-  for (Int column = 0; column < mStateSize; ++column) {
-    const Real step =
-        mJacobianAbsoluteStep +
-        mJacobianRelativeStep * std::max(1.0, std::abs(x(column, 0)));
+  // VSG swing equation and angle.
+  const Real omegaDenominator = regularizedOmega(omega);
+  const Real denominatorDerivative = std::abs(omega) >= 1.0 ? 1.0 : 0.0;
 
-    Matrix xPlus = x;
-    Matrix xMinus = x;
+  A(Omega, PFiltered) = -1.0 / (mVirtualInertia * omegaDenominator);
+  A(Omega, Omega) = (-(mPRef - pFiltered) * denominatorDerivative /
+                         (omegaDenominator * omegaDenominator) -
+                     mDampingCoefficient) /
+                    mVirtualInertia;
+  A(Theta, Omega) = 1.0;
 
-    xPlus(column, 0) += step;
-    xMinus(column, 0) -= step;
-
-    evaluateStateDerivative(xPlus, u, fPlus);
-    evaluateStateDerivative(xMinus, u, fMinus);
-
-    evaluateOutput(xPlus, u, gPlus);
-    evaluateOutput(xMinus, u, gMinus);
-
-    A.col(column) = (fPlus - fMinus) / (2.0 * step);
-    C.col(column) = (gPlus - gMinus) / (2.0 * step);
+  // Excitation / Q-V droop state.
+  if (mReactiveDroopCutoff > 0.0) {
+    A(VoltageMagnitude, QFiltered) =
+        -mReactiveDroopCutoff * mReactivePowerDroop;
+    A(VoltageMagnitude, VoltageMagnitude) = -mReactiveDroopCutoff;
+  } else {
+    A(VoltageMagnitude, QFiltered) = -mReactiveIntegralGain;
+    A.row(VoltageMagnitude) -= mVoltageDroopGain * dPccVoltageMagnitudeByX;
   }
 
-  // Input Jacobians B and D.
-  for (Int column = 0; column < mInputSize; ++column) {
-    const Real step =
-        mJacobianAbsoluteStep +
-        mJacobianRelativeStep * std::max(1.0, std::abs(u(column, 0)));
+  // Voltage-loop and current-loop integrators.
+  A.row(VoltageIntegratorD) = dVoltageErrorDByX;
+  A.row(VoltageIntegratorQ) = dVoltageErrorQByX;
 
-    Matrix uPlus = u;
-    Matrix uMinus = u;
+  A.row(CurrentIntegratorD) = dCurrentErrorDByX;
+  B.row(CurrentIntegratorD) = dCurrentErrorDByU;
+  A.row(CurrentIntegratorQ) = dCurrentErrorQByX;
+  B.row(CurrentIntegratorQ) = dCurrentErrorQByU;
 
-    uPlus(column, 0) += step;
-    uMinus(column, 0) -= step;
+  // First-order converter delay.
+  A.row(DelayVoltageD) = mDelayBandwidth * dConverterVoltageReferenceDByX;
+  A(DelayVoltageD, DelayVoltageD) -= mDelayBandwidth;
+  B.row(DelayVoltageD) = mDelayBandwidth * dConverterVoltageReferenceDByU;
 
-    evaluateStateDerivative(x, uPlus, fPlus);
-    evaluateStateDerivative(x, uMinus, fMinus);
+  A.row(DelayVoltageQ) = mDelayBandwidth * dConverterVoltageReferenceQByX;
+  A(DelayVoltageQ, DelayVoltageQ) -= mDelayBandwidth;
+  B.row(DelayVoltageQ) = mDelayBandwidth * dConverterVoltageReferenceQByU;
 
-    evaluateOutput(x, uPlus, gPlus);
-    evaluateOutput(x, uMinus, gMinus);
+  // Electrical LCL-filter states.
+  const Matrix identity3 = Matrix::Identity(3, 3);
+  A.block(VcA, VcA, 3, 3) = -1.0 / (mCf * mRc) * identity3;
+  A.block(VcA, IfA, 3, 3) = 1.0 / mCf * identity3;
+  B.block(VcA, 0, 3, 3) = 1.0 / (mCf * mRc) * identity3;
 
-    B.col(column) = (fPlus - fMinus) / (2.0 * step);
-    D.col(column) = (gPlus - gMinus) / (2.0 * step);
-  }
+  A.block(IfA, VcA, 3, 3) = -1.0 / mLf * identity3;
+  A.block(IfA, IfA, 3, 3) = -mRf / mLf * identity3;
+  A.block(IfA, Theta, 3, 1) = (sQ * delayVoltageD - sD * delayVoltageQ) / mLf;
+  A.block(IfA, DelayVoltageD, 3, 1) = sD / mLf;
+  A.block(IfA, DelayVoltageQ, 3, 1) = sQ / mLf;
+
+  // SSN output y = (u - vc) / Rc.
+  C.block(0, VcA, 3, 3) = -1.0 / mRc * identity3;
+  D = 1.0 / mRc * identity3;
 }
 
 void EMT::Ph3::SSN_GFM::buildStateSpaceModel(const Matrix &x, const Matrix &u,
@@ -544,7 +718,7 @@ void EMT::Ph3::SSN_GFM::buildStateSpaceModel(const Matrix &x, const Matrix &u,
                                              Matrix &D, Matrix &E,
                                              Matrix &F) const {
 
-  calculateNumericalJacobians(x, u, A, B, C, D);
+  calculateAnalyticalJacobians(x, u, A, B, C, D);
 
   Matrix stateDerivative = Matrix::Zero(mStateSize, 1);
   Matrix output = Matrix::Zero(mOutputSize, 1);
@@ -561,6 +735,15 @@ void EMT::Ph3::SSN_GFM::buildStateSpaceModel(const Matrix &x, const Matrix &u,
 }
 
 Bool EMT::Ph3::SSN_GFM::updateComponentParameters() {
+  // The default interval is one, which preserves the previous behaviour:
+  // exact local relinearization and SSN rediscretization at every EMT step.
+  // Larger intervals are an explicit performance/accuracy trade-off.
+  if (mLinearizationInitialized && mLinearizationUpdateInterval > 1) {
+    ++mStepsSinceLinearization;
+    if (mStepsSinceLinearization < mLinearizationUpdateInterval)
+      return false;
+  }
+
   Matrix eVector;
   Matrix fVector;
 
@@ -569,9 +752,8 @@ Bool EMT::Ph3::SSN_GFM::updateComponentParameters() {
   setStateOffset(eVector);
   setOutputOffset(fVector);
 
-  // The dq/abc transformations and nonlinear GFM controls make the local
-  // state-space model time varying. The SSN equivalent must therefore be
-  // recomputed every simulation step.
+  mLinearizationInitialized = true;
+  mStepsSinceLinearization = 0;
   return true;
 }
 
@@ -808,6 +990,10 @@ void EMT::Ph3::SSN_GFM::initializeFromNodesAndTerminals(Real frequency) {
   // Store the initialized state and terminal voltage.
   **mX = x0;
   **mIntfVoltage = uPhasor.real();
+
+  // Initialization establishes a new operating point and must always create a
+  // fresh local model, even when a multi-step update interval was selected.
+  markLinearizationDirty();
 
   // Do not call updateComponentParameters() directly here.
   //
