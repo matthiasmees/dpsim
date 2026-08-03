@@ -240,13 +240,26 @@ void EMT::Ph3::SynchronGeneratorVBR::mnaCompInitialize(
       mSLog, "Component affects right side vector entries {}, {} and {}",
       matrixNodeIndex(0, 0), matrixNodeIndex(0, 1), matrixNodeIndex(0, 2));
 
-  // set initial interface current
+  // Set initial interface voltage.
   mVabc << mVa, mVb, mVc;
   **mIntfVoltage = mVabc * mBase_V;
 
-  // set initial interface voltage
+  // Set initial interface current.
   mIabc << mIa, mIb, mIc;
   **mIntfCurrent = mIabc * mBase_I;
+
+  // Initialize externally visible machine attributes.
+  //
+  // SynchronGeneratorVBR uses per-unit values internally. Interface current
+  // follows the passive sign convention, while P_elec and Q_elec are exposed
+  // with generator-positive signs.
+  **mElecActivePower = mInitElecPower.real() / mNomPower;
+  **mElecReactivePower = mInitElecPower.imag() / mNomPower;
+  **mMechPower = -(**mMechTorque) * (**mOmMech);
+
+  // Electrical rotor angle relative to the global synchronous reference.
+  // At t = 0 the synchronous reference angle is zero.
+  **mDelta = std::remainder(mThetaMech, 2.0 * PI);
 }
 
 void EMT::Ph3::SynchronGeneratorVBR::mnaCompPreStep(Real time,
@@ -267,10 +280,18 @@ void EMT::Ph3::SynchronGeneratorVBR::mnaCompAddPreStepDependencies(
     AttributeBase::List &prevStepDependencies,
     AttributeBase::List &attributeDependencies,
     AttributeBase::List &modifiedAttributes) {
-  // add pre-step dependencies of component itself
+  // Add pre-step dependencies of the component itself.
   prevStepDependencies.push_back(mIntfCurrent);
   prevStepDependencies.push_back(mIntfVoltage);
+
   modifiedAttributes.push_back(mRightVector);
+
+  // Updated in stepInPerUnit().
+  modifiedAttributes.push_back(mElecTorque);
+  modifiedAttributes.push_back(mOmMech);
+  modifiedAttributes.push_back(mMechTorque);
+  modifiedAttributes.push_back(mMechPower);
+  modifiedAttributes.push_back(mDelta);
 }
 
 void EMT::Ph3::SynchronGeneratorVBR::mnaCompApplyRightSideVectorStamp(
@@ -299,6 +320,14 @@ void EMT::Ph3::SynchronGeneratorVBR::stepInPerUnit() {
   **mOmMech = **mOmMech + mTimeStep * (1. / (2. * **mInertia) *
                                        (**mElecTorque - **mMechTorque));
   mThetaMech = mThetaMech + mTimeStep * (**mOmMech * mBase_OmMech);
+
+  // Mechanical torque is negative internally for generator operation.
+  // Expose generator-positive mechanical power in per unit.
+  **mMechPower = -(**mMechTorque) * (**mOmMech);
+
+  // Integrate the electrical rotor angle relative to the synchronous frame.
+  **mDelta = std::remainder(
+      **mDelta + mTimeStep * ((**mOmMech) - 1.0) * mBase_OmMech, 2.0 * PI);
 
   // Calculate equivalent Resistance and current source
   mVabc << mVa, mVb, mVc;
@@ -370,6 +399,17 @@ void EMT::Ph3::SynchronGeneratorVBR::mnaCompPostStep(
   mId = parkTransform(mThetaMech, mIa, mIb, mIc)(1);
   mI0 = parkTransform(mThetaMech, mIa, mIb, mIc)(2);
 
+  // Terminal powers in per unit.
+  //
+  // The q-d transform is amplitude invariant. Combined with DPsim's
+  // phase-to-ground peak voltage and current bases, the q-d products are
+  // already normalized by the machine apparent-power base.
+  //
+  // mIabc follows the passive sign convention, therefore the signs below
+  // convert consumed terminal power to generator-positive power.
+  **mElecActivePower = -(mVq * mIq + mVd * mId + 2.0 * mV0 * mI0);
+  **mElecReactivePower = mVd * mIq - mVq * mId;
+
   // Calculate rotor flux likanges
   if (mNumDampingWindings == 2) {
     mDqStatorCurrents << mIq, mId;
@@ -421,10 +461,15 @@ void EMT::Ph3::SynchronGeneratorVBR::mnaCompAddPostStepDependencies(
     AttributeBase::List &attributeDependencies,
     AttributeBase::List &modifiedAttributes,
     Attribute<Matrix>::Ptr &leftVector) {
-  // add post-step dependencies of component itself
+  // Add post-step dependencies of the component itself.
   attributeDependencies.push_back(leftVector);
+
   modifiedAttributes.push_back(mIntfVoltage);
   modifiedAttributes.push_back(mIntfCurrent);
+
+  // Updated in mnaCompPostStep().
+  modifiedAttributes.push_back(mElecActivePower);
+  modifiedAttributes.push_back(mElecReactivePower);
 }
 
 void EMT::Ph3::SynchronGeneratorVBR::CalculateL() {

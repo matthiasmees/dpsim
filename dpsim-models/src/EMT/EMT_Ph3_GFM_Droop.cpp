@@ -1,10 +1,15 @@
-// SPDX-FileCopyrightText: 2026 Institute for Automation of Complex Power Systems, EONERC, RWTH Aachen University
+// SPDX-FileCopyrightText: 2026 Institute for Automation of Complex Power Systems,
+// EONERC, RWTH Aachen University
 // SPDX-License-Identifier: MPL-2.0
-// PCC-filter revision 2026-07-30:
-// The former main-path coupling resistor Rc has been removed.
-// A passive damping resistor Rd is connected in series with the shunt
-// capacitor Cf at the filter/PCC node.
-// P/Q use the generator-positive PCC current i_pcc = -i_intf.
+//
+// Per-unit controller revision 2026-07-31:
+// - Electrical MNA subcomponents remain in SI units.
+// - Measurements are transformed to per unit at the PCC.
+// - P-f droop, Q-V droop, filtering, limits, integral state, frequency,
+//   voltage command, and source reference are calculated in per unit.
+// - Existing SI setters and attributes are retained as conversion interfaces.
+// - Explicit ...PerUnit() setters and PU logging attributes are added.
+// - The first scheduled source-angle step is advanced at timeStepCount == 0.
 
 #include <dpsim-models/EMT/EMT_Ph3_GFM_Droop.h>
 
@@ -19,6 +24,7 @@ constexpr Real TWO_PI = 2.0 * PI;
 constexpr Real TWO_PI_OVER_THREE = 2.0 * PI / 3.0;
 constexpr Real SQRT_TWO_OVER_THREE = 0.81649658092772603273;
 constexpr Real SQRT_THREE_OVER_TWO = 0.86602540378443864676;
+constexpr Real TWO_OVER_THREE = 2.0 / 3.0;
 
 Real clampFinite(Real value, Real lower, Real upper, Real fallback) {
   if (!std::isfinite(value))
@@ -30,6 +36,7 @@ Real clampFinite(Real value, Real lower, Real upper, Real fallback) {
 EMT::Ph3::GFM_Droop::GFM_Droop(String uid, String name, Logger::Level logLevel,
                                Bool withTrafo)
     : CompositePowerComp<Real>(uid, name, true, true, logLevel),
+      // Existing SI interface attributes.
       mActivePowerRef(mAttributes->create<Real>("P_ref", 0.0)),
       mReactivePowerRef(mAttributes->create<Real>("Q_ref", 0.0)),
       mFrequencyRef(mAttributes->create<Real>("f_ref", 50.0)),
@@ -51,7 +58,28 @@ EMT::Ph3::GFM_Droop::GFM_Droop(String uid, String name, Logger::Level logLevel,
           mAttributes->create<Real>("voltage_integrator", 0.0)),
       mVoltageCommand(mAttributes->create<Real>("V1", 0.0)),
       mVsref(mAttributes->create<Matrix>("Vsref", Matrix::Zero(3, 1))),
-      mVs(mAttributes->createDynamic<Matrix>("Vs")) {
+      mVs(mAttributes->createDynamic<Matrix>("Vs")),
+      // Canonical PU controller attributes.
+      mActivePowerRefPu(mAttributes->create<Real>("P_ref_pu", 0.0)),
+      mReactivePowerRefPu(mAttributes->create<Real>("Q_ref_pu", 0.0)),
+      mFrequencyRefPu(mAttributes->create<Real>("f_ref_pu", 1.0)),
+      mVoltageRefPu(mAttributes->create<Real>("V_ref_pu", 1.0)),
+      mActivePowerDroopPu(mAttributes->create<Real>("k_p_pu", 0.0)),
+      mReactivePowerDroopPu(mAttributes->create<Real>("k_q_pu", 0.0)),
+      mPccCurrentPu(
+          mAttributes->create<Matrix>("i_pcc_pu", Matrix::Zero(3, 1))),
+      mElecActivePowerPu(mAttributes->create<Real>("P_elec_pu", 0.0)),
+      mElecReactivePowerPu(mAttributes->create<Real>("Q_elec_pu", 0.0)),
+      mFilteredActivePowerPu(mAttributes->create<Real>("P_filtered_pu", 0.0)),
+      mFilteredReactivePowerPu(mAttributes->create<Real>("Q_filtered_pu", 0.0)),
+      mVoltageMagnitudePu(mAttributes->create<Real>("V_magnitude_pu", 0.0)),
+      mFrequencyPu(mAttributes->create<Real>("frequency_pu", 1.0)),
+      mOmegaPu(mAttributes->create<Real>("omega_pu", 1.0)),
+      mVoltageDroopOutputPu(mAttributes->create<Real>("V0_pu", 0.0)),
+      mVoltageIntegralStatePu(
+          mAttributes->create<Real>("voltage_integrator_pu", 0.0)),
+      mVoltageCommandPu(mAttributes->create<Real>("V1_pu", 0.0)),
+      mVsrefPu(mAttributes->create<Matrix>("Vsref_pu", Matrix::Zero(3, 1))) {
 
   mPhaseType = PhaseType::ABC;
   setTerminalNumber(1);
@@ -94,7 +122,7 @@ EMT::Ph3::GFM_Droop::GFM_Droop(String uid, String name, Logger::Level logLevel,
   addMNASubComponent(mSubInductorF, MNA_SUBCOMP_TASK_ORDER::TASK_BEFORE_PARENT,
                      MNA_SUBCOMP_TASK_ORDER::TASK_BEFORE_PARENT, true);
 
-  // Source pre-step is executed explicitly after the controller update.
+  // Source pre-step is executed explicitly after the PU controller update.
   addMNASubComponent(mSubCtrledVoltageSource, MNA_SUBCOMP_TASK_ORDER::NO_TASK,
                      MNA_SUBCOMP_TASK_ORDER::TASK_BEFORE_PARENT, true);
 
@@ -103,69 +131,173 @@ EMT::Ph3::GFM_Droop::GFM_Droop(String uid, String name, Logger::Level logLevel,
   SPDLOG_LOGGER_INFO(mSLog, "Create {} {}", type(), name);
   SPDLOG_LOGGER_INFO(
       mSLog,
-      "GFM_Droop uses scalar P-f/Q-V droop, filtered P/Q measurements, "
-      "and an Rf-Lf output filter with a passive series Rd-Cf shunt branch");
+      "GFM_Droop uses an entirely per-unit P-f/Q-V controller. "
+      "The Rf-Lf and series Rd-Cf electrical filter remains stamped in SI.");
+}
+
+void EMT::Ph3::GFM_Droop::requireBaseParameters() const {
+  if (!mBaseParametersSet) {
+    throw std::runtime_error(
+        "GFM_Droop base parameters must be configured before references, "
+        "controller gains, limits, filter parameters, or initialization");
+  }
+}
+
+void EMT::Ph3::GFM_Droop::setBaseParameters(Real ratedApparentPower,
+                                            Real ratedVoltageLineToLineRms,
+                                            Real nominalFrequencyHz) {
+  if (!(ratedApparentPower > 0.0) || !(ratedVoltageLineToLineRms > 0.0) ||
+      !(nominalFrequencyHz > 0.0) || !std::isfinite(ratedApparentPower) ||
+      !std::isfinite(ratedVoltageLineToLineRms) ||
+      !std::isfinite(nominalFrequencyHz)) {
+    throw std::invalid_argument(
+        "GFM_Droop requires positive finite S_base, V_base_LL_RMS, and "
+        "f_base");
+  }
+  if (mControlStateInitialized) {
+    throw std::logic_error(
+        "GFM_Droop base parameters cannot be changed after initialization");
+  }
+
+  mBaseApparentPower = ratedApparentPower;
+  mBaseVoltageLineToLineRms = ratedVoltageLineToLineRms;
+  mBaseVoltagePhasePeak = RMS3PH_TO_PEAK1PH * ratedVoltageLineToLineRms;
+  mBaseCurrentPhasePeak =
+      2.0 * ratedApparentPower / (3.0 * mBaseVoltagePhasePeak);
+  mBaseImpedance = ratedVoltageLineToLineRms * ratedVoltageLineToLineRms /
+                   ratedApparentPower;
+  mBaseFrequency = nominalFrequencyHz;
+  mBaseOmega = TWO_PI * nominalFrequencyHz;
+  mBaseParametersSet = true;
+
+  // Non-restrictive defaults. Production examples should set explicit limits.
+  mMinimumFrequencyPu = 0.0;
+  mMaximumFrequencyPu = 2.0;
+  mMinimumVoltagePu = 0.0;
+  mMaximumVoltagePu = 2.0;
+
+  SPDLOG_LOGGER_INFO(mSLog,
+                     "GFM_Droop PU base:"
+                     "\n  S_base={} VA"
+                     "\n  V_base_LL_RMS={} V"
+                     "\n  V_base_phase_peak={} V"
+                     "\n  I_base_phase_peak={} A"
+                     "\n  Z_base={} Ohm"
+                     "\n  f_base={} Hz"
+                     "\n  omega_base={} rad/s",
+                     mBaseApparentPower, mBaseVoltageLineToLineRms,
+                     mBaseVoltagePhasePeak, mBaseCurrentPhasePeak,
+                     mBaseImpedance, mBaseFrequency, mBaseOmega);
 }
 
 void EMT::Ph3::GFM_Droop::setParameters(Real frequencyReferenceHz,
                                         Real voltageReferencePeak,
                                         Real activePowerReference,
                                         Real reactivePowerReference) {
-  if (!(frequencyReferenceHz > 0.0) || !(voltageReferencePeak >= 0.0) ||
-      !std::isfinite(frequencyReferenceHz) ||
-      !std::isfinite(voltageReferencePeak) ||
-      !std::isfinite(activePowerReference) ||
-      !std::isfinite(reactivePowerReference)) {
+  requireBaseParameters();
+
+  setParametersPerUnit(frequencyReferenceHz / mBaseFrequency,
+                       voltageReferencePeak / mBaseVoltagePhasePeak,
+                       activePowerReference / mBaseApparentPower,
+                       reactivePowerReference / mBaseApparentPower);
+}
+
+void EMT::Ph3::GFM_Droop::setParametersPerUnit(Real frequencyReferencePu,
+                                               Real voltageReferencePu,
+                                               Real activePowerReferencePu,
+                                               Real reactivePowerReferencePu) {
+  requireBaseParameters();
+
+  if (!(frequencyReferencePu > 0.0) || !(voltageReferencePu >= 0.0) ||
+      !std::isfinite(frequencyReferencePu) ||
+      !std::isfinite(voltageReferencePu) ||
+      !std::isfinite(activePowerReferencePu) ||
+      !std::isfinite(reactivePowerReferencePu)) {
     throw std::invalid_argument(
-        "GFM_Droop references must be finite; f_ref must be positive and "
-        "V_ref must be non-negative");
+        "GFM_Droop PU references must be finite; f_ref_pu must be positive "
+        "and V_ref_pu must be non-negative");
   }
 
   mParametersSet = true;
-  **mFrequencyRef = frequencyReferenceHz;
-  **mVoltageRef = voltageReferencePeak;
-  **mActivePowerRef = activePowerReference;
-  **mReactivePowerRef = reactivePowerReference;
 
-  SPDLOG_LOGGER_INFO(
-      mSLog,
-      "GFM_Droop references: f_ref={} Hz, V_ref={} V_peak, P_ref={} W, "
-      "Q_ref={} var",
-      frequencyReferenceHz, voltageReferencePeak, activePowerReference,
-      reactivePowerReference);
-}
+  **mFrequencyRefPu = frequencyReferencePu;
+  **mVoltageRefPu = voltageReferencePu;
+  **mActivePowerRefPu = activePowerReferencePu;
+  **mReactivePowerRefPu = reactivePowerReferencePu;
 
-void EMT::Ph3::GFM_Droop::setDroopParameters(Real activePowerDroop,
-                                             Real reactivePowerDroop,
-                                             Real voltageIntegralGain) {
-  if (!std::isfinite(activePowerDroop) || !std::isfinite(reactivePowerDroop) ||
-      !(voltageIntegralGain >= 0.0) || !std::isfinite(voltageIntegralGain)) {
-    throw std::invalid_argument(
-        "GFM_Droop gains must be finite and k_iv must be non-negative");
-  }
-
-  **mActivePowerDroop = activePowerDroop;
-  **mReactivePowerDroop = reactivePowerDroop;
-  **mVoltageIntegralGain = voltageIntegralGain;
+  // SI mirrors retained for compatibility.
+  **mFrequencyRef = frequencyReferencePu * mBaseFrequency;
+  **mVoltageRef = voltageReferencePu * mBaseVoltagePhasePeak;
+  **mActivePowerRef = activePowerReferencePu * mBaseApparentPower;
+  **mReactivePowerRef = reactivePowerReferencePu * mBaseApparentPower;
 
   SPDLOG_LOGGER_INFO(mSLog,
-                     "GFM_Droop gains: k_p={} Hz/W, k_q={} V/var, "
-                     "k_iv={} 1/s",
-                     activePowerDroop, reactivePowerDroop, voltageIntegralGain);
+                     "GFM_Droop PU references:"
+                     "\n  f_ref={} pu ({} Hz)"
+                     "\n  V_ref={} pu ({} V phase peak)"
+                     "\n  P_ref={} pu ({} W)"
+                     "\n  Q_ref={} pu ({} var)",
+                     **mFrequencyRefPu, **mFrequencyRef, **mVoltageRefPu,
+                     **mVoltageRef, **mActivePowerRefPu, **mActivePowerRef,
+                     **mReactivePowerRefPu, **mReactivePowerRef);
 }
 
-void EMT::Ph3::GFM_Droop::setPowerFilterTimeConstant(Real timeConstant) {
-  if (!(timeConstant >= 0.0) || !std::isfinite(timeConstant)) {
+void EMT::Ph3::GFM_Droop::setDroopParameters(
+    Real activePowerDroopHzPerW, Real reactivePowerDroopVPerVar,
+    Real voltageIntegralGainPerSecond) {
+  requireBaseParameters();
+
+  setDroopParametersPerUnit(
+      activePowerDroopHzPerW * mBaseApparentPower / mBaseFrequency,
+      reactivePowerDroopVPerVar * mBaseApparentPower / mBaseVoltagePhasePeak,
+      voltageIntegralGainPerSecond);
+}
+
+void EMT::Ph3::GFM_Droop::setDroopParametersPerUnit(
+    Real activePowerDroopPu, Real reactivePowerDroopPu,
+    Real voltageIntegralGainPerSecond) {
+  requireBaseParameters();
+
+  if (!std::isfinite(activePowerDroopPu) ||
+      !std::isfinite(reactivePowerDroopPu) ||
+      !(voltageIntegralGainPerSecond >= 0.0) ||
+      !std::isfinite(voltageIntegralGainPerSecond)) {
+    throw std::invalid_argument(
+        "GFM_Droop PU gains must be finite and k_iv must be non-negative");
+  }
+
+  **mActivePowerDroopPu = activePowerDroopPu;
+  **mReactivePowerDroopPu = reactivePowerDroopPu;
+  **mVoltageIntegralGain = voltageIntegralGainPerSecond;
+
+  // SI mirrors retained for compatibility and diagnostics.
+  **mActivePowerDroop =
+      activePowerDroopPu * mBaseFrequency / mBaseApparentPower;
+  **mReactivePowerDroop =
+      reactivePowerDroopPu * mBaseVoltagePhasePeak / mBaseApparentPower;
+
+  SPDLOG_LOGGER_INFO(mSLog,
+                     "GFM_Droop PU gains:"
+                     "\n  k_p={} pu_f/pu_P ({} Hz/W)"
+                     "\n  k_q={} pu_V/pu_Q ({} V/var)"
+                     "\n  k_iv={} 1/s",
+                     **mActivePowerDroopPu, **mActivePowerDroop,
+                     **mReactivePowerDroopPu, **mReactivePowerDroop,
+                     **mVoltageIntegralGain);
+}
+
+void EMT::Ph3::GFM_Droop::setPowerFilterTimeConstant(Real timeConstantSeconds) {
+  if (!(timeConstantSeconds >= 0.0) || !std::isfinite(timeConstantSeconds)) {
     throw std::invalid_argument(
         "GFM_Droop P/Q filter time constant must be finite and non-negative");
   }
 
-  mPowerFilterTimeConstant = timeConstant;
+  mPowerFilterTimeConstant = timeConstantSeconds;
 
-  if (timeConstant > 0.0) {
+  if (timeConstantSeconds > 0.0) {
     SPDLOG_LOGGER_INFO(
         mSLog, "GFM_Droop P/Q measurement filter: tau={} s, cutoff={} Hz",
-        timeConstant, 1.0 / (TWO_PI * timeConstant));
+        timeConstantSeconds, 1.0 / (TWO_PI * timeConstantSeconds));
   } else {
     SPDLOG_LOGGER_INFO(mSLog, "GFM_Droop P/Q measurement filter bypassed");
   }
@@ -175,21 +307,37 @@ void EMT::Ph3::GFM_Droop::setControllerLimits(Real minimumFrequencyHz,
                                               Real maximumFrequencyHz,
                                               Real minimumVoltagePeak,
                                               Real maximumVoltagePeak) {
-  if (!(minimumFrequencyHz >= 0.0) ||
-      !(maximumFrequencyHz > minimumFrequencyHz) ||
-      !(minimumVoltagePeak >= 0.0) ||
-      !(maximumVoltagePeak > minimumVoltagePeak) ||
-      !std::isfinite(minimumFrequencyHz) ||
-      !std::isfinite(maximumFrequencyHz) ||
-      !std::isfinite(minimumVoltagePeak) ||
-      !std::isfinite(maximumVoltagePeak)) {
-    throw std::invalid_argument("Invalid GFM_Droop controller limits");
+  requireBaseParameters();
+
+  setControllerLimitsPerUnit(minimumFrequencyHz / mBaseFrequency,
+                             maximumFrequencyHz / mBaseFrequency,
+                             minimumVoltagePeak / mBaseVoltagePhasePeak,
+                             maximumVoltagePeak / mBaseVoltagePhasePeak);
+}
+
+void EMT::Ph3::GFM_Droop::setControllerLimitsPerUnit(Real minimumFrequencyPu,
+                                                     Real maximumFrequencyPu,
+                                                     Real minimumVoltagePu,
+                                                     Real maximumVoltagePu) {
+  requireBaseParameters();
+
+  if (!(minimumFrequencyPu >= 0.0) ||
+      !(maximumFrequencyPu > minimumFrequencyPu) ||
+      !(minimumVoltagePu >= 0.0) || !(maximumVoltagePu > minimumVoltagePu) ||
+      !std::isfinite(minimumFrequencyPu) ||
+      !std::isfinite(maximumFrequencyPu) || !std::isfinite(minimumVoltagePu) ||
+      !std::isfinite(maximumVoltagePu)) {
+    throw std::invalid_argument("Invalid GFM_Droop PU controller limits");
   }
 
-  mMinimumFrequency = minimumFrequencyHz;
-  mMaximumFrequency = maximumFrequencyHz;
-  mMinimumVoltage = minimumVoltagePeak;
-  mMaximumVoltage = maximumVoltagePeak;
+  mMinimumFrequencyPu = minimumFrequencyPu;
+  mMaximumFrequencyPu = maximumFrequencyPu;
+  mMinimumVoltagePu = minimumVoltagePu;
+  mMaximumVoltagePu = maximumVoltagePu;
+
+  SPDLOG_LOGGER_INFO(mSLog, "GFM_Droop PU limits: f=[{}, {}] pu, V=[{}, {}] pu",
+                     mMinimumFrequencyPu, mMaximumFrequencyPu,
+                     mMinimumVoltagePu, mMaximumVoltagePu);
 }
 
 void EMT::Ph3::GFM_Droop::setTransformerParameters(
@@ -206,10 +354,14 @@ void EMT::Ph3::GFM_Droop::setTransformerParameters(
         CPS::Math::singlePhaseParameterToThreePhase(mTransformerResistance),
         CPS::Math::singlePhaseParameterToThreePhase(mTransformerInductance));
   }
+
+  (void)omega;
 }
 
 void EMT::Ph3::GFM_Droop::setFilterParameters(Real Lf, Real Cf, Real Rf,
                                               Real Rd) {
+  requireBaseParameters();
+
   if (!(Lf > 0.0) || !(Cf > 0.0) || !(Rf >= 0.0) || !(Rd > 0.0) ||
       !std::isfinite(Lf) || !std::isfinite(Cf) || !std::isfinite(Rf) ||
       !std::isfinite(Rd)) {
@@ -217,10 +369,13 @@ void EMT::Ph3::GFM_Droop::setFilterParameters(Real Lf, Real Cf, Real Rf,
         "GFM_Droop filter requires Lf>0, Cf>0, Rf>=0, and Rd>0");
   }
 
-  // The base class still stores an Rc field for other VSI implementations.
-  // This topology has no resistor in the main path after Lf.
   Base::AvVoltageSourceInverterDQ::setFilterParameters(Lf, Cf, Rf, 0.0);
   mCapacitorDampingResistance = Rd;
+
+  mFilterInductiveReactancePu = mBaseOmega * mLf / mBaseImpedance;
+  mFilterCapacitiveSusceptancePu = mBaseOmega * mCf * mBaseImpedance;
+  mFilterResistancePu = mRf / mBaseImpedance;
+  mCapacitorDampingResistancePu = mCapacitorDampingResistance / mBaseImpedance;
 
   mSubResistorF->setParameters(
       CPS::Math::singlePhaseParameterToThreePhase(mRf));
@@ -231,20 +386,47 @@ void EMT::Ph3::GFM_Droop::setFilterParameters(Real Lf, Real Cf, Real Rf,
   mSubCapacitorF->setParameters(
       CPS::Math::singlePhaseParameterToThreePhase(mCf));
 
-  SPDLOG_LOGGER_INFO(
-      mSLog,
-      "GFM_Droop electrical filter: Lf={} H, Cf={} F, Rf={} Ohm, "
-      "Rd={} Ohm; Rd is in series with Cf",
-      mLf, mCf, mRf, mCapacitorDampingResistance);
+  SPDLOG_LOGGER_INFO(mSLog,
+                     "GFM_Droop electrical filter:"
+                     "\n  X_Lf={} pu, B_Cf={} pu, Rf={} pu, Rd={} pu"
+                     "\n  Lf={} H, Cf={} F, Rf={} Ohm, Rd={} Ohm",
+                     mFilterInductiveReactancePu,
+                     mFilterCapacitiveSusceptancePu, mFilterResistancePu,
+                     mCapacitorDampingResistancePu, mLf, mCf, mRf,
+                     mCapacitorDampingResistance);
+}
+
+void EMT::Ph3::GFM_Droop::setFilterParametersPerUnit(Real xLfPu, Real bCfPu,
+                                                     Real rRfPu, Real rRdPu) {
+  requireBaseParameters();
+
+  if (!(xLfPu > 0.0) || !(bCfPu > 0.0) || !(rRfPu >= 0.0) || !(rRdPu > 0.0) ||
+      !std::isfinite(xLfPu) || !std::isfinite(bCfPu) || !std::isfinite(rRfPu) ||
+      !std::isfinite(rRdPu)) {
+    throw std::invalid_argument(
+        "GFM_Droop PU filter requires X_Lf>0, B_Cf>0, Rf>=0, and Rd>0");
+  }
+
+  const Real Lf = xLfPu * mBaseImpedance / mBaseOmega;
+  const Real Cf = bCfPu / (mBaseOmega * mBaseImpedance);
+  const Real Rf = rRfPu * mBaseImpedance;
+  const Real Rd = rRdPu * mBaseImpedance;
+
+  setFilterParameters(Lf, Cf, Rf, Rd);
 }
 
 void EMT::Ph3::GFM_Droop::initializeParentFromNodesAndTerminals(
     Real frequency) {
+  requireBaseParameters();
+
+  if (!mParametersSet) {
+    throw std::runtime_error(
+        "GFM_Droop references must be configured before initialization");
+  }
+
   MatrixComp intfVoltageComplex = MatrixComp::Zero(3, 1);
   MatrixComp intfCurrentComplex = MatrixComp::Zero(3, 1);
 
-  // terminal(0)->singlePower() is used consistently with the existing VSI
-  // initialization. The computed controller powers below are generator-positive.
   const Real activePower = terminal(0)->singlePower().real();
   const Real reactivePower = terminal(0)->singlePower().imag();
 
@@ -253,7 +435,7 @@ void EMT::Ph3::GFM_Droop::initializeParentFromNodesAndTerminals(
   intfVoltageComplex(2, 0) = intfVoltageComplex(0, 0) * SHIFT_TO_PHASE_C;
 
   intfCurrentComplex(0, 0) =
-      -std::conj(2.0 / 3.0 * Complex(activePower, reactivePower) /
+      -std::conj(TWO_OVER_THREE * Complex(activePower, reactivePower) /
                  intfVoltageComplex(0, 0));
   intfCurrentComplex(1, 0) = intfCurrentComplex(0, 0) * SHIFT_TO_PHASE_B;
   intfCurrentComplex(2, 0) = intfCurrentComplex(0, 0) * SHIFT_TO_PHASE_C;
@@ -282,17 +464,14 @@ void EMT::Ph3::GFM_Droop::initializeParentFromNodesAndTerminals(
 
   const Real omegaInit = TWO_PI * frequency;
 
-  // Passive damping branch at the filter interface:
-  //
-  //   filter/PCC node -- Rd -- capacitor node -- Cf -- GND
-  //
-  // dampingBranchCurrentInit is defined from the filter/PCC node to ground.
+  // filter/PCC -- Rd -- capacitor node -- Cf -- GND
   const Complex capacitorImpedance(0.0, -1.0 / (omegaInit * mCf));
-  const Complex dampingBranchImpedance(mCapacitorDampingResistance, 0.0);
-  const Complex branchImpedance = dampingBranchImpedance + capacitorImpedance;
+  const Complex branchImpedance(mCapacitorDampingResistance,
+                                capacitorImpedance.imag());
 
   MatrixComp dampingBranchCurrentInit = MatrixComp::Zero(3, 1);
   MatrixComp capacitorVoltageInit = MatrixComp::Zero(3, 1);
+
   for (UInt phase = 0; phase < 3; ++phase) {
     dampingBranchCurrentInit(phase, 0) =
         filterInterfaceInitialVoltage(phase, 0) / branchImpedance;
@@ -300,18 +479,18 @@ void EMT::Ph3::GFM_Droop::initializeParentFromNodesAndTerminals(
         dampingBranchCurrentInit(phase, 0) * capacitorImpedance;
   }
 
-  // The inductor interface current is positive from the filter/PCC node back
-  // towards the controlled source. KCL therefore gives:
-  //
-  //   i_L = i_intf - i_RdCf,out
+  // Current orientation retained from the working SI class.
   const MatrixComp inductorCurrentInit =
       filterInterfaceInitialCurrent - dampingBranchCurrentInit;
+
   const MatrixComp vfInit = filterInterfaceInitialVoltage -
                             inductorCurrentInit * Complex(0.0, omegaInit * mLf);
+
   const MatrixComp vsInit = vfInit - inductorCurrentInit * mRf;
 
   mVirtualNodes[0]->setInitialVoltage(PEAK1PH_TO_RMS3PH * vsInit);
   mVirtualNodes[1]->setInitialVoltage(PEAK1PH_TO_RMS3PH * vfInit);
+
   if (mWithConnectionTransformer) {
     mVirtualNodes[2]->setInitialVoltage(PEAK1PH_TO_RMS3PH *
                                         filterInterfaceInitialVoltage);
@@ -324,22 +503,19 @@ void EMT::Ph3::GFM_Droop::initializeParentFromNodesAndTerminals(
 
   **mIntfVoltage = intfVoltageComplex.real();
   **mIntfCurrent = intfCurrentComplex.real();
-  // The DPsim interface current is consumer-positive. The droop control
-  // uses generator-positive current flowing from the GFM into the grid.
   **mPccCurrent = -intfCurrentComplex.real();
+  **mPccCurrentPu = **mPccCurrent / mBaseCurrentPhasePeak;
 
-  **mElecActivePower =
-      (1.5 * intfVoltageComplex(0, 0) * std::conj(-intfCurrentComplex(0, 0)))
-          .real();
-  **mElecReactivePower =
-      (1.5 * intfVoltageComplex(0, 0) * std::conj(-intfCurrentComplex(0, 0)))
-          .imag();
+  const Complex initialPower =
+      1.5 * intfVoltageComplex(0, 0) * std::conj(-intfCurrentComplex(0, 0));
 
-  // Bumpless initialization of the measurement filters.
-  **mFilteredActivePower = **mElecActivePower;
-  **mFilteredReactivePower = **mElecReactivePower;
+  **mElecActivePowerPu = initialPower.real() / mBaseApparentPower;
+  **mElecReactivePowerPu = initialPower.imag() / mBaseApparentPower;
+  **mFilteredActivePowerPu = **mElecActivePowerPu;
+  **mFilteredReactivePowerPu = **mElecReactivePowerPu;
 
-  **mVoltageMagnitude = std::abs(intfVoltageComplex(0, 0));
+  **mVoltageMagnitudePu =
+      std::abs(intfVoltageComplex(0, 0)) / mBaseVoltagePhasePeak;
 
   mSubCtrledVoltageSource->setParameters(mVirtualNodes[0]->initialVoltage(),
                                          0.0);
@@ -352,7 +528,6 @@ void EMT::Ph3::GFM_Droop::initializeParentFromNodesAndTerminals(
     mSubResistorD->connect({mVirtualNodes[2], mVirtualNodes[3]});
     mSubCapacitorF->connect({mVirtualNodes[3], SimNode::GND});
   } else {
-    // The Lf/Rd node is the external PCC. The capacitor itself is behind Rd.
     mSubInductorF->connect({mVirtualNodes[1], mTerminals[0]->node()});
     mSubResistorD->connect({mTerminals[0]->node(), mVirtualNodes[2]});
     mSubCapacitorF->connect({mVirtualNodes[2], SimNode::GND});
@@ -363,138 +538,183 @@ void EMT::Ph3::GFM_Droop::initializeParentFromNodesAndTerminals(
     subcomp->initializeFromNodesAndTerminals(frequency);
   }
 
-  // Bumpless initialization: V1 starts at the source-side PF voltage. The
-  // droop frequency starts from the filtered PF power.
+  // Bumpless PU controller initialization.
   **mTheta = std::arg(vsInit(0, 0));
-  **mFrequency = clampFinite(
-      **mFrequencyRef +
-          **mActivePowerDroop * (**mActivePowerRef - **mFilteredActivePower),
-      mMinimumFrequency, mMaximumFrequency, **mFrequencyRef);
-  **mOmega = TWO_PI * **mFrequency;
-  mPreviousOmega = **mOmega;
 
-  **mVoltageDroopOutput =
-      **mVoltageRef +
-      **mReactivePowerDroop * (**mReactivePowerRef - **mFilteredReactivePower);
-  mPreviousVoltageError = **mVoltageDroopOutput - **mVoltageMagnitude;
+  **mFrequencyPu = clampFinite(
+      **mFrequencyRefPu + **mActivePowerDroopPu *
+                              (**mActivePowerRefPu - **mFilteredActivePowerPu),
+      mMinimumFrequencyPu, mMaximumFrequencyPu, **mFrequencyRefPu);
 
-  **mVoltageCommand = std::abs(vsInit(0, 0));
-  **mVoltageIntegralState = **mVoltageCommand - **mVoltageDroopOutput;
+  **mOmegaPu = **mFrequencyPu;
+  mPreviousOmegaPu = **mOmegaPu;
 
-  **mVsref = vsInit.real();
+  **mVoltageDroopOutputPu =
+      **mVoltageRefPu + **mReactivePowerDroopPu * (**mReactivePowerRefPu -
+                                                   **mFilteredReactivePowerPu);
+
+  mPreviousVoltageErrorPu = **mVoltageDroopOutputPu - **mVoltageMagnitudePu;
+
+  **mVoltageCommandPu = std::abs(vsInit(0, 0)) / mBaseVoltagePhasePeak;
+
+  **mVoltageIntegralStatePu = **mVoltageCommandPu - **mVoltageDroopOutputPu;
+
+  **mVsrefPu = vsInit.real() / mBaseVoltagePhasePeak;
+
+  updatePhysicalMirrors();
+  **mVsref = **mVsrefPu * mBaseVoltagePhasePeak;
+
   mControlStateInitialized = true;
 
-  SPDLOG_LOGGER_INFO(
-      mSLog,
-      "GFM_Droop PF initialization: P={} W, Q={} var, P_f={} W, Q_f={} "
-      "var, V={} V_peak, f={} Hz, theta={} rad, source amplitude={} V_peak",
-      **mElecActivePower, **mElecReactivePower, **mFilteredActivePower,
-      **mFilteredReactivePower, **mVoltageMagnitude, **mFrequency, **mTheta,
-      **mVoltageCommand);
+  SPDLOG_LOGGER_INFO(mSLog,
+                     "GFM_Droop PU PF initialization:"
+                     "\n  P={} pu ({} W)"
+                     "\n  Q={} pu ({} var)"
+                     "\n  V={} pu ({} V phase peak)"
+                     "\n  f={} pu ({} Hz)"
+                     "\n  theta={} rad"
+                     "\n  source amplitude={} pu ({} V phase peak)",
+                     **mElecActivePowerPu, **mElecActivePower,
+                     **mElecReactivePowerPu, **mElecReactivePower,
+                     **mVoltageMagnitudePu, **mVoltageMagnitude, **mFrequencyPu,
+                     **mFrequency, **mTheta, **mVoltageCommandPu,
+                     **mVoltageCommand);
 }
 
 void EMT::Ph3::GFM_Droop::mnaParentInitialize(
     Real omega, Real timeStep, Attribute<Matrix>::Ptr leftVector) {
+  requireBaseParameters();
+
   if (!(timeStep > 0.0) || !std::isfinite(timeStep))
     throw std::invalid_argument("GFM_Droop requires a positive time step");
 
   mTimeStep = timeStep;
 
-  // Exact discretization for a first-order filter with held input.
   mPowerFilterAlpha =
       mPowerFilterTimeConstant > 0.0
           ? 1.0 - std::exp(-mTimeStep / mPowerFilterTimeConstant)
           : 1.0;
 
+  const Real relativeOmegaDifference =
+      std::abs(omega - mBaseOmega) / std::max<Real>(mBaseOmega, 1.0);
+
+  if (relativeOmegaDifference > 1e-6) {
+    SPDLOG_LOGGER_WARN(mSLog,
+                       "Simulation omega={} rad/s differs from configured PU "
+                       "omega_base={} rad/s",
+                       omega, mBaseOmega);
+  }
+
   SPDLOG_LOGGER_INFO(
-      mSLog, "GFM_Droop discrete P/Q filter: dt={} s, tau={} s, alpha={}",
+      mSLog, "GFM_Droop discrete PU P/Q filter: dt={} s, tau={} s, alpha={}",
       mTimeStep, mPowerFilterTimeConstant, mPowerFilterAlpha);
+
+  (void)leftVector;
 }
 
 void EMT::Ph3::GFM_Droop::updateMeasurements() {
-  // Measurement point: external GFM terminal (PCC).
-  //
-  // mIntfVoltage is the PCC phase voltage. mIntfCurrent follows DPsim's
-  // component-consumer convention and is positive from the PCC into the GFM.
-  // The droop equations use generator-positive current from the GFM into the
-  // connected grid, hence i_pcc = -mIntfCurrent.
-  const Matrix &vPcc = **mIntfVoltage;
-  Matrix &iPcc = **mPccCurrent;
-  const Matrix &iInterface = **mIntfCurrent;
+  const Matrix &vPccSi = **mIntfVoltage;
+  const Matrix &iInterfaceSi = **mIntfCurrent;
+  Matrix &iPccSi = **mPccCurrent;
+  Matrix &iPccPu = **mPccCurrentPu;
 
-  iPcc(0, 0) = -iInterface(0, 0);
-  iPcc(1, 0) = -iInterface(1, 0);
-  iPcc(2, 0) = -iInterface(2, 0);
+  for (UInt phase = 0; phase < 3; ++phase) {
+    iPccSi(phase, 0) = -iInterfaceSi(phase, 0);
+    iPccPu(phase, 0) = iPccSi(phase, 0) / mBaseCurrentPhasePeak;
+  }
 
-  // Power-invariant Clarke quantities. No temporary dq matrices are allocated.
-  const Real vAlpha =
-      SQRT_TWO_OVER_THREE * (vPcc(0, 0) - 0.5 * vPcc(1, 0) - 0.5 * vPcc(2, 0));
-  const Real vBeta =
-      SQRT_TWO_OVER_THREE * SQRT_THREE_OVER_TWO * (vPcc(1, 0) - vPcc(2, 0));
-  const Real iAlpha =
-      SQRT_TWO_OVER_THREE * (iPcc(0, 0) - 0.5 * iPcc(1, 0) - 0.5 * iPcc(2, 0));
-  const Real iBeta =
-      SQRT_TWO_OVER_THREE * SQRT_THREE_OVER_TWO * (iPcc(1, 0) - iPcc(2, 0));
+  const Real vaPu = vPccSi(0, 0) / mBaseVoltagePhasePeak;
+  const Real vbPu = vPccSi(1, 0) / mBaseVoltagePhasePeak;
+  const Real vcPu = vPccSi(2, 0) / mBaseVoltagePhasePeak;
 
-  // Generator-positive three-phase instantaneous power at the PCC.
-  **mElecActivePower = vAlpha * iAlpha + vBeta * iBeta;
-  **mElecReactivePower = vBeta * iAlpha - vAlpha * iBeta;
+  const Real iaPu = iPccPu(0, 0);
+  const Real ibPu = iPccPu(1, 0);
+  const Real icPu = iPccPu(2, 0);
 
-  // For a balanced sinusoidal three-phase voltage this evaluates directly to
-  // the phase-to-neutral peak amplitude.
-  const Real voltageSquared =
-      (2.0 / 3.0) * (vPcc(0, 0) * vPcc(0, 0) + vPcc(1, 0) * vPcc(1, 0) +
-                     vPcc(2, 0) * vPcc(2, 0));
-  **mVoltageMagnitude = std::sqrt(std::max<Real>(0.0, voltageSquared));
+  const Real vAlphaPu = SQRT_TWO_OVER_THREE * (vaPu - 0.5 * vbPu - 0.5 * vcPu);
+  const Real vBetaPu =
+      SQRT_TWO_OVER_THREE * SQRT_THREE_OVER_TWO * (vbPu - vcPu);
+
+  const Real iAlphaPu = SQRT_TWO_OVER_THREE * (iaPu - 0.5 * ibPu - 0.5 * icPu);
+  const Real iBetaPu =
+      SQRT_TWO_OVER_THREE * SQRT_THREE_OVER_TWO * (ibPu - icPu);
+
+  // Because V_base_peak * I_base_peak = 2/3*S_base, the factor 2/3
+  // converts the power-invariant Clarke product to the three-phase PU base.
+  **mElecActivePowerPu =
+      TWO_OVER_THREE * (vAlphaPu * iAlphaPu + vBetaPu * iBetaPu);
+
+  **mElecReactivePowerPu =
+      TWO_OVER_THREE * (vBetaPu * iAlphaPu - vAlphaPu * iBetaPu);
+
+  const Real voltageSquaredPu =
+      TWO_OVER_THREE * (vaPu * vaPu + vbPu * vbPu + vcPu * vcPu);
+
+  **mVoltageMagnitudePu = std::sqrt(std::max<Real>(0.0, voltageSquaredPu));
+
+  updatePhysicalMirrors();
 }
 
 void EMT::Ph3::GFM_Droop::updatePowerMeasurementFilter(Int timeStepCount) {
-  if (timeStepCount <= 0)
-    return;
+  if (timeStepCount > 0) {
+    **mFilteredActivePowerPu +=
+        mPowerFilterAlpha * (**mElecActivePowerPu - **mFilteredActivePowerPu);
 
-  **mFilteredActivePower +=
-      mPowerFilterAlpha * (**mElecActivePower - **mFilteredActivePower);
-  **mFilteredReactivePower +=
-      mPowerFilterAlpha * (**mElecReactivePower - **mFilteredReactivePower);
+    **mFilteredReactivePowerPu +=
+        mPowerFilterAlpha *
+        (**mElecReactivePowerPu - **mFilteredReactivePowerPu);
+  }
+
+  **mFilteredActivePower = **mFilteredActivePowerPu * mBaseApparentPower;
+
+  **mFilteredReactivePower = **mFilteredReactivePowerPu * mBaseApparentPower;
 }
 
 void EMT::Ph3::GFM_Droop::updateController(Int timeStepCount) {
   updateMeasurements();
   updatePowerMeasurementFilter(timeStepCount);
 
-  const Real frequencyUnclamped =
-      **mFrequencyRef +
-      **mActivePowerDroop * (**mActivePowerRef - **mFilteredActivePower);
-  **mFrequency = clampFinite(frequencyUnclamped, mMinimumFrequency,
-                             mMaximumFrequency, **mFrequencyRef);
-  **mOmega = TWO_PI * **mFrequency;
+  const Real frequencyUnclampedPu =
+      **mFrequencyRefPu +
+      **mActivePowerDroopPu * (**mActivePowerRefPu - **mFilteredActivePowerPu);
+
+  **mFrequencyPu = clampFinite(frequencyUnclampedPu, mMinimumFrequencyPu,
+                               mMaximumFrequencyPu, **mFrequencyRefPu);
+
+  **mOmegaPu = **mFrequencyPu;
+
+  // theta_dot = omega_base * omega_pu.
+  // The first scheduled solve is at t=dt with timeStepCount==0.
+  **mTheta += 0.5 * mTimeStep * mBaseOmega * (mPreviousOmegaPu + **mOmegaPu);
+
+  **mTheta = std::remainder(**mTheta, TWO_PI);
+
+  **mVoltageDroopOutputPu =
+      **mVoltageRefPu + **mReactivePowerDroopPu * (**mReactivePowerRefPu -
+                                                   **mFilteredReactivePowerPu);
+
+  const Real voltageErrorPu = **mVoltageDroopOutputPu - **mVoltageMagnitudePu;
 
   if (timeStepCount > 0) {
-    **mTheta += 0.5 * mTimeStep * (mPreviousOmega + **mOmega);
-    **mTheta = std::remainder(**mTheta, TWO_PI);
+    **mVoltageIntegralStatePu += 0.5 * mTimeStep * **mVoltageIntegralGain *
+                                 (mPreviousVoltageErrorPu + voltageErrorPu);
   }
 
-  **mVoltageDroopOutput =
-      **mVoltageRef +
-      **mReactivePowerDroop * (**mReactivePowerRef - **mFilteredReactivePower);
+  const Real voltageUnclampedPu =
+      **mVoltageDroopOutputPu + **mVoltageIntegralStatePu;
 
-  const Real voltageError = **mVoltageDroopOutput - **mVoltageMagnitude;
+  **mVoltageCommandPu = clampFinite(voltageUnclampedPu, mMinimumVoltagePu,
+                                    mMaximumVoltagePu, **mVoltageRefPu);
 
-  if (timeStepCount > 0) {
-    **mVoltageIntegralState += 0.5 * mTimeStep * **mVoltageIntegralGain *
-                               (mPreviousVoltageError + voltageError);
+  // Back-calculation anti-windup in PU.
+  if (**mVoltageCommandPu != voltageUnclampedPu) {
+    **mVoltageIntegralStatePu = **mVoltageCommandPu - **mVoltageDroopOutputPu;
   }
 
-  const Real voltageUnclamped = **mVoltageDroopOutput + **mVoltageIntegralState;
-  **mVoltageCommand = clampFinite(voltageUnclamped, mMinimumVoltage,
-                                  mMaximumVoltage, **mVoltageRef);
+  mPreviousOmegaPu = **mOmegaPu;
+  mPreviousVoltageErrorPu = voltageErrorPu;
 
-  // Back-calculation anti-windup without an additional tuning parameter.
-  if (**mVoltageCommand != voltageUnclamped)
-    **mVoltageIntegralState = **mVoltageCommand - **mVoltageDroopOutput;
-
-  mPreviousOmega = **mOmega;
-  mPreviousVoltageError = voltageError;
+  updatePhysicalMirrors();
   writeVoltageReference();
 }
 
@@ -502,31 +722,58 @@ void EMT::Ph3::GFM_Droop::updateOpenLoop(Int timeStepCount) {
   updateMeasurements();
   updatePowerMeasurementFilter(timeStepCount);
 
-  **mFrequency = clampFinite(**mFrequencyRef, mMinimumFrequency,
-                             mMaximumFrequency, **mFrequencyRef);
-  **mOmega = TWO_PI * **mFrequency;
+  **mFrequencyPu = clampFinite(**mFrequencyRefPu, mMinimumFrequencyPu,
+                               mMaximumFrequencyPu, **mFrequencyRefPu);
 
-  if (timeStepCount > 0) {
-    **mTheta += 0.5 * mTimeStep * (mPreviousOmega + **mOmega);
-    **mTheta = std::remainder(**mTheta, TWO_PI);
-  }
+  **mOmegaPu = **mFrequencyPu;
 
-  **mVoltageDroopOutput = **mVoltageRef;
-  **mVoltageIntegralState = 0.0;
-  **mVoltageCommand = clampFinite(**mVoltageRef, mMinimumVoltage,
-                                  mMaximumVoltage, **mVoltageRef);
-  mPreviousOmega = **mOmega;
+  **mTheta += 0.5 * mTimeStep * mBaseOmega * (mPreviousOmegaPu + **mOmegaPu);
+
+  **mTheta = std::remainder(**mTheta, TWO_PI);
+
+  // Hold the PF-derived source-side amplitude in PU.
+  **mVoltageCommandPu = clampFinite(**mVoltageCommandPu, mMinimumVoltagePu,
+                                    mMaximumVoltagePu, **mVoltageRefPu);
+
+  **mVoltageDroopOutputPu = **mVoltageCommandPu;
+
+  **mVoltageIntegralStatePu = 0.0;
+
+  mPreviousOmegaPu = **mOmegaPu;
+
+  updatePhysicalMirrors();
   writeVoltageReference();
+}
+
+void EMT::Ph3::GFM_Droop::updatePhysicalMirrors() {
+  **mElecActivePower = **mElecActivePowerPu * mBaseApparentPower;
+  **mElecReactivePower = **mElecReactivePowerPu * mBaseApparentPower;
+
+  **mFilteredActivePower = **mFilteredActivePowerPu * mBaseApparentPower;
+  **mFilteredReactivePower = **mFilteredReactivePowerPu * mBaseApparentPower;
+
+  **mVoltageMagnitude = **mVoltageMagnitudePu * mBaseVoltagePhasePeak;
+
+  **mFrequency = **mFrequencyPu * mBaseFrequency;
+  **mOmega = **mOmegaPu * mBaseOmega;
+
+  **mVoltageDroopOutput = **mVoltageDroopOutputPu * mBaseVoltagePhasePeak;
+  **mVoltageIntegralState = **mVoltageIntegralStatePu * mBaseVoltagePhasePeak;
+  **mVoltageCommand = **mVoltageCommandPu * mBaseVoltagePhasePeak;
 }
 
 void EMT::Ph3::GFM_Droop::writeVoltageReference() {
   const Real theta = **mTheta;
-  const Real amplitude = **mVoltageCommand;
-  Matrix &reference = **mVsref;
+  const Real amplitudePu = **mVoltageCommandPu;
 
-  reference(0, 0) = amplitude * std::cos(theta);
-  reference(1, 0) = amplitude * std::cos(theta - TWO_PI_OVER_THREE);
-  reference(2, 0) = amplitude * std::cos(theta + TWO_PI_OVER_THREE);
+  Matrix &referencePu = **mVsrefPu;
+  Matrix &referenceSi = **mVsref;
+
+  referencePu(0, 0) = amplitudePu * std::cos(theta);
+  referencePu(1, 0) = amplitudePu * std::cos(theta - TWO_PI_OVER_THREE);
+  referencePu(2, 0) = amplitudePu * std::cos(theta + TWO_PI_OVER_THREE);
+
+  referenceSi = referencePu * mBaseVoltagePhasePeak;
 }
 
 void EMT::Ph3::GFM_Droop::mnaParentAddPreStepDependencies(
@@ -536,14 +783,31 @@ void EMT::Ph3::GFM_Droop::mnaParentAddPreStepDependencies(
   prevStepDependencies.push_back(mIntfVoltage);
   prevStepDependencies.push_back(mIntfCurrent);
 
-  attributeDependencies.push_back(mActivePowerRef);
-  attributeDependencies.push_back(mReactivePowerRef);
-  attributeDependencies.push_back(mFrequencyRef);
-  attributeDependencies.push_back(mVoltageRef);
-  attributeDependencies.push_back(mActivePowerDroop);
-  attributeDependencies.push_back(mReactivePowerDroop);
+  // Canonical controller inputs.
+  attributeDependencies.push_back(mActivePowerRefPu);
+  attributeDependencies.push_back(mReactivePowerRefPu);
+  attributeDependencies.push_back(mFrequencyRefPu);
+  attributeDependencies.push_back(mVoltageRefPu);
+  attributeDependencies.push_back(mActivePowerDroopPu);
+  attributeDependencies.push_back(mReactivePowerDroopPu);
   attributeDependencies.push_back(mVoltageIntegralGain);
 
+  // PU outputs and states.
+  modifiedAttributes.push_back(mPccCurrentPu);
+  modifiedAttributes.push_back(mElecActivePowerPu);
+  modifiedAttributes.push_back(mElecReactivePowerPu);
+  modifiedAttributes.push_back(mFilteredActivePowerPu);
+  modifiedAttributes.push_back(mFilteredReactivePowerPu);
+  modifiedAttributes.push_back(mVoltageMagnitudePu);
+  modifiedAttributes.push_back(mFrequencyPu);
+  modifiedAttributes.push_back(mOmegaPu);
+  modifiedAttributes.push_back(mTheta);
+  modifiedAttributes.push_back(mVoltageDroopOutputPu);
+  modifiedAttributes.push_back(mVoltageIntegralStatePu);
+  modifiedAttributes.push_back(mVoltageCommandPu);
+  modifiedAttributes.push_back(mVsrefPu);
+
+  // Existing SI mirrors.
   modifiedAttributes.push_back(mPccCurrent);
   modifiedAttributes.push_back(mElecActivePower);
   modifiedAttributes.push_back(mElecReactivePower);
@@ -552,18 +816,19 @@ void EMT::Ph3::GFM_Droop::mnaParentAddPreStepDependencies(
   modifiedAttributes.push_back(mVoltageMagnitude);
   modifiedAttributes.push_back(mFrequency);
   modifiedAttributes.push_back(mOmega);
-  modifiedAttributes.push_back(mTheta);
   modifiedAttributes.push_back(mVoltageDroopOutput);
   modifiedAttributes.push_back(mVoltageIntegralState);
   modifiedAttributes.push_back(mVoltageCommand);
   modifiedAttributes.push_back(mVsref);
+
   modifiedAttributes.push_back(mRightVector);
 }
 
 void EMT::Ph3::GFM_Droop::mnaParentPreStep(Real time, Int timeStepCount) {
   if (!mControlStateInitialized) {
     throw std::runtime_error(
-        "GFM_Droop control state was not initialized from power-flow data");
+        "GFM_Droop PU control state was not initialized from power-flow "
+        "data");
   }
 
   if (mWithControl)
@@ -572,6 +837,7 @@ void EMT::Ph3::GFM_Droop::mnaParentPreStep(Real time, Int timeStepCount) {
     updateOpenLoop(timeStepCount);
 
   mSubCtrledVoltageSource->mVoltageRef->set(PEAK1PH_TO_RMS3PH * **mVsref);
+
   std::dynamic_pointer_cast<MNAInterface>(mSubCtrledVoltageSource)
       ->mnaPreStep(time, timeStepCount);
 
@@ -586,32 +852,30 @@ void EMT::Ph3::GFM_Droop::mnaParentAddPostStepDependencies(
   attributeDependencies.push_back(leftVector);
   modifiedAttributes.push_back(mIntfVoltage);
   modifiedAttributes.push_back(mIntfCurrent);
+
+  (void)prevStepDependencies;
 }
 
 void EMT::Ph3::GFM_Droop::mnaParentPostStep(
     Real time, Int timeStepCount, Attribute<Matrix>::Ptr &leftVector) {
   mnaCompUpdateCurrent(**leftVector);
   mnaCompUpdateVoltage(**leftVector);
+
+  (void)time;
+  (void)timeStepCount;
 }
 
 void EMT::Ph3::GFM_Droop::mnaCompUpdateCurrent(const Matrix &leftVector) {
-  // Keep mIntfCurrent in DPsim's consumer-positive convention.
   if (mWithConnectionTransformer) {
     **mIntfCurrent = mConnectionTransformer->mIntfCurrent->get();
   } else {
-    // Lf is connected as {filter series node, PCC}, so its interface current
-    // is positive from the PCC back into the series filter.
-    //
-    // Rd is connected as {PCC, capacitor node}; its interface current is
-    // positive from the capacitor node towards the PCC. Subtracting it adds
-    // the physical current flowing from the PCC into the Rd-Cf branch.
-    //
-    // Hence the total consumer-positive current entering the complete GFM is
-    //
-    //   i_intf = i_L - i_Rd.
+    // Consumer-positive current entering the complete GFM:
+    // i_intf = i_L - i_Rd.
     **mIntfCurrent =
         mSubInductorF->mIntfCurrent->get() - mSubResistorD->mIntfCurrent->get();
   }
+
+  (void)leftVector;
 }
 
 void EMT::Ph3::GFM_Droop::mnaCompUpdateVoltage(const Matrix &leftVector) {

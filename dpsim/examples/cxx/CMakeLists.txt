@@ -144,6 +144,9 @@ set(INVERTER_SOURCES
 	Components/DP_Inverter_Grid_Sequential_FreqSplit.cpp
 	Components/EMT_Ph3_GFM_Test.cpp
 	Components/EMT_GFM_Droop_LoadStep.cpp
+	Circuits/EMT_Two_GFM_Breaker.cpp
+	Circuits/EMT_GFM_Droop_SynchronGeneratorVBR_Breaker.cpp
+	Circuits/EMT_Two_GFM_Droop_Breaker_SI_PU_Comparison.cpp
 )
 
 set(SSN_SOURCES

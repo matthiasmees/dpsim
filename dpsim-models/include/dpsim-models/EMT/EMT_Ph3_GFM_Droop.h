@@ -1,10 +1,7 @@
-// SPDX-FileCopyrightText: 2026 Institute for Automation of Complex Power Systems, EONERC, RWTH Aachen University
+// SPDX-FileCopyrightText: 2026 Institute for Automation of Complex Power Systems,
+// EONERC, RWTH Aachen University
 // SPDX-License-Identifier: MPL-2.0
-// PCC-filter revision 2026-07-30:
-// The former main-path coupling resistor Rc has been removed.
-// A passive damping resistor Rd is connected in series with the shunt
-// capacitor Cf at the filter/PCC node.
-// P/Q use the generator-positive PCC current i_pcc = -i_intf.
+
 #pragma once
 
 #include <dpsim-models/Base/Base_AvVoltageSourceInverterDQ.h>
@@ -17,179 +14,135 @@
 #include <dpsim-models/EMT/EMT_Ph3_VoltageSource.h>
 #include <dpsim-models/Solver/MNAInterface.h>
 
-#include <memory>
-
 namespace CPS {
 namespace EMT {
 namespace Ph3 {
 
-/// Three-phase grid-forming inverter with P-f and Q-V droop control.
+/// Grid-forming voltage source with filtered P-f and Q-V droop control.
 ///
-/// Generator-positive control equations:
+/// The electrical MNA subcomponents continue to operate in SI units. All
+/// controller measurements, references, droop equations, limits, controller
+/// states, and commands are evaluated internally in per unit.
 ///
-///   tau_pq * dP_f/dt = P - P_f
-///   tau_pq * dQ_f/dt = Q - Q_f
-///   f                  = f_ref + k_p (P_ref - P_f)
-///   V_0                = V_ref + k_q (Q_ref - Q_f)
-///   d xi_v / dt        = k_iv (V_0 - V)
-///   V_1                = V_0 + xi_v
-///   d theta / dt       = 2 pi f
+/// Existing SI setter names are retained. They convert their arguments to the
+/// configured per-unit base. Explicit ...PerUnit() setters are provided for
+/// scale-independent controller design.
 ///
-/// The commanded phase voltages are
-///
-///   v_a = V_1 cos(theta)
-///   v_b = V_1 cos(theta - 2 pi / 3)
-///   v_c = V_1 cos(theta + 2 pi / 3).
-///
-/// V_ref, V_0, V_1, and V are phase-to-neutral peak quantities.
-/// P and Q are measured at the external GFM terminal (PCC), using the
-/// terminal voltage and generator-positive current flowing into the grid.
-///
-/// The physical output filter is
-///
-///   source -- Rf -- Lf -- filter/PCC node
-///                              |
-///                              Rd
-///                              |
-///                              Cf
-///                              |
-///                             GND
-///
-/// There is no main-path coupling resistor Rc. Rd is a passive damping
-/// resistor in series with the shunt capacitor branch. The additional
-/// first-order P/Q filter is a measurement filter for the droop controller and
-/// prevents instantaneous EMT power ripple from appearing directly in the
-/// generated frequency and voltage amplitude.
-class GFM_Droop : public Base::AvVoltageSourceInverterDQ,
-                  public CompositePowerComp<Real>,
+/// Base definitions:
+///   S_base       : total three-phase apparent power [VA]
+///   V_base_LL    : line-to-line RMS voltage [V]
+///   V_base_peak  : phase-to-neutral peak voltage [V]
+///   I_base_peak  : phase-current peak [A]
+///   Z_base       : V_base_LL^2 / S_base [Ohm]
+///   omega_base   : 2*pi*f_base [rad/s]
+class GFM_Droop : public CompositePowerComp<Real>,
+                  public Base::AvVoltageSourceInverterDQ,
                   public SharedFactory<GFM_Droop> {
-protected:
-  // Simulation/controller state
-  Real mTimeStep = 0.0;
-  Real mPreviousOmega = 0.0;
-  Real mPreviousVoltageError = 0.0;
-  Bool mControlStateInitialized = false;
-
-  // P/Q measurement filter. Default: 10 Hz cutoff.
-  Real mPowerFilterTimeConstant = 0.015915494309189534;
-  Real mPowerFilterAlpha = 1.0;
-
-  // Optional controller limits. Defaults effectively disable limiting.
-  Real mMinimumFrequency = 0.0;
-  Real mMaximumFrequency = 1.0e6;
-  Real mMinimumVoltage = 0.0;
-  Real mMaximumVoltage = 1.0e12;
-
-  // Passive damping resistor in series with the capacitor branch [Ohm/phase].
-  Real mCapacitorDampingResistance = 0.0;
-
-  // Electrical subcomponents
-  std::shared_ptr<EMT::Ph3::VoltageSource> mSubCtrledVoltageSource;
-  std::shared_ptr<EMT::Ph3::Resistor> mSubResistorF;
-  std::shared_ptr<EMT::Ph3::Resistor> mSubResistorD;
-  std::shared_ptr<EMT::Ph3::Capacitor> mSubCapacitorF;
-  std::shared_ptr<EMT::Ph3::Inductor> mSubInductorF;
-  std::shared_ptr<EMT::Ph3::Transformer> mConnectionTransformer;
-
-  Bool mWithConnectionTransformer = false;
-  Bool mWithControl = true;
-
-  void updateMeasurements();
-  void updatePowerMeasurementFilter(Int timeStepCount);
-  void updateController(Int timeStepCount);
-  void updateOpenLoop(Int timeStepCount);
-  void writeVoltageReference();
-
 public:
-  // References. Public attributes can be stepped at runtime.
-  /// Active-power reference [W], generator-positive.
-  const Attribute<Real>::Ptr mActivePowerRef;
-  /// Reactive-power reference [var], generator-positive.
-  const Attribute<Real>::Ptr mReactivePowerRef;
-  /// Nominal frequency reference [Hz].
-  const Attribute<Real>::Ptr mFrequencyRef;
-  /// PCC voltage-magnitude reference [V phase-to-neutral peak].
-  const Attribute<Real>::Ptr mVoltageRef;
-
-  // Controller gains
-  /// P-f droop gain [Hz/W]. Set to zero for isochronous 50 Hz operation.
-  const Attribute<Real>::Ptr mActivePowerDroop;
-  /// Q-V droop gain [V/var].
-  const Attribute<Real>::Ptr mReactivePowerDroop;
-  /// Voltage-error integral gain [1/s].
-  const Attribute<Real>::Ptr mVoltageIntegralGain;
-
-  // Raw measurements at the external GFM terminal (PCC).
-  // mIntfCurrent keeps DPsim's consumer-positive interface convention.
-  // mPccCurrent is the opposite, generator-positive current flowing from
-  // the GFM into the connected grid, and is the current used for P/Q.
-  const Attribute<Matrix>::Ptr mPccCurrent;
-  const Attribute<Real>::Ptr mElecActivePower;
-  const Attribute<Real>::Ptr mElecReactivePower;
-
-  // Filtered droop measurements
-  const Attribute<Real>::Ptr mFilteredActivePower;
-  const Attribute<Real>::Ptr mFilteredReactivePower;
-
-  // Controller states/outputs
-  const Attribute<Real>::Ptr mVoltageMagnitude;
-  const Attribute<Real>::Ptr mFrequency;
-  const Attribute<Real>::Ptr mOmega;
-  const Attribute<Real>::Ptr mTheta;
-  const Attribute<Real>::Ptr mVoltageDroopOutput;
-  const Attribute<Real>::Ptr mVoltageIntegralState;
-  const Attribute<Real>::Ptr mVoltageCommand;
-
-  /// Instantaneous phase-voltage command [V phase-to-neutral peak].
-  const Attribute<Matrix>::Ptr mVsref;
-  /// Actual voltage across the controlled source.
-  const Attribute<Matrix>::Ptr mVs;
-
-  GFM_Droop(String name, Logger::Level logLevel = Logger::Level::off)
-      : GFM_Droop(name, name, logLevel, false) {}
-
   GFM_Droop(String uid, String name,
             Logger::Level logLevel = Logger::Level::off,
             Bool withTrafo = false);
 
-  /// Sets f_ref [Hz], V_ref [phase-neutral peak V], P_ref [W], and Q_ref [var].
+  GFM_Droop(String name, Logger::Level logLevel = Logger::Level::off,
+            Bool withTrafo = false)
+      : GFM_Droop(name, name, logLevel, withTrafo) {}
+
+  // -----------------------------------------------------------------------
+  // Base quantities
+  // -----------------------------------------------------------------------
+
+  /// Configure the controller and electrical conversion base.
+  void setBaseParameters(Real ratedApparentPower,
+                         Real ratedVoltageLineToLineRms,
+                         Real nominalFrequencyHz);
+
+  Real baseApparentPower() const { return mBaseApparentPower; }
+  Real baseVoltageLineToLineRms() const { return mBaseVoltageLineToLineRms; }
+  Real baseVoltagePhasePeak() const { return mBaseVoltagePhasePeak; }
+  Real baseCurrentPhasePeak() const { return mBaseCurrentPhasePeak; }
+  Real baseImpedance() const { return mBaseImpedance; }
+  Real baseFrequency() const { return mBaseFrequency; }
+  Real baseOmega() const { return mBaseOmega; }
+
+  // -----------------------------------------------------------------------
+  // References
+  // -----------------------------------------------------------------------
+
+  /// Backward-compatible SI interface.
   void setParameters(Real frequencyReferenceHz, Real voltageReferencePeak,
                      Real activePowerReference, Real reactivePowerReference);
 
-  /// Sets k_p [Hz/W], k_q [V/var], and k_iv [1/s].
-  void setDroopParameters(Real activePowerDroop, Real reactivePowerDroop,
-                          Real voltageIntegralGain);
+  /// Explicit per-unit interface.
+  void setParametersPerUnit(Real frequencyReferencePu, Real voltageReferencePu,
+                            Real activePowerReferencePu,
+                            Real reactivePowerReferencePu);
 
-  /// Sets the common first-order P/Q measurement-filter time constant [s].
-  /// A value of zero bypasses the filter.
-  void setPowerFilterTimeConstant(Real timeConstant);
+  // -----------------------------------------------------------------------
+  // Controller tuning
+  // -----------------------------------------------------------------------
 
-  /// Sets optional hard limits for anti-windup and numerical protection.
+  /// Backward-compatible SI interface: Hz/W, V/var, and 1/s.
+  void setDroopParameters(Real activePowerDroopHzPerW,
+                          Real reactivePowerDroopVPerVar,
+                          Real voltageIntegralGainPerSecond);
+
+  /// Per-unit droop gains.
+  ///
+  /// frequency_pu = frequency_ref_pu
+  ///              + k_p_pu * (P_ref_pu - P_filtered_pu)
+  ///
+  /// V0_pu = V_ref_pu
+  ///       + k_q_pu * (Q_ref_pu - Q_filtered_pu)
+  ///
+  /// A 5% droop is therefore entered directly as 0.05.
+  void setDroopParametersPerUnit(Real activePowerDroopPu,
+                                 Real reactivePowerDroopPu,
+                                 Real voltageIntegralGainPerSecond);
+
+  void setPowerFilterTimeConstant(Real timeConstantSeconds);
+
+  /// Backward-compatible SI limits.
   void setControllerLimits(Real minimumFrequencyHz, Real maximumFrequencyHz,
                            Real minimumVoltagePeak, Real maximumVoltagePeak);
+
+  /// Explicit per-unit limits.
+  void setControllerLimitsPerUnit(Real minimumFrequencyPu,
+                                  Real maximumFrequencyPu,
+                                  Real minimumVoltagePu, Real maximumVoltagePu);
+
+  // -----------------------------------------------------------------------
+  // Electrical parameters
+  // -----------------------------------------------------------------------
 
   void setTransformerParameters(Real nomVoltageEnd1, Real nomVoltageEnd2,
                                 Real ratedPower, Real ratioAbs, Real ratioPhase,
                                 Real resistance, Real inductance, Real omega);
 
-  /// Sets the physical output filter:
-  /// series Lf/Rf and a shunt Rd-Cf damping branch at the filter/PCC node.
-  ///
-  /// All resistance, inductance, and capacitance values are per phase.
+  /// Backward-compatible physical filter values.
   void setFilterParameters(Real Lf, Real Cf, Real Rf, Real Rd);
 
-  /// Disabled control gives an open-loop sinusoidal source at f_ref and V_ref.
+  /// Scale-independent filter values.
+  ///
+  /// xLfPu = omega_base * Lf / Z_base
+  /// bCfPu = omega_base * Cf * Z_base
+  /// rRfPu = Rf / Z_base
+  /// rRdPu = Rd / Z_base
+  void setFilterParametersPerUnit(Real xLfPu, Real bCfPu, Real rRfPu,
+                                  Real rRdPu);
+
   void withControl(Bool controlOn) { mWithControl = controlOn; }
+
+  // -----------------------------------------------------------------------
+  // MNA interface
+  // -----------------------------------------------------------------------
 
   void initializeParentFromNodesAndTerminals(Real frequency) override;
 
   void mnaParentInitialize(Real omega, Real timeStep,
                            Attribute<Matrix>::Ptr leftVector) override;
 
-  void mnaCompUpdateCurrent(const Matrix &leftVector) override;
-  void mnaCompUpdateVoltage(const Matrix &leftVector) override;
-
   void mnaParentPreStep(Real time, Int timeStepCount) override;
+
   void mnaParentPostStep(Real time, Int timeStepCount,
                          Attribute<Matrix>::Ptr &leftVector) override;
 
@@ -203,7 +156,114 @@ public:
                                    AttributeBase::List &attributeDependencies,
                                    AttributeBase::List &modifiedAttributes,
                                    Attribute<Matrix>::Ptr &leftVector) override;
+
+  void mnaCompUpdateCurrent(const Matrix &leftVector) override;
+  void mnaCompUpdateVoltage(const Matrix &leftVector) override;
+
+  // -----------------------------------------------------------------------
+  // Existing SI attributes retained for compatibility and logging
+  // -----------------------------------------------------------------------
+
+  const Attribute<Real>::Ptr mActivePowerRef;
+  const Attribute<Real>::Ptr mReactivePowerRef;
+  const Attribute<Real>::Ptr mFrequencyRef;
+  const Attribute<Real>::Ptr mVoltageRef;
+  const Attribute<Real>::Ptr mActivePowerDroop;
+  const Attribute<Real>::Ptr mReactivePowerDroop;
+  const Attribute<Real>::Ptr mVoltageIntegralGain;
+
+  const Attribute<Matrix>::Ptr mPccCurrent;
+  const Attribute<Real>::Ptr mElecActivePower;
+  const Attribute<Real>::Ptr mElecReactivePower;
+  const Attribute<Real>::Ptr mFilteredActivePower;
+  const Attribute<Real>::Ptr mFilteredReactivePower;
+  const Attribute<Real>::Ptr mVoltageMagnitude;
+  const Attribute<Real>::Ptr mFrequency;
+  const Attribute<Real>::Ptr mOmega;
+  const Attribute<Real>::Ptr mTheta;
+  const Attribute<Real>::Ptr mVoltageDroopOutput;
+  const Attribute<Real>::Ptr mVoltageIntegralState;
+  const Attribute<Real>::Ptr mVoltageCommand;
+  const Attribute<Matrix>::Ptr mVsref;
+  const Attribute<Matrix>::Ptr mVs;
+
+  // -----------------------------------------------------------------------
+  // Canonical per-unit controller attributes
+  // -----------------------------------------------------------------------
+
+  const Attribute<Real>::Ptr mActivePowerRefPu;
+  const Attribute<Real>::Ptr mReactivePowerRefPu;
+  const Attribute<Real>::Ptr mFrequencyRefPu;
+  const Attribute<Real>::Ptr mVoltageRefPu;
+  const Attribute<Real>::Ptr mActivePowerDroopPu;
+  const Attribute<Real>::Ptr mReactivePowerDroopPu;
+
+  const Attribute<Matrix>::Ptr mPccCurrentPu;
+  const Attribute<Real>::Ptr mElecActivePowerPu;
+  const Attribute<Real>::Ptr mElecReactivePowerPu;
+  const Attribute<Real>::Ptr mFilteredActivePowerPu;
+  const Attribute<Real>::Ptr mFilteredReactivePowerPu;
+  const Attribute<Real>::Ptr mVoltageMagnitudePu;
+  const Attribute<Real>::Ptr mFrequencyPu;
+  const Attribute<Real>::Ptr mOmegaPu;
+  const Attribute<Real>::Ptr mVoltageDroopOutputPu;
+  const Attribute<Real>::Ptr mVoltageIntegralStatePu;
+  const Attribute<Real>::Ptr mVoltageCommandPu;
+  const Attribute<Matrix>::Ptr mVsrefPu;
+
+protected:
+  void requireBaseParameters() const;
+  void updateMeasurements();
+  void updatePowerMeasurementFilter(Int timeStepCount);
+  void updateController(Int timeStepCount);
+  void updateOpenLoop(Int timeStepCount);
+  void writeVoltageReference();
+  void updatePhysicalMirrors();
+
+  // Electrical subcomponents
+  std::shared_ptr<EMT::Ph3::VoltageSource> mSubCtrledVoltageSource;
+  std::shared_ptr<EMT::Ph3::Resistor> mSubResistorF;
+  std::shared_ptr<EMT::Ph3::Resistor> mSubResistorD;
+  std::shared_ptr<EMT::Ph3::Capacitor> mSubCapacitorF;
+  std::shared_ptr<EMT::Ph3::Inductor> mSubInductorF;
+  std::shared_ptr<EMT::Ph3::Transformer> mConnectionTransformer;
+
+  Bool mWithConnectionTransformer = false;
+  Bool mWithControl = true;
+  Bool mControlStateInitialized = false;
+  Bool mBaseParametersSet = false;
+
+  // Base quantities
+  Real mBaseApparentPower = 0.0;
+  Real mBaseVoltageLineToLineRms = 0.0;
+  Real mBaseVoltagePhasePeak = 0.0;
+  Real mBaseCurrentPhasePeak = 0.0;
+  Real mBaseImpedance = 0.0;
+  Real mBaseFrequency = 0.0;
+  Real mBaseOmega = 0.0;
+
+  // Filter values in per unit for diagnostics
+  Real mFilterInductiveReactancePu = 0.0;
+  Real mFilterCapacitiveSusceptancePu = 0.0;
+  Real mFilterResistancePu = 0.0;
+  Real mCapacitorDampingResistancePu = 0.0;
+  Real mCapacitorDampingResistance = 0.0;
+
+  // Discrete controller state
+  Real mTimeStep = 0.0;
+  Real mPowerFilterTimeConstant = 0.0;
+  Real mPowerFilterAlpha = 1.0;
+  Real mMinimumFrequencyPu = 0.0;
+  Real mMaximumFrequencyPu = 2.0;
+  Real mMinimumVoltagePu = 0.0;
+  Real mMaximumVoltagePu = 2.0;
+  Real mPreviousOmegaPu = 1.0;
+  Real mPreviousVoltageErrorPu = 0.0;
 };
+
+/// Compatibility alias for code that wants an explicitly named PU model.
+/// It is the same extended implementation; no duplicate electrical model exists.
+using GFM_Droop_PU = GFM_Droop;
 
 } // namespace Ph3
 } // namespace EMT

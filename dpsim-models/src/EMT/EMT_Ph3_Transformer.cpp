@@ -203,8 +203,23 @@ void EMT::Ph3::Transformer::initializeParentFromNodesAndTerminals(
   **mIntfCurrent = iInit.real();
   **mIntfVoltage = vInitABC.real();
 
-  if (mNumVirtualNodes == 3)
-    mVirtualNodes[2]->setInitialVoltage(initialSingleVoltage(0));
+  if (mNumVirtualNodes == 3) {
+    // The resistor is connected from terminal 0 to virtual node 2:
+    //
+    //   node(0) -- R -- virtual node 2 -- L -- virtual node 0
+    //
+    // Therefore virtual node 2 must include the steady-state resistor
+    // voltage drop. Initializing it directly with terminal-0 voltage would
+    // imply zero resistor voltage while iInit is non-zero, making the
+    // resistor and inductor initial states inconsistent.
+    MatrixComp vInitTerm0 = MatrixComp::Zero(3, 1);
+    vInitTerm0(0, 0) = RMS3PH_TO_PEAK1PH * initialSingleVoltage(0);
+    vInitTerm0(1, 0) = vInitTerm0(0, 0) * SHIFT_TO_PHASE_B;
+    vInitTerm0(2, 0) = vInitTerm0(0, 0) * SHIFT_TO_PHASE_C;
+
+    mVirtualNodes[2]->setInitialVoltage(PEAK1PH_TO_RMS3PH *
+                                        (vInitTerm0 + mResistance * iInit));
+  }
 
   SPDLOG_LOGGER_INFO(
       mSLog,
@@ -214,13 +229,18 @@ void EMT::Ph3::Transformer::initializeParentFromNodesAndTerminals(
       "\nTerminal 0 voltage: {:s}"
       "\nTerminal 1 voltage: {:s}"
       "\nVirtual Node 1 voltage: {:s}"
+      "\nVirtual Node 2 voltage: {:s}"
       "\n--- Initialization from powerflow finished ---",
       Logger::matrixToString(**mIntfVoltage),
       Logger::matrixToString(**mIntfCurrent),
       Logger::phasorToString(RMS3PH_TO_PEAK1PH * initialSingleVoltage(0)),
       Logger::phasorToString(RMS3PH_TO_PEAK1PH * initialSingleVoltage(1)),
       Logger::phasorToString(RMS3PH_TO_PEAK1PH *
-                             mVirtualNodes[0]->initialSingleVoltage()));
+                             mVirtualNodes[0]->initialSingleVoltage()),
+      mNumVirtualNodes == 3
+          ? Logger::phasorToString(RMS3PH_TO_PEAK1PH *
+                                   mVirtualNodes[2]->initialSingleVoltage())
+          : String("not used"));
 }
 
 void EMT::Ph3::Transformer::mnaParentInitialize(

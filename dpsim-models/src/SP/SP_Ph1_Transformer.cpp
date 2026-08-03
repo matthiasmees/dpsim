@@ -236,8 +236,10 @@ void SP::Ph1::Transformer::initializeParentFromNodesAndTerminals(
       mVirtualNodes[0]->initialSingleVoltage() - initialSingleVoltage(0);
   (**mIntfCurrent)(0, 0) = (**mIntfVoltage)(0, 0) / impedance;
 
-  if (mNumVirtualNodes == 3)
-    mVirtualNodes[2]->setInitialVoltage(initialSingleVoltage(0));
+  if (mNumVirtualNodes == 3) {
+    mVirtualNodes[2]->setInitialVoltage(initialSingleVoltage(0) +
+                                        **mResistance * (**mIntfCurrent)(0, 0));
+  }
 
   SPDLOG_LOGGER_INFO(
       mSLog,

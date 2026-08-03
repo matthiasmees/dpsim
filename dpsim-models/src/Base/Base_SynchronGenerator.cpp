@@ -390,6 +390,49 @@ Real Base::SynchronGenerator::calcHfromJ(Real J, Real omegaNominal,
   return J * 0.5 * omegaNominal * omegaNominal / polePairNumber;
 }
 
+void CPS::Base::SynchronGenerator::addExciter(
+    std::shared_ptr<Base::Exciter> exciter,
+    std::shared_ptr<Base::ExciterParameters> parameters) {
+
+  auto log = CPS::Logger::get("SynchronGenerator", CPS::Logger::Level::off,
+                              CPS::Logger::Level::info);
+
+  if (!exciter) {
+    SPDLOG_LOGGER_ERROR(log, "addExciter called with null exciter");
+    throw CPS::InvalidArgumentException();
+  }
+
+  if (!parameters) {
+    SPDLOG_LOGGER_ERROR(log, "addExciter called with null parameter object");
+    throw CPS::InvalidArgumentException();
+  }
+
+  exciter->setParameters(parameters);
+
+  mExciter = std::move(exciter);
+  mHasExciter = true;
+
+  SPDLOG_LOGGER_INFO(log, "Attached exciter to synchronous generator");
+}
+
+void CPS::Base::SynchronGenerator::addExciter(
+    std::shared_ptr<Base::Exciter> exciter) {
+
+  auto log = CPS::Logger::get("SynchronGenerator", CPS::Logger::Level::off,
+                              CPS::Logger::Level::info);
+
+  if (!exciter) {
+    SPDLOG_LOGGER_ERROR(log, "addExciter called with null exciter");
+    throw CPS::InvalidArgumentException();
+  }
+
+  mExciter = std::move(exciter);
+  mHasExciter = true;
+
+  SPDLOG_LOGGER_INFO(log,
+                     "Attached preconfigured exciter to synchronous generator");
+}
+
 void CPS::Base::SynchronGenerator::addExciter(Real Ta, Real Ka, Real Te,
                                               Real Ke, Real Tf, Real Kf,
                                               Real Tr) {
