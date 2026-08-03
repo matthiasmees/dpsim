@@ -147,6 +147,7 @@ set(INVERTER_SOURCES
 	Circuits/EMT_Two_GFM_Breaker.cpp
 	Circuits/EMT_GFM_Droop_SynchronGeneratorVBR_Breaker.cpp
 	Circuits/EMT_Two_GFM_Droop_Breaker_SI_PU_Comparison.cpp
+	Components/EMT_GFM_Siemens_LoadStep.cpp
 )
 
 set(SSN_SOURCES

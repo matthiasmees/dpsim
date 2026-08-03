@@ -147,6 +147,7 @@
 #include <dpsim-models/EMT/EMT_Ph3_CurrentSource.h>
 #include <dpsim-models/EMT/EMT_Ph3_FourTerminalVTypeSSNComp.h>
 #include <dpsim-models/EMT/EMT_Ph3_GFM_Droop.h>
+#include <dpsim-models/EMT/EMT_Ph3_GFM_Siemens.h>
 #include <dpsim-models/EMT/EMT_Ph3_GenericFourTerminalVTypeSSN.h>
 #include <dpsim-models/EMT/EMT_Ph3_GenericTwoTerminalITypeSSN.h>
 #include <dpsim-models/EMT/EMT_Ph3_GenericTwoTerminalVTypeSSN.h>
