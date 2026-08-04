@@ -177,6 +177,7 @@ list(APPEND MODELS_SOURCES
 	EMT/EMT_Ph3_MMC_Modular.cpp
 	EMT/EMT_Ph3_GFM_Droop.cpp
 	EMT/EMT_Ph3_GFM_Siemens.cpp
+	EMT/EMT_Ph3_GFL_Siemens.cpp
 
 	SP/SP_Ph1_ControlledCurrentSource.cpp
 	SP/SP_Ph1_VoltageSource.cpp

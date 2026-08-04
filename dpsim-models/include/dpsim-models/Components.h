@@ -146,6 +146,7 @@
 #include <dpsim-models/EMT/EMT_Ph3_ControlledVoltageSource.h>
 #include <dpsim-models/EMT/EMT_Ph3_CurrentSource.h>
 #include <dpsim-models/EMT/EMT_Ph3_FourTerminalVTypeSSNComp.h>
+#include <dpsim-models/EMT/EMT_Ph3_GFL_Siemens.h>
 #include <dpsim-models/EMT/EMT_Ph3_GFM_Droop.h>
 #include <dpsim-models/EMT/EMT_Ph3_GFM_Siemens.h>
 #include <dpsim-models/EMT/EMT_Ph3_GenericFourTerminalVTypeSSN.h>
