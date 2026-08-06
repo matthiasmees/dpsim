@@ -5,6 +5,8 @@
 #include "../Examples.h"
 
 #include <DPsim.h>
+#include <dpsim-models/EMT/EMT_Ph3_SynchronGeneratorVBR.h>
+#include <dpsim-models/Signal/Exciter.h>
 
 #include <cmath>
 #include <filesystem>
@@ -13,14 +15,14 @@
 using namespace DPsim;
 using namespace CPS;
 
-namespace TwoGfmBreakerScenario {
+namespace GfmSyngenBreakerScenario {
 
 // =============================================================================
 // Parameters
 // =============================================================================
 
 struct SimulationParameters {
-  String name = "EMT_Two_GFM_Droop_Breaker_PF_Init";
+  String name = "EMT_GFM_SynGenVBR";
   Real frequency = 50.0;
   Real timeStep = 100e-6;
   Real finalTime = 10.0;
@@ -110,6 +112,51 @@ struct GfmParameters {
   }
 };
 
+struct PshaGeneratorParameters {
+  Real ratedPower = 200e6;    // VA
+  Real ratedVoltage = 18.0e3; // V RMS line-to-line
+  Real nominalFrequency = 50.0;
+  Int poleNumber = 2;
+  Real nominalFieldCurrent = 1300.0;
+
+  // Operational synchronous-machine parameters in per unit.
+  Real statorResistance = 0.002;
+  Real ld = 2.0;
+  Real lq = 2.0;
+  Real ldTransient = 0.3;
+  Real lqTransient = 0.3;
+  Real ldSubtransient = 0.2;
+  Real lqSubtransient = 0.2;
+  Real leakageInductance = 0.1;
+  Real td0Transient = 1.0;
+  Real tq0Transient = 1.0;
+  Real td0Subtransient = 0.05;
+  Real tq0Subtransient = 0.05;
+  Real inertia = 4.0;
+
+  // PSHA turbine-governor parameters from the reference scenario.
+  Real governorTa = 0.3;
+  Real governorTb = 7.0;
+  Real governorTc = 0.5;
+  Real governorFa = 0.25;
+  Real governorFb = 0.3;
+  Real governorFc = 0.15;
+  Real governorGain = 25.0;
+  Real governorSpeedRelayTimeConstant = 0.1;
+  Real governorServoMotorTimeConstant = 0.1;
+
+  // PSHA exciter parameters from the reference scenario.
+  Real exciterTa = 0.005;
+  Real exciterKa = 200.0;
+  Real exciterTe = 0.05;
+  Real exciterKe = 0.5;
+  Real exciterTf = 0.3;
+  Real exciterKf = 0.01;
+  Real exciterTr = 0.02;
+  Real exciterMaximumRegulatorVoltage = 9.0;
+  Real exciterMinimumRegulatorVoltage = -5.0;
+};
+
 struct GasTransformerParameters {
   Real nominalVoltageLow = 10.5e3;
   Real nominalVoltageHigh = 220e3;
@@ -175,7 +222,7 @@ struct Parameters {
   SimulationParameters simulation;
 
   GfmParameters gasGfm;
-  GfmParameters pshaGfm;
+  PshaGeneratorParameters pshaGenerator;
 
   GasTransformerParameters gasTransformer;
   PshTransformerParameters pshaTransformer;
@@ -184,7 +231,7 @@ struct Parameters {
   Line3Parameters line3;
   BreakerParameters breaker;
 
-  // Both SP voltage sources start at the same phase angle. Change this value
+  // Both SP initialization voltage sources start at the same phase angle. Change this value
   // deliberately to study out-of-phase breaker closing.
   Real pshaInitialAngleDegrees = 0.0;
 
@@ -192,10 +239,6 @@ struct Parameters {
     // GEN_gas data from the original scenario.
     gasGfm.ratedPower = 50e6;
     gasGfm.ratedVoltage = 10.5e3;
-
-    // GEN_psh data from the original scenario.
-    pshaGfm.ratedPower = 200e6;
-    pshaGfm.ratedVoltage = 18.0e3;
   }
 };
 
@@ -231,22 +274,22 @@ generatorPositivePower(const std::shared_ptr<SP::Ph1::NetworkInjection> &source,
 PowerFlowResult buildAndRunPowerFlow(const Parameters &p) {
   const String simulationName = p.simulation.name + "_PF";
 
-  SPDLOG_INFO("Scenario bases:"
-              "\n  GEN_gas: S_rated={} VA, V_rated={} V_LL RMS"
-              "\n  GEN_psh: S_rated={} VA, V_rated={} V_LL RMS"
-              "\n  TR_gas : {}/{} V, S_rated={} VA, R={} Ohm, L={} H"
-              "\n  TR_psh : {}/{} V, S_rated={} VA, R={} Ohm, L={} H"
-              "\n  breaker: R_open={} Ohm, R_closed={} Ohm",
-              p.gasGfm.ratedPower, p.gasGfm.ratedVoltage, p.pshaGfm.ratedPower,
-              p.pshaGfm.ratedVoltage, p.gasTransformer.nominalVoltageLow,
-              p.gasTransformer.nominalVoltageHigh, p.gasTransformer.ratedPower,
-              p.gasTransformer.resistance(),
-              p.gasTransformer.inductance(p.simulation.frequency),
-              p.pshaTransformer.nominalVoltageLow,
-              p.pshaTransformer.nominalVoltageHigh,
-              p.pshaTransformer.ratedPower, p.pshaTransformer.resistance(),
-              p.pshaTransformer.inductance(p.simulation.frequency),
-              p.breaker.openResistance, p.breaker.closedResistance);
+  SPDLOG_INFO(
+      "Scenario bases:"
+      "\n  GEN_gas: S_rated={} VA, V_rated={} V_LL RMS"
+      "\n  GEN_psh: S_rated={} VA, V_rated={} V_LL RMS"
+      "\n  TR_gas : {}/{} V, S_rated={} VA, R={} Ohm, L={} H"
+      "\n  TR_psh : {}/{} V, S_rated={} VA, R={} Ohm, L={} H"
+      "\n  breaker: R_open={} Ohm, R_closed={} Ohm",
+      p.gasGfm.ratedPower, p.gasGfm.ratedVoltage, p.pshaGenerator.ratedPower,
+      p.pshaGenerator.ratedVoltage, p.gasTransformer.nominalVoltageLow,
+      p.gasTransformer.nominalVoltageHigh, p.gasTransformer.ratedPower,
+      p.gasTransformer.resistance(),
+      p.gasTransformer.inductance(p.simulation.frequency),
+      p.pshaTransformer.nominalVoltageLow, p.pshaTransformer.nominalVoltageHigh,
+      p.pshaTransformer.ratedPower, p.pshaTransformer.resistance(),
+      p.pshaTransformer.inductance(p.simulation.frequency),
+      p.breaker.openResistance, p.breaker.closedResistance);
 
   std::filesystem::create_directories("logs/" + simulationName);
   Logger::setLogDir("logs/" + simulationName);
@@ -268,7 +311,7 @@ PowerFlowResult buildAndRunPowerFlow(const Parameters &p) {
   auto pshaInjection =
       SP::Ph1::NetworkInjection::make("GEN_psha_PF", Logger::Level::debug);
   pshaInjection->setParameters(
-      Math::polar(p.pshaGfm.ratedVoltage,
+      Math::polar(p.pshaGenerator.ratedVoltage,
                   p.pshaInitialAngleDegrees * PI / 180.0),
       p.simulation.frequency);
 
@@ -367,8 +410,8 @@ PowerFlowResult buildAndRunPowerFlow(const Parameters &p) {
       !finiteComplex(gasPower) || !finiteComplex(pshaPower) ||
       !finiteComplex(breakerGridVoltage) ||
       !finiteComplex(breakerPshaVoltage)) {
-    throw std::runtime_error(
-        "Invalid SP steady-state result for the two-GFM breaker case.");
+    throw std::runtime_error("Invalid SP steady-state result for the "
+                             "GFM-synchronous-generator breaker case.");
   }
 
   SPDLOG_INFO(
@@ -407,6 +450,12 @@ void configureGfm(const std::shared_ptr<EMT::Ph3::GFM_Droop> &gfm,
   const Real rf = parameters.filterResistance();
   const Real rd = parameters.capacitorDampingResistance();
 
+  // GFM_Droop's controller is internally formulated in per unit. Its base
+  // quantities must therefore be configured before any SI or PU reference,
+  // gain, limit, filter, or initialization setter is called.
+  gfm->setBaseParameters(parameters.ratedPower, parameters.ratedVoltage,
+                         frequency);
+
   gfm->setParameters(frequency, voltagePeakPhase, initialGeneratorPower.real(),
                      initialGeneratorPower.imag());
 
@@ -437,6 +486,80 @@ void configureGfm(const std::shared_ptr<EMT::Ph3::GFM_Droop> &gfm,
               parameters.voltageIntegralGain, lf, cf, rf, rd);
 }
 
+void configurePshaGenerator(
+    const std::shared_ptr<EMT::Ph3::SynchronGeneratorVBR> &generator,
+    const PshaGeneratorParameters &parameters,
+    const Complex &initialGeneratorPower) {
+  generator->setBaseAndOperationalPerUnitParameters(
+      parameters.ratedPower, parameters.ratedVoltage,
+      parameters.nominalFrequency, parameters.poleNumber,
+      parameters.nominalFieldCurrent, parameters.statorResistance,
+      parameters.ld, parameters.lq, parameters.ldTransient,
+      parameters.lqTransient, parameters.ldSubtransient,
+      parameters.lqSubtransient, parameters.leakageInductance,
+      parameters.td0Transient, parameters.tq0Transient,
+      parameters.td0Subtransient, parameters.tq0Subtransient,
+      parameters.inertia);
+
+  // Initialize the governor at the solved open-breaker operating point.
+  // The reference notebook uses zero mechanical power because its isolated
+  // PSHA source is unloaded. Here the PF includes transformer snubbers and
+  // losses, so using solved P avoids a mechanical-power step at t = 0.
+  const Real mechanicalPowerPerUnit =
+      initialGeneratorPower.real() / parameters.ratedPower;
+
+  generator->addGovernor(
+      parameters.governorTa, parameters.governorTb, parameters.governorTc,
+      parameters.governorFa, parameters.governorFb, parameters.governorFc,
+      parameters.governorGain, parameters.governorSpeedRelayTimeConstant,
+      parameters.governorServoMotorTimeConstant, mechanicalPowerPerUnit,
+      mechanicalPowerPerUnit);
+
+  // Use the original Signal::Exciter equations through the current
+  // Base::Exciter object API. This preserves the supplied quadratic
+  // saturation characteristic and the original regulator limits.
+  auto exciterParameters = std::make_shared<Signal::ExciterParameters>();
+  exciterParameters->Ta = parameters.exciterTa;
+  exciterParameters->Ka = parameters.exciterKa;
+  exciterParameters->Te = parameters.exciterTe;
+  exciterParameters->Ke = parameters.exciterKe;
+  exciterParameters->Tf = parameters.exciterTf;
+  exciterParameters->Kf = parameters.exciterKf;
+  exciterParameters->Tr = parameters.exciterTr;
+  exciterParameters->maxVr = parameters.exciterMaximumRegulatorVoltage;
+  exciterParameters->minVr = parameters.exciterMinimumRegulatorVoltage;
+
+  auto exciter =
+      Signal::Exciter::make("GEN_psha_exciter", Logger::Level::debug);
+  generator->addExciter(exciter, exciterParameters);
+
+  SPDLOG_INFO(
+      "{} parameters:"
+      "\n  S_rated={} VA, V_rated={} V_LL RMS, f_nom={} Hz"
+      "\n  P_init={} W, Q_init={} var, Pm_init={} pu"
+      "\n  Rs={} pu, Ld={} pu, Lq={} pu, Ld'={} pu, Lq'={} pu"
+      "\n  Ld''={} pu, Lq''={} pu, Ll={} pu, H={} s"
+      "\n  governor: Ta={}, Tb={}, Tc={}, Fa={}, Fb={}, Fc={}, K={}, Tsr={}, "
+      "Tsm={}"
+      "\n  exciter: Ta={}, Ka={}, Te={}, Ke={}, Tf={}, Kf={}, Tr={}, "
+      "Vr=[{},{}]",
+      generator->name(), parameters.ratedPower, parameters.ratedVoltage,
+      parameters.nominalFrequency, initialGeneratorPower.real(),
+      initialGeneratorPower.imag(), mechanicalPowerPerUnit,
+      parameters.statorResistance, parameters.ld, parameters.lq,
+      parameters.ldTransient, parameters.lqTransient, parameters.ldSubtransient,
+      parameters.lqSubtransient, parameters.leakageInductance,
+      parameters.inertia, parameters.governorTa, parameters.governorTb,
+      parameters.governorTc, parameters.governorFa, parameters.governorFb,
+      parameters.governorFc, parameters.governorGain,
+      parameters.governorSpeedRelayTimeConstant,
+      parameters.governorServoMotorTimeConstant, parameters.exciterTa,
+      parameters.exciterKa, parameters.exciterTe, parameters.exciterKe,
+      parameters.exciterTf, parameters.exciterKf, parameters.exciterTr,
+      parameters.exciterMinimumRegulatorVoltage,
+      parameters.exciterMaximumRegulatorVoltage);
+}
+
 void runEmt(const Parameters &p, const PowerFlowResult &powerFlow) {
   const String simulationName = p.simulation.name + "_EMT";
 
@@ -452,17 +575,13 @@ void runEmt(const Parameters &p, const PowerFlowResult &powerFlow) {
 
   auto gasGfm = EMT::Ph3::GFM_Droop::make("GEN_gas", "GEN_gas",
                                           Logger::Level::debug, false);
-  auto pshaGfm = EMT::Ph3::GFM_Droop::make("GEN_psha", "GEN_psha",
-                                           Logger::Level::debug, false);
+  auto pshaGenerator =
+      EMT::Ph3::SynchronGeneratorVBR::make("GEN_psha", Logger::Level::debug);
 
   configureGfm(gasGfm, p.gasGfm, p.simulation.frequency,
                powerFlow.gasBusVoltage, powerFlow.gasPower);
 
-  configureGfm(pshaGfm, p.pshaGfm, p.simulation.frequency,
-               powerFlow.pshaBusVoltage, powerFlow.pshaPower);
-
-  gasGfm->withControl(true);
-  pshaGfm->withControl(true);
+  configurePshaGenerator(pshaGenerator, p.pshaGenerator, powerFlow.pshaPower);
 
   auto gasTransformer = EMT::Ph3::Transformer::make("TR_gas", "TR_gas",
                                                     Logger::Level::debug, true);
@@ -504,14 +623,14 @@ void runEmt(const Parameters &p, const PowerFlowResult &powerFlow) {
       Math::singlePhaseParameterToThreePhase(
           p.pshaTransformer.inductance(p.simulation.frequency)));
 
-  // GFM_Droop is a one-terminal composite whose external terminal is its PCC.
+  // Both source models are one-terminal components connected at their machine buses.
   gasGfm->connect({busGas});
   gasTransformer->connect({busGas, busB});
   line1->connect({busB, busA});
   line3->connect({busA, busPshaGrid});
   breaker->connect({busPshaGrid, busPshaHv});
   pshaTransformer->connect({busPsha, busPshaHv});
-  pshaGfm->connect({busPsha});
+  pshaGenerator->connect({busPsha});
 
   SystemTopology system(p.simulation.frequency,
                         SystemNodeList{
@@ -529,7 +648,7 @@ void runEmt(const Parameters &p, const PowerFlowResult &powerFlow) {
                             line3,
                             breaker,
                             pshaTransformer,
-                            pshaGfm,
+                            pshaGenerator,
                         });
 
   // Every EMT node has an identically named SP node. The open-breaker
@@ -537,10 +656,12 @@ void runEmt(const Parameters &p, const PowerFlowResult &powerFlow) {
   // including both sides of the breaker.
   system.initWithPowerflow(powerFlow.system, Domain::EMT);
 
-  // GFM_Droop is not a synchronous-generator PF component, so its solved
-  // generator-positive terminal power must be assigned explicitly.
+  // The custom GFM reads generator-positive terminal power directly.
   gasGfm->terminal(0)->setPower(powerFlow.gasPower);
-  pshaGfm->terminal(0)->setPower(powerFlow.pshaPower);
+
+  // SynchronGeneratorVBR expects terminal power in DPsim's consumer-positive
+  // convention and negates it during initializeFromNodesAndTerminals().
+  pshaGenerator->terminal(0)->setPower(-powerFlow.pshaPower);
 
   auto logger = DataLogger::make(simulationName);
 
@@ -569,16 +690,14 @@ void runEmt(const Parameters &p, const PowerFlowResult &powerFlow) {
   logger->logAttribute("GEN_gas_i_pcc", gasGfm->attribute("i_pcc"));
   logger->logAttribute("GEN_gas_v_source", gasGfm->attribute("Vs"));
 
-  logger->logAttribute("GEN_psha_P_elec", pshaGfm->attribute("P_elec"));
-  logger->logAttribute("GEN_psha_Q_elec", pshaGfm->attribute("Q_elec"));
-  logger->logAttribute("GEN_psha_P_filtered", pshaGfm->attribute("P_filtered"));
-  logger->logAttribute("GEN_psha_Q_filtered", pshaGfm->attribute("Q_filtered"));
-  logger->logAttribute("GEN_psha_frequency", pshaGfm->attribute("frequency"));
-  logger->logAttribute("GEN_psha_theta", pshaGfm->attribute("theta"));
-  logger->logAttribute("GEN_psha_voltage_magnitude",
-                       pshaGfm->attribute("V_magnitude"));
-  logger->logAttribute("GEN_psha_i_pcc", pshaGfm->attribute("i_pcc"));
-  logger->logAttribute("GEN_psha_v_source", pshaGfm->attribute("Vs"));
+  logger->logAttribute("GEN_psha_w_r", pshaGenerator->attribute("w_r"));
+  logger->logAttribute("GEN_psha_P_elec", pshaGenerator->attribute("P_elec"));
+  logger->logAttribute("GEN_psha_Q_elec", pshaGenerator->attribute("Q_elec"));
+  logger->logAttribute("GEN_psha_P_mech", pshaGenerator->attribute("P_mech"));
+  logger->logAttribute("GEN_psha_i_intf", pshaGenerator->attribute("i_intf"));
+  logger->logAttribute("GEN_psha_v_intf", pshaGenerator->attribute("v_intf"));
+  logger->logAttribute("GEN_psha_delta_r", pshaGenerator->attribute("delta_r"));
+  logger->logAttribute("GEN_psha_T_e", pshaGenerator->attribute("T_e"));
 
   Simulation simulation(simulationName, Logger::Level::info);
 
@@ -596,10 +715,10 @@ void runEmt(const Parameters &p, const PowerFlowResult &powerFlow) {
   simulation.run();
 }
 
-} // namespace TwoGfmBreakerScenario
+} // namespace GfmSyngenBreakerScenario
 
 int main(int argc, char *argv[]) {
-  TwoGfmBreakerScenario::Parameters parameters;
+  GfmSyngenBreakerScenario::Parameters parameters;
 
   CommandLineArgs args(argc, argv);
 
@@ -631,9 +750,9 @@ int main(int argc, char *argv[]) {
   }
 
   const auto powerFlow =
-      TwoGfmBreakerScenario::buildAndRunPowerFlow(parameters);
+      GfmSyngenBreakerScenario::buildAndRunPowerFlow(parameters);
 
-  TwoGfmBreakerScenario::runEmt(parameters, powerFlow);
+  GfmSyngenBreakerScenario::runEmt(parameters, powerFlow);
 
   return 0;
 }

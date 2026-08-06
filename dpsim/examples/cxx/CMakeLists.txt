@@ -144,11 +144,13 @@ set(INVERTER_SOURCES
 	Components/DP_Inverter_Grid_Sequential_FreqSplit.cpp
 	Components/EMT_Ph3_GFM_Test.cpp
 	Components/EMT_GFM_Droop_LoadStep.cpp
-	Circuits/EMT_Two_GFM_Breaker.cpp
-	Circuits/EMT_GFM_Droop_SynchronGeneratorVBR_Breaker.cpp
 	Circuits/EMT_Two_GFM_Droop_Breaker_SI_PU_Comparison.cpp
 	Components/EMT_GFM_Siemens_LoadStep.cpp
 	Components/EMT_GFL_Siemens_PQ_SetpointStep.cpp
+	Restoration/EMT_Scenario_A_GFM_SynGenVBR.cpp
+	Restoration/EMT_Scenario_A_SynGenVBR_SynGenVBR.cpp
+	Restoration/EMT_Scenario_A_GFM_GFL_GFM.cpp
+	Restoration/EMT_Scenario_A_SynGenVBR_GFL_SynGenVBR.cpp
 )
 
 set(SSN_SOURCES
@@ -175,7 +177,6 @@ set(SSN_SOURCES
 	Components/EMT_SSN_MMC_Modular_Matlab_P2P_Results.cpp
 	Components/EMT_Ph3_SSN_GFL_Comparison.cpp
 	Circuits/EMT_Ph3_IEEE9_SSN_GFM_GFL_Diagnostics.cpp
-	Circuits/scenario_A_step_A_Matthias.cpp
 )
 
 set(STATE_SPACE_SOURCES

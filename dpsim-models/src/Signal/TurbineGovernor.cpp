@@ -6,14 +6,48 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  *********************************************************************************/
 
-#include <dpsim-models/MathUtils.h>
 #include <dpsim-models/Signal/TurbineGovernor.h>
+
+#include <algorithm>
+#include <cmath>
 
 using namespace CPS;
 using namespace CPS::Signal;
 
+namespace {
+
+constexpr Real DIRECT_VALVE_FRACTION = 0.3;
+constexpr Real MAXIMUM_VALVE_OPENING_RATE = 0.3;
+constexpr Real MAXIMUM_VALVE_CLOSING_RATE = -0.3;
+
+Real exactFirstOrderStep(Real previousState, Real timeConstant,
+                         Real steadyStateInput, Real timeStep) {
+  const Real alpha = std::exp(-timeStep / timeConstant);
+  return alpha * previousState + (1.0 - alpha) * steadyStateInput;
+}
+
+Real turbineSteadyStateGain(Real Fa, Real Fb, Real Fc) {
+  return DIRECT_VALVE_FRACTION + Fa + Fb + Fc;
+}
+
+} // namespace
+
 void TurbineGovernor::setParameters(Real Ta, Real Tb, Real Tc, Real Fa, Real Fb,
                                     Real Fc, Real K, Real Tsr, Real Tsm) {
+  const Real steadyStateGain = turbineSteadyStateGain(Fa, Fb, Fc);
+
+  if (!(Ta > 0.0) || !(Tb > 0.0) || !(Tc > 0.0) || !(Tsr > 0.0) ||
+      !(Tsm > 0.0) || !(steadyStateGain > 0.0) || !std::isfinite(Ta) ||
+      !std::isfinite(Tb) || !std::isfinite(Tc) || !std::isfinite(Fa) ||
+      !std::isfinite(Fb) || !std::isfinite(Fc) || !std::isfinite(K) ||
+      !std::isfinite(Tsr) || !std::isfinite(Tsm)) {
+    SPDLOG_LOGGER_ERROR(
+        mSLog,
+        "Invalid TurbineGovernor parameters: require Ta, Tb, Tc, Tsr, Tsm "
+        "> 0, finite coefficients, and positive turbine steady-state gain");
+    throw CPS::InvalidArgumentException();
+  }
+
   mTa = Ta;
   mTb = Tb;
   mTc = Tc;
@@ -26,87 +60,121 @@ void TurbineGovernor::setParameters(Real Ta, Real Tb, Real Tc, Real Fa, Real Fb,
   mTsm = Tsm;
 
   SPDLOG_LOGGER_INFO(mSLog,
-                     "Turbine parameters: \n"
-                     "Ta: {:e}\nTb: {:e}\nTc: {:e}\n"
-                     "Fa: {:e}\nFb: {:e}\nFc: {:e}\n",
-                     mTa, mTb, mTc, mFa, mFb, mFc);
+                     "Turbine parameters:"
+                     "\nTa: {:e}"
+                     "\nTb: {:e}"
+                     "\nTc: {:e}"
+                     "\nF_direct: {:e}"
+                     "\nFa: {:e}"
+                     "\nFb: {:e}"
+                     "\nFc: {:e}"
+                     "\nsteady-state gain: {:e}",
+                     mTa, mTb, mTc, DIRECT_VALVE_FRACTION, mFa, mFb, mFc,
+                     steadyStateGain);
 
   SPDLOG_LOGGER_INFO(mSLog,
-                     "Governor parameters: \n"
-                     "K: {:e}\nTsr: {:e}\nTsm: {:e}\n",
+                     "Governor parameters:"
+                     "\nK: {:e}"
+                     "\nTsr: {:e}"
+                     "\nTsm: {:e}",
                      mK, mTsr, mTsm);
 }
 
 void TurbineGovernor::initialize(Real PmRef, Real Tm_init) {
-  mTm = Tm_init;
-  //T1 = (1 - mFa) * PmRef;
-  //T1 = (mTm - PmRef*mFa)/(mFb + mFc);
-  //T2 = mFa * PmRef;
-  T1 = PmRef;
-  T2 = PmRef;
-  T3 = PmRef;
+  if (!std::isfinite(PmRef) || !std::isfinite(Tm_init)) {
+    SPDLOG_LOGGER_ERROR(mSLog, "TurbineGovernor initial values must be finite");
+    throw CPS::InvalidArgumentException();
+  }
+
+  const Real steadyStateGain = turbineSteadyStateGain(mFa, mFb, mFc);
+
+  // PmRef and Tm_init are desired turbine-output torque/power in pu. The
+  // internal governor signal is a valve position, so it must be divided by
+  // the complete static turbine gain.
+  const Real valveReference = PmRef / steadyStateGain;
+  const Real valveInitial = Tm_init / steadyStateGain;
+
+  if (valveInitial < 0.0 || valveInitial > 1.0 || valveReference < 0.0 ||
+      valveReference > 1.0) {
+    SPDLOG_LOGGER_ERROR(
+        mSLog,
+        "TurbineGovernor operating point is outside valve limits: "
+        "valve_init={}, valve_ref={}, limits=[0,1]",
+        valveInitial, valveReference);
+    throw CPS::InvalidArgumentException();
+  }
+
+  // Exact equilibrium of the complete governor and three-stage turbine.
+  Psr_in = valveReference;
+  Psm_in = valveInitial;
+  mVcv = valveInitial;
+  mpVcv = 0.0;
+
+  T1 = valveInitial;
+  T2 = valveInitial;
+  T3 = valveInitial;
+
+  T1a = mFa * T1 + DIRECT_VALVE_FRACTION * mVcv;
+  T2b = mFb * T2;
+  T3c = mFc * T3;
+  mTm = T1a + T2b + T3c;
 
   SPDLOG_LOGGER_INFO(mSLog,
-                     "Turbine initial values: \n"
-                     "init_Tm: {:e}\ninit_T1: {:e}\ninit_T2: {:e}\n",
-                     mTm, T1, T2);
-
-  mVcv = PmRef;
-  mpVcv = 0;
-  Psm_in = PmRef;
-
-  SPDLOG_LOGGER_INFO(mSLog,
-                     "Governor initial values: \n"
-                     "init_Vcv: {:e}\ninit_pVcv: {:e}\ninit_Psm_in: {:e}\n",
-                     mVcv, mpVcv, Psm_in);
+                     "TurbineGovernor steady-state initialization:"
+                     "\nPmRef: {:e}"
+                     "\nTm_init: {:e}"
+                     "\nvalve_ref: {:e}"
+                     "\nvalve_init: {:e}"
+                     "\nT1: {:e}"
+                     "\nT2: {:e}"
+                     "\nT3: {:e}"
+                     "\nTm: {:e}",
+                     PmRef, Tm_init, valveReference, valveInitial, T1, T2, T3,
+                     mTm);
 }
 
 Real TurbineGovernor::step(Real Om, Real OmRef, Real PmRef, Real dt) {
-  // ### Governing ###
-  // Modelled according to V. Sapucaia-Gunzenhauser, "Modeling and Simulation of Rotating Machines", p.45
+  if (!(dt > 0.0) || !std::isfinite(dt) || !std::isfinite(Om) ||
+      !std::isfinite(OmRef) || !std::isfinite(PmRef)) {
+    SPDLOG_LOGGER_ERROR(
+        mSLog,
+        "TurbineGovernor inputs and time step must be finite and dt must be "
+        "positive");
+    throw CPS::InvalidArgumentException();
+  }
 
-  // Input of speed relay
-  Psr_in = PmRef + (OmRef - Om) * mK;
+  const Real steadyStateGain = turbineSteadyStateGain(mFa, mFb, mFc);
 
-  // Input of servor motor
-  Psm_in = Math::StateSpaceEuler(Psm_in, -1 / mTsr, 1 / mTsr, dt,
-                                 Psr_in); // ovo je bilo
-  //Psm_in = Math::StateSpaceTrapezoidal(Psm_in, -1 / mTsr, 1 / mTsr, dt, Psr_in); // oov sam ja dodao
-  // rate of change of valve
-  // including limiter with upper bound 0.1pu/s and lower bound -1.0pu/s
+  // Convert the desired mechanical-torque command to the valve domain. This
+  // is essential because SynchronGeneratorVBR supplies PmRef in turbine-output
+  // pu, while the turbine's internal static gain is generally not one.
+  Psr_in = (PmRef + (OmRef - Om) * mK) / steadyStateGain;
+  Psr_in = std::clamp(Psr_in, 0.0, 1.0);
+
+  Psm_in = exactFirstOrderStep(Psm_in, mTsr, Psr_in, dt);
+
   mpVcv = (Psm_in - mVcv) / mTsm;
-  if (mpVcv >= 0.3)
-    mpVcv = 0.3;
-  else if (mpVcv <= -0.3)
-    mpVcv = -0.3;
+  mpVcv =
+      std::clamp(mpVcv, MAXIMUM_VALVE_CLOSING_RATE, MAXIMUM_VALVE_OPENING_RATE);
 
-  // valve position
-  // including limiter with upper bound 1 and lower bound 0
-  mVcv = mVcv + dt * mpVcv;
-  if (mVcv >= 1)
-    mVcv = 1;
-  else if (mVcv <= 0)
-    mVcv = 0;
+  mVcv = std::clamp(mVcv + dt * mpVcv, 0.0, 1.0);
 
-  // ### Turbine ###
-  // Simplified Single Reheat Tandem-Compound Steam Turbine
-  // Modelled according to V. Sapucaia-Gunzenhauser, "Modeling and Simulation of Rotating Machines", p.44
+  // Exact zero-order-hold discretization of the three turbine lags. A correct
+  // steady-state initialization remains exactly stationary at the first step.
+  T1 = exactFirstOrderStep(T1, mTa, mVcv, dt);
+  T2 = exactFirstOrderStep(T2, mTb, T1, dt);
+  T3 = exactFirstOrderStep(T3, mTc, T2, dt);
 
-  // T1 = Math::StateSpaceEuler(T1, -1 / mTb, 1 / mTb, dt, mVcv); // ovo je bilo
-  Real F1 = 0.3;
-  T1 = Math::StateSpaceTrapezoidal(T1, -1 / mTa, 1 / mTa, dt,
-                                   mVcv); // ovo sam ja dodao
-  T1a = mFa * T1 + F1 * mVcv;
-
-  T2 = Math::StateSpaceTrapezoidal(T2, -1 / mTb, 1 / mTb, dt, T1);
+  T1a = mFa * T1 + DIRECT_VALVE_FRACTION * mVcv;
   T2b = mFb * T2;
-
-  T3 = Math::StateSpaceTrapezoidal(T3, -1 / mTc, 1 / mTc, dt, T2);
   T3c = mFc * T3;
-
   mTm = T1a + T2b + T3c;
-  //T2 = mVcv * mFa;
-  //mTm = (mFb + mFc) * T1 + T2;
+
+  if (!std::isfinite(mTm)) {
+    SPDLOG_LOGGER_ERROR(
+        mSLog, "TurbineGovernor produced non-finite mechanical torque");
+    throw CPS::InvalidArgumentException();
+  }
 
   return mTm;
 }

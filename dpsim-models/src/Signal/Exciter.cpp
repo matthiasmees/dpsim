@@ -6,13 +6,38 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  *********************************************************************************/
 
-#include <dpsim-models/MathUtils.h>
 #include <dpsim-models/Signal/Exciter.h>
 
+#include <algorithm>
 #include <cmath>
+#include <limits>
 
 using namespace CPS;
 using namespace CPS::Signal;
+
+namespace {
+
+Real exactFirstOrderStep(Real previousState, Real timeConstant,
+                         Real steadyStateInput, Real timeStep) {
+  const Real alpha = std::exp(-timeStep / timeConstant);
+  return alpha * previousState + (1.0 - alpha) * steadyStateInput;
+}
+
+Real exactFieldStep(Real previousFieldVoltage, Real Ke, Real Te,
+                    Real regulatorMinusSaturation, Real timeStep) {
+  // dEf/dt = (-Ke*Ef + regulatorMinusSaturation) / Te.
+  if (std::abs(Ke) > std::numeric_limits<Real>::epsilon()) {
+    const Real alpha = std::exp(-Ke * timeStep / Te);
+    const Real steadyStateFieldVoltage = regulatorMinusSaturation / Ke;
+    return alpha * previousFieldVoltage +
+           (1.0 - alpha) * steadyStateFieldVoltage;
+  }
+
+  // Ke == 0 degenerates to a pure integrator.
+  return previousFieldVoltage + timeStep * regulatorMinusSaturation / Te;
+}
+
+} // namespace
 
 Exciter::Exciter(const String &name, CPS::Logger::Level logLevel)
     : SimSignalComp(name, name, logLevel),
@@ -43,15 +68,14 @@ void Exciter::setParameters(
 
 void Exciter::setParameters(Real Ta, Real Ka, Real Te, Real Ke, Real Tf,
                             Real Kf, Real Tr, Real maxVr, Real minVr) {
-  if (!(Ta > 0.0) || !(Te > 0.0) || !(Tf > 0.0) || !(Tr > 0.0) ||
-      !(Ka != 0.0) || !(maxVr > minVr) || !std::isfinite(Ta) ||
-      !std::isfinite(Ka) || !std::isfinite(Te) || !std::isfinite(Ke) ||
-      !std::isfinite(Tf) || !std::isfinite(Kf) || !std::isfinite(Tr) ||
-      !std::isfinite(maxVr) || !std::isfinite(minVr)) {
+  if (!(Ta > 0.0) || !(Ka > 0.0) || !(Te > 0.0) || !(Ke >= 0.0) ||
+      !(Tf > 0.0) || !(Kf >= 0.0) || !(Tr > 0.0) || !(maxVr > minVr) ||
+      !std::isfinite(Ta) || !std::isfinite(Ka) || !std::isfinite(Te) ||
+      !std::isfinite(Ke) || !std::isfinite(Tf) || !std::isfinite(Kf) ||
+      !std::isfinite(Tr) || !std::isfinite(maxVr) || !std::isfinite(minVr)) {
     SPDLOG_LOGGER_ERROR(
-        mSLog,
-        "Invalid Exciter parameters: require Ta, Te, Tf, Tr > 0, Ka != 0, "
-        "and maxVr > minVr");
+        mSLog, "Invalid Exciter parameters: require Ta, Ka, Te, Tf, Tr > 0, "
+               "Ke, Kf >= 0, and maxVr > minVr");
     throw CPS::InvalidArgumentException();
   }
 
@@ -80,7 +104,6 @@ void Exciter::setParameters(Real Ta, Real Ka, Real Te, Real Ke, Real Tf,
 }
 
 Real Exciter::saturation(Real fieldVoltage) const {
-  // Exact quadratic saturation characteristic from the supplied legacy class.
   constexpr Real E1 = 3.9;
   constexpr Real Se1 = 0.0001;
   constexpr Real E2 = 5.2;
@@ -103,93 +126,94 @@ void Exciter::initializeStates(Real VhInit, Real EfInit) {
 }
 
 void Exciter::initialize(Real VhInit, Real EfInit) {
-  if (!std::isfinite(VhInit) || !std::isfinite(EfInit)) {
-    SPDLOG_LOGGER_ERROR(mSLog, "Exciter initial values must be finite");
+  if (!(VhInit >= 0.0) || !std::isfinite(VhInit) || !std::isfinite(EfInit)) {
+    SPDLOG_LOGGER_ERROR(
+        mSLog, "Exciter initial values must be finite and Vh_init must be "
+               "non-negative");
     throw CPS::InvalidArgumentException();
   }
 
-  SPDLOG_LOGGER_INFO(mSLog,
-                     "Initially set excitation-system values:"
-                     "\nVh_init: {:e}"
-                     "\nEf_init: {:e}",
-                     VhInit, EfInit);
-
-  **mVm = VhInit;
+  // Exact steady-state initialization of all four dynamic blocks:
+  //   Vm_dot  = (-Vm + Vh) / Tr
+  //   Vis_dot = (-Vis + Ef) / Tf
+  //   Vr_dot  = (-Vr + Ka*(Vref - Vm - Vstab)) / Ta
+  //   Ef_dot  = (-Ke*Ef + Vr - Vse(Ef)) / Te
   **mVh = VhInit;
+  **mVm = VhInit;
   **mEf = EfInit;
+  **mVis = EfInit;
+  **mVse = saturation(EfInit);
 
-  **mVse = saturation(**mEf);
+  const Real requiredRegulatorVoltage = mKe * EfInit + **mVse;
+  if (requiredRegulatorVoltage < mMinVr || requiredRegulatorVoltage > mMaxVr) {
+    SPDLOG_LOGGER_ERROR(
+        mSLog,
+        "Exciter cannot be initialized in steady state: required Vr={} is "
+        "outside limiter [{}, {}]",
+        requiredRegulatorVoltage, mMinVr, mMaxVr);
+    throw CPS::InvalidArgumentException();
+  }
 
-  // Vis is vr2 in the original PSAT-oriented implementation.
-  **mVis = **mEf;
+  **mVr = requiredRegulatorVoltage;
 
-  // Vr is vr1 in the original implementation.
-  **mVr = mKe * **mEf + **mVse;
-  if (**mVr > mMaxVr)
-    **mVr = mMaxVr;
-  else if (**mVr < mMinVr)
-    **mVr = mMinVr;
+  // Vis=Ef makes the washout/stabilizing-feedback output exactly zero.
+  mVref = VhInit + requiredRegulatorVoltage / mKa;
 
-  mVref = **mVr / mKa + **mVm;
-
-  // Keep explicit previous-value storage consistent before the first step.
   mVmPrev = **mVm;
   mVisPrev = **mVis;
   mVrPrev = **mVr;
   mEfPrev = **mEf;
 
   SPDLOG_LOGGER_INFO(mSLog,
-                     "Applied excitation-system initial values:"
+                     "Exciter steady-state initialization:"
                      "\nVref: {:e}"
+                     "\nVh: {:e}"
                      "\nVm: {:e}"
                      "\nEf: {:e}"
                      "\nVse: {:e}"
                      "\nVr: {:e}"
                      "\nVis: {:e}",
-                     mVref, **mVm, **mEf, **mVse, **mVr, **mVis);
+                     mVref, **mVh, **mVm, **mEf, **mVse, **mVr, **mVis);
 }
 
 Real Exciter::step(Real Vd, Real Vq, Real dt, Real Vpss) {
-  if (!(dt > 0.0) || !std::isfinite(dt)) {
-    SPDLOG_LOGGER_ERROR(mSLog, "Exciter time step must be finite and positive");
+  if (!(dt > 0.0) || !std::isfinite(dt) || !std::isfinite(Vd) ||
+      !std::isfinite(Vq) || !std::isfinite(Vpss)) {
+    SPDLOG_LOGGER_ERROR(
+        mSLog,
+        "Exciter inputs and time step must be finite and dt must be positive");
     throw CPS::InvalidArgumentException();
   }
 
-  // Voltage magnitude calculation.
   **mVh = std::hypot(Vd, Vq);
 
-  // States at k-1.
   mVmPrev = **mVm;
   mVisPrev = **mVis;
   mVrPrev = **mVr;
   mEfPrev = **mEf;
 
-  // Voltage transducer equation. This intentionally retains the Euler update
-  // from the supplied legacy model.
-  **mVm = Math::StateSpaceEuler(mVmPrev, -1.0 / mTr, 1.0 / mTr, dt, **mVh);
+  // Exact zero-order-hold discretization of each first-order block. This
+  // preserves a correctly initialized equilibrium exactly and removes the
+  // artificial numerical kick caused by chained explicit-Euler updates.
+  **mVm = exactFirstOrderStep(mVmPrev, mTr, **mVh, dt);
 
-  // Quadratic saturation based on the previous field voltage.
   **mVse = saturation(mEfPrev);
 
-  // Stabilizing-feedback state, retained from the legacy implementation.
-  **mVis = Math::StateSpaceEuler(mVisPrev, -1.0 / mTf, 1.0 / mTf, dt, mEfPrev);
-  const Real stabilizingFeedback =
-      (-mKf / mTf) * **mVis + (mKf / mTf) * mEfPrev;
+  **mVis = exactFirstOrderStep(mVisPrev, mTf, mEfPrev, dt);
+  const Real stabilizingFeedback = (mKf / mTf) * (mEfPrev - **mVis);
 
-  // Voltage-regulator equation. Vpss is zero in the supplied PSHA scenario;
-  // adding it here only connects the current Base::Exciter interface without
-  // changing the no-PSS equations.
-  **mVr = Math::StateSpaceEuler(mVrPrev, -1.0 / mTa, mKa / mTa, dt,
-                                mVref + Vpss - **mVm - stabilizingFeedback);
+  const Real regulatorTarget =
+      mKa * (mVref + Vpss - **mVm - stabilizingFeedback);
+  **mVr = exactFirstOrderStep(mVrPrev, mTa, regulatorTarget, dt);
+  **mVr = std::clamp(**mVr, mMinVr, mMaxVr);
 
-  if (**mVr > mMaxVr)
-    **mVr = mMaxVr;
-  else if (**mVr < mMinVr)
-    **mVr = mMinVr;
+  **mEf = exactFieldStep(mEfPrev, mKe, mTe, **mVr - **mVse, dt);
 
-  // Exciter equation, retained from the supplied class.
-  **mEf =
-      Math::StateSpaceEuler(mEfPrev, -mKe / mTe, 1.0 / mTe, dt, **mVr - **mVse);
+  if (!std::isfinite(**mVm) || !std::isfinite(**mVis) ||
+      !std::isfinite(**mVr) || !std::isfinite(**mEf)) {
+    SPDLOG_LOGGER_ERROR(mSLog, "Exciter produced a non-finite internal state");
+    throw CPS::InvalidArgumentException();
+  }
 
   return **mEf;
 }

@@ -237,8 +237,8 @@ void Base::SynchronGenerator::initPerUnitStates() {
   // mInitTerminalVoltage*sin(mInitVoltAngle));
   Real init_it_abs = init_S_abs / init_vt_abs;
   // Complex init_it = std::conj( init_S / init_vt );
-  // Power factor
-  Real init_pf = acos(init_P / init_S_abs);
+  // Signed power-factor angle. acos(P / |S|) loses the sign of Q.
+  const Real init_pf = init_S_abs > 1e-12 ? std::atan2(init_Q, init_P) : 0.0;
   // Load angle
   Real init_delta = atan(((mLmq + **mLl) * init_it_abs * cos(init_pf) -
                           **mRs * init_it_abs * sin(init_pf)) /
