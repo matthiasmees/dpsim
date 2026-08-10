@@ -858,6 +858,25 @@ void runEmt(const Parameters &p, const PowerFlowResult &powerFlow) {
       p.simulation.gflReactivePowerAfterStep / p.ratings.pvConverterPower,
       p.simulation.gflReactivePowerStepTime, p.simulation.startPshBreakerTime);
 
+  // ===========================================================================
+  // Render topology
+  //
+  // To change the layout, change only options.layout below. All other visual
+  // and routing parameters are internal renderer defaults.
+  // ===========================================================================
+
+  SystemTopologyRenderer::Options options;
+  options.layout = SystemTopologyRenderer::Layout::LeftToRight;
+
+  const std::filesystem::path symbolDirectory =
+      "../dpsim-models/resources/Visuals";
+
+  const std::filesystem::path outputFile = "logs/GFM_GFL_GFM/topology.svg";
+
+  SystemTopologyRenderer renderer(system, symbolDirectory, options);
+
+  renderer.renderSvg(outputFile);
+
   simulation.run();
 
   SPDLOG_INFO("Simulation completed. Results: logs/{}/{}.csv", simulationName,

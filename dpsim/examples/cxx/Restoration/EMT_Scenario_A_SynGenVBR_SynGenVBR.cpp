@@ -635,6 +635,25 @@ void runEmt(const Parameters &p, const PowerFlowResult &powerFlow) {
   simulation.doSystemMatrixRecomputation(p.simulation.recomputeSystemMatrix);
   simulation.addLogger(logger);
   simulation.run();
+
+  // ===========================================================================
+  // Render topology
+  //
+  // To change the layout, change only options.layout below. All other visual
+  // and routing parameters are internal renderer defaults.
+  // ===========================================================================
+
+  SystemTopologyRenderer::Options options;
+  options.layout = SystemTopologyRenderer::Layout::LeftToRight;
+
+  const std::filesystem::path symbolDirectory =
+      "../dpsim-models/resources/Visuals";
+
+  const std::filesystem::path outputFile = "logs/SynGen/topology.svg";
+
+  SystemTopologyRenderer renderer(system, symbolDirectory, options);
+
+  renderer.renderSvg(outputFile);
 }
 
 } // namespace ScenarioASynGenVBRSynGenVBR

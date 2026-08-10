@@ -28,6 +28,10 @@ target_sources(dpsim PUBLIC
 	FILES "${HEADER_FILES}"
 )
 
+target_sources(dpsim PRIVATE
+	${CMAKE_CURRENT_SOURCE_DIR}/src/Visualization/SystemTopologyRenderer.cpp
+)
+
 install(TARGETS dpsim
 	EXPORT dpsim
 	FILE_SET public_headers DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}

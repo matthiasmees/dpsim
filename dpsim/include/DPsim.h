@@ -24,6 +24,7 @@
 #endif
 
 #include <dpsim-models/CSVReader.h>
+#include <dpsim/SystemTopologyRenderer.h>
 
 #ifdef WITH_OPENMP
 #include <dpsim/OpenMPLevelScheduler.h>

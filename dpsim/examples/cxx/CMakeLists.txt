@@ -116,6 +116,9 @@ set(CIRCUIT_SOURCES
 	Circuits/DP_SynGenTrStab_3Bus_SteadyState.cpp
 	Circuits/DP_SynGenTrStab_3Bus_Fault.cpp
 	Circuits/SP_SynGenTrStab_3Bus_Fault.cpp
+	Circuits/RendererTest.cpp
+	Circuits/RendererTest_IEEE9.cpp
+	Circuits/RendererTest_IEEE39.cpp
 )
 
 if(WITH_JSON)
