@@ -476,7 +476,7 @@ void CPS::Base::SynchronGenerator::addExciter(Real Ta, Real Ka, Real Te,
       params->Tr, params->MaxVa, params->MinVa);
 }
 
-void Base::SynchronGenerator::addGovernor(Real Ta, Real Tb, Real Tc, Real Fa,
+void Base::SynchronGenerator::addGovernor(Real Ta, Real Tb, Real Tc, Real F1a, Real Fa,
                                           Real Fb, Real Fc, Real K, Real Tsr,
                                           Real Tsm, Real Tm_init, Real PmRef) {
   auto log = CPS::Logger::get("SynchronGenerator", CPS::Logger::Level::off,
@@ -486,10 +486,14 @@ void Base::SynchronGenerator::addGovernor(Real Ta, Real Tb, Real Tc, Real Fa,
            "model; prefer addGovernor(shared_ptr<TurbineGovernorType1>)");
   mTurbineGovernor = Signal::TurbineGovernor::make("TurbineGovernor",
                                                    CPS::Logger::Level::info);
-  mTurbineGovernor->setParameters(Ta, Tb, Tc, Fa, Fb, Fc, K, Tsr, Tsm);
+  mTurbineGovernor->setParameters(Ta, Tb, Tc, F1a, Fa, Fb, Fc, K, Tsr, Tsm);
   mTurbineGovernor->initialize(PmRef, Tm_init);
   mHasTurbineGovernor = true;
 }
+
+
+
+
 
 void Base::SynchronGenerator::addGovernor(
     std::shared_ptr<Signal::TurbineGovernorType1> turbineGovernor) {

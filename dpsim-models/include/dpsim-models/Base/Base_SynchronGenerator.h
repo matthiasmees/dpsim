@@ -37,7 +37,9 @@ public:
   enum class ParameterType { perUnit, statorReferred, operational };
 
   // Deprecated — uses legacy TurbineGovernor; prefer addGovernor(TurbineGovernorType1)
-  void addGovernor(Real Ta, Real Tb, Real Tc, Real Fa, Real Fb, Real Fc, Real K,
+
+
+  void addGovernor(Real Ta, Real Tb, Real Tc, Real F1a, Real Fa, Real Fb, Real Fc, Real K,
                    Real Tsr, Real Tsm, Real Tm_init, Real PmRef);
   /// Add TurbineGovernorType1 (already constructed and initialised)
   void
