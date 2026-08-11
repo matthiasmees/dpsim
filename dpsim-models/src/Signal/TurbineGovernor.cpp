@@ -16,7 +16,7 @@ using namespace CPS::Signal;
 
 namespace {
 
-constexpr Real DIRECT_VALVE_FRACTION = 0.3;
+  
 constexpr Real MAXIMUM_VALVE_OPENING_RATE = 0.3;
 constexpr Real MAXIMUM_VALVE_CLOSING_RATE = -0.3;
 
@@ -26,15 +26,15 @@ Real exactFirstOrderStep(Real previousState, Real timeConstant,
   return alpha * previousState + (1.0 - alpha) * steadyStateInput;
 }
 
-Real turbineSteadyStateGain(Real Fa, Real Fb, Real Fc) {
-  return DIRECT_VALVE_FRACTION + Fa + Fb + Fc;
+Real turbineSteadyStateGain(Real F1a, Real Fa, Real Fb, Real Fc) {
+  return F1a + Fa + Fb + Fc;
 }
 
 } // namespace
 
-void TurbineGovernor::setParameters(Real Ta, Real Tb, Real Tc, Real Fa, Real Fb,
+void TurbineGovernor::setParameters(Real Ta, Real Tb, Real Tc, Real F1a, Real Fa, Real Fb,
                                     Real Fc, Real K, Real Tsr, Real Tsm) {
-  const Real steadyStateGain = turbineSteadyStateGain(Fa, Fb, Fc);
+  const Real steadyStateGain = turbineSteadyStateGain(F1a, Fa, Fb, Fc);
 
   if (!(Ta > 0.0) || !(Tb > 0.0) || !(Tc > 0.0) || !(Tsr > 0.0) ||
       !(Tsm > 0.0) || !(steadyStateGain > 0.0) || !std::isfinite(Ta) ||
@@ -51,6 +51,7 @@ void TurbineGovernor::setParameters(Real Ta, Real Tb, Real Tc, Real Fa, Real Fb,
   mTa = Ta;
   mTb = Tb;
   mTc = Tc;
+  mF1a = F1a;
   mFa = Fa;
   mFb = Fb;
   mFc = Fc;
@@ -64,12 +65,12 @@ void TurbineGovernor::setParameters(Real Ta, Real Tb, Real Tc, Real Fa, Real Fb,
                      "\nTa: {:e}"
                      "\nTb: {:e}"
                      "\nTc: {:e}"
-                     "\nF_direct: {:e}"
+                     "\nF1a: {:e}"
                      "\nFa: {:e}"
                      "\nFb: {:e}"
                      "\nFc: {:e}"
                      "\nsteady-state gain: {:e}",
-                     mTa, mTb, mTc, DIRECT_VALVE_FRACTION, mFa, mFb, mFc,
+                     mTa, mTb, mTc, mF1a, mFa, mFb, mFc,
                      steadyStateGain);
 
   SPDLOG_LOGGER_INFO(mSLog,
@@ -86,7 +87,7 @@ void TurbineGovernor::initialize(Real PmRef, Real Tm_init) {
     throw CPS::InvalidArgumentException();
   }
 
-  const Real steadyStateGain = turbineSteadyStateGain(mFa, mFb, mFc);
+  const Real steadyStateGain = turbineSteadyStateGain(mF1a, mFa, mFb, mFc);
 
   // PmRef and Tm_init are desired turbine-output torque/power in pu. The
   // internal governor signal is a valve position, so it must be divided by
@@ -114,7 +115,7 @@ void TurbineGovernor::initialize(Real PmRef, Real Tm_init) {
   T2 = valveInitial;
   T3 = valveInitial;
 
-  T1a = mFa * T1 + DIRECT_VALVE_FRACTION * mVcv;
+  T1a = mFa * T1 + mF1a * mVcv;
   T2b = mFb * T2;
   T3c = mFc * T3;
   mTm = T1a + T2b + T3c;
@@ -143,7 +144,7 @@ Real TurbineGovernor::step(Real Om, Real OmRef, Real PmRef, Real dt) {
     throw CPS::InvalidArgumentException();
   }
 
-  const Real steadyStateGain = turbineSteadyStateGain(mFa, mFb, mFc);
+  const Real steadyStateGain = turbineSteadyStateGain(mF1a, mFa, mFb, mFc);
 
   // Convert the desired mechanical-torque command to the valve domain. This
   // is essential because SynchronGeneratorVBR supplies PmRef in turbine-output
@@ -165,7 +166,7 @@ Real TurbineGovernor::step(Real Om, Real OmRef, Real PmRef, Real dt) {
   T2 = exactFirstOrderStep(T2, mTb, T1, dt);
   T3 = exactFirstOrderStep(T3, mTc, T2, dt);
 
-  T1a = mFa * T1 + DIRECT_VALVE_FRACTION * mVcv;
+  T1a = mFa * T1 + mF1a * mVcv;
   T2b = mFb * T2;
   T3c = mFc * T3;
   mTm = T1a + T2b + T3c;
