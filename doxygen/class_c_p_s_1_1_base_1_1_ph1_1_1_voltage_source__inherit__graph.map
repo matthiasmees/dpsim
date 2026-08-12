@@ -1,0 +1,9 @@
+<map id="CPS::Base::Ph1::VoltageSource" name="CPS::Base::Ph1::VoltageSource">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,88,217,118"/>
+<area shape="rect" id="Node000002" href="$class_c_p_s_1_1_d_p_1_1_ph1_1_1_voltage_source_norton.html" title="Resistive dynamic phasor voltage source." alt="" coords="269,5,468,54"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="180,81,280,52,281,57,181,86"/>
+<area shape="rect" id="Node000003" href="$class_c_p_s_1_1_e_m_t_1_1_ph1_1_1_voltage_source_norton.html" title="Voltage source as Norton equivalent." alt="" coords="265,79,472,127"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="232,100,264,100,264,106,232,106"/>
+<area shape="rect" id="Node000004" href="$class_c_p_s_1_1_e_m_t_1_1_ph3_1_1_voltage_source_norton.html" title="Voltage source with Norton equivalent model." alt="" coords="265,152,472,201"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="181,120,281,149,280,154,180,125"/>
+</map>
