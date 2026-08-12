@@ -8,6 +8,8 @@
 
 #include <dpsim-models/SP/SP_Ph1_Switch.h>
 
+#include <stdexcept>
+
 using namespace CPS;
 
 SP::Ph1::Switch::Switch(String uid, String name, Logger::Level logLevel)
@@ -21,11 +23,12 @@ SP::Ph1::Switch::Switch(String uid, String name, Logger::Level logLevel)
 SimPowerComp<Complex>::Ptr SP::Ph1::Switch::clone(String name) {
   auto copy = Switch::make(name, mLogLevel);
   copy->setParameters(**mOpenResistance, **mClosedResistance, **mIsClosed);
+  if (mBaseVoltage > 0.0)
+    copy->setBaseVoltage(mBaseVoltage);
   return copy;
 }
 
 void SP::Ph1::Switch::initializeFromNodesAndTerminals(Real frequency) {
-
   Real impedance = (**mIsClosed) ? **mClosedResistance : **mOpenResistance;
   (**mIntfVoltage)(0, 0) = initialSingleVoltage(1) - initialSingleVoltage(0);
   (**mIntfCurrent)(0, 0) = (**mIntfVoltage)(0, 0) / impedance;
@@ -42,6 +45,63 @@ void SP::Ph1::Switch::initializeFromNodesAndTerminals(Real frequency) {
                      Logger::phasorToString(initialSingleVoltage(0)),
                      Logger::phasorToString(initialSingleVoltage(1)));
 }
+
+// #### Power flow ####
+
+Real SP::Ph1::Switch::getBaseVoltage() const { return mBaseVoltage; }
+
+void SP::Ph1::Switch::setBaseVoltage(Real baseVoltage) {
+  mBaseVoltage = baseVoltage;
+}
+
+void SP::Ph1::Switch::calculatePerUnitParameters(Real baseApparentPower) {
+  if (mBaseVoltage <= 0.0)
+    throw std::invalid_argument("SP::Ph1::Switch " + name() +
+                                ": base voltage must be > 0 for power flow");
+  if (baseApparentPower <= 0.0)
+    throw std::invalid_argument("SP::Ph1::Switch " + name() +
+                                ": base apparent power must be > 0");
+  if (**mOpenResistance <= 0.0 || **mClosedResistance <= 0.0)
+    throw std::invalid_argument("SP::Ph1::Switch " + name() +
+                                ": open/closed resistance must be > 0");
+
+  mBaseApparentPower = baseApparentPower;
+  mBaseImpedance = mBaseVoltage * mBaseVoltage / mBaseApparentPower;
+  mOpenResistancePerUnit = **mOpenResistance / mBaseImpedance;
+  mClosedResistancePerUnit = **mClosedResistance / mBaseImpedance;
+
+  SPDLOG_LOGGER_INFO(
+      mSLog,
+      "Switch {} PF per-unit parameters: V_base={} V, S_base={} VA, "
+      "R_open={} pu, R_closed={} pu, state={}",
+      name(), mBaseVoltage, mBaseApparentPower, mOpenResistancePerUnit,
+      mClosedResistancePerUnit, isClosed() ? "closed" : "open");
+}
+
+void SP::Ph1::Switch::pfApplyAdmittanceMatrixStamp(SparseMatrixCompRow &Y) {
+  const Int bus0 = matrixNodeIndex(0);
+  const Int bus1 = matrixNodeIndex(1);
+
+  const Real resistancePerUnit =
+      isClosed() ? mClosedResistancePerUnit : mOpenResistancePerUnit;
+
+  if (resistancePerUnit <= 0.0)
+    throw std::invalid_argument("SP::Ph1::Switch " + name() +
+                                ": invalid per-unit resistance");
+
+  const Complex admittance(1.0 / resistancePerUnit, 0.0);
+
+  Y.coeffRef(bus0, bus0) += admittance;
+  Y.coeffRef(bus0, bus1) -= admittance;
+  Y.coeffRef(bus1, bus0) -= admittance;
+  Y.coeffRef(bus1, bus1) += admittance;
+
+  SPDLOG_LOGGER_INFO(mSLog, "PF stamp switch {}: state={}, y={} pu", name(),
+                     isClosed() ? "closed" : "open",
+                     Logger::complexToString(admittance));
+}
+
+// #### MNA ####
 
 void SP::Ph1::Switch::mnaCompInitialize(Real omega, Real timeStep,
                                         Attribute<Matrix>::Ptr leftVector) {
@@ -109,11 +169,9 @@ void SP::Ph1::Switch::mnaCompPostStep(Real time, Int timeStepCount,
 }
 
 Bool SP::Ph1::Switch::hasParameterChanged() {
-  // Check if state of switch changed
   if (!(mIsClosedPrev == mnaIsClosed())) {
     mIsClosedPrev = mnaIsClosed();
-    return 1; //recompute system matrix
-  } else {
-    return 0; // do not recompute system matrix
+    return 1;
   }
-};
+  return 0;
+}

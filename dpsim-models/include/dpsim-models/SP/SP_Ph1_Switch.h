@@ -14,19 +14,28 @@
 #include <dpsim-models/MNASimPowerComp.h>
 #include <dpsim-models/Solver/MNASwitchInterface.h>
 #include <dpsim-models/Solver/MNAVariableCompInterface.h>
+#include <dpsim-models/Solver/PFSolverInterfaceBranch.h>
 
 namespace CPS {
 namespace SP {
 namespace Ph1 {
-/// \brief Dynamic phasor switch
+/// \brief Static-phasor switch / breaker.
 ///
-/// The switch can be opened and closed.
-/// Each state has a specific resistance value.
+/// For MNA, the switch stamps the selected physical resistance directly.
+/// For power flow, the same selected resistance is converted to per unit and
+/// stamped into the NRP nodal admittance matrix.
 class Switch : public MNASimPowerComp<Complex>,
                public Base::Ph1::Switch,
                public SharedFactory<Switch>,
                public MNAVariableCompInterface,
-               public MNASwitchInterface {
+               public MNASwitchInterface,
+               public PFSolverInterfaceBranch {
+private:
+  Real mBaseVoltage = 0.0;
+  Real mBaseApparentPower = 0.0;
+  Real mBaseImpedance = 0.0;
+  Real mOpenResistancePerUnit = 0.0;
+  Real mClosedResistancePerUnit = 0.0;
 
 public:
   /// Defines UID, name, component parameters and logging level
@@ -40,6 +49,12 @@ public:
   // #### General ####
   /// Initializes component from power flow data
   void initializeFromNodesAndTerminals(Real frequency) override;
+
+  // #### Power flow ####
+  Real getBaseVoltage() const;
+  void setBaseVoltage(Real baseVoltage);
+  void calculatePerUnitParameters(Real baseApparentPower);
+  void pfApplyAdmittanceMatrixStamp(SparseMatrixCompRow &Y) override;
 
   // #### General MNA section ####
   void mnaCompInitialize(Real omega, Real timeStep,

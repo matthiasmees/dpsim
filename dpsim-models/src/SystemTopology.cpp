@@ -11,6 +11,7 @@
 #include <iostream>
 #include <unordered_map>
 
+#include <dpsim-models/SP/SP_Ph1_Load.h>
 #include <dpsim-models/SP/SP_Ph1_SynchronGenerator.h>
 #include <dpsim-models/SystemTopology.h>
 
@@ -84,32 +85,52 @@ void SystemTopology::addComponents(const IdentifiedObject::List &components) {
 
 void SystemTopology::initWithPowerflow(const SystemTopology &systemPF,
                                        CPS::Domain domain) {
-
+  // Transfer solved positive-sequence PF node voltages by exact node name.
   for (auto nodePF : systemPF.mNodes) {
+    auto nodePFComplex =
+        std::dynamic_pointer_cast<CPS::SimNode<CPS::Complex>>(nodePF);
+    if (!nodePFComplex)
+      continue;
+
     if (auto node = this->node<TopologicalNode>(nodePF->name())) {
-      //SPDLOG_LOGGER_INFO(mSLog, "Updating initial voltage of {} according to powerflow", node->name());
-      //SPDLOG_LOGGER_INFO(mSLog, "Former initial voltage: {}", node->initialSingleVoltage());
-      node->setInitialVoltage(
-          std::dynamic_pointer_cast<CPS::SimNode<CPS::Complex>>(nodePF)
-              ->singleVoltage());
-      //SPDLOG_LOGGER_INFO(mSLog, "Updated initial voltage: {}", node->initialSingleVoltage());
+      node->setInitialVoltage(nodePFComplex->singleVoltage());
     }
   }
 
-  // set initial power of SG
+  // Helper for target-domain terminal-power assignment.
+  const auto setTargetTerminalPower = [&](const String &componentName,
+                                          const Complex &power) {
+    if (domain == CPS::Domain::DP || domain == CPS::Domain::SP) {
+      auto comp = this->component<SimPowerComp<Complex>>(componentName);
+      if (comp && !comp->terminals().empty())
+        comp->terminal(0)->setPower(power);
+    } else if (domain == CPS::Domain::EMT) {
+      auto comp = this->component<SimPowerComp<Real>>(componentName);
+      if (comp && !comp->terminals().empty())
+        comp->terminal(0)->setPower(power);
+    }
+  };
+
+  // Transfer operating-point terminal powers by exact component name.
+  //
+  // Generator PF convention:
+  //   positive S = power injected into the network.
+  // Dynamic terminal convention:
+  //   positive S = power entering the component.
+  // Therefore generator S changes sign.
+  //
+  // SP::Ph1::Load stores positive P/Q for consumed power and the dynamic
+  // load terminal uses the same consumer-positive convention, so load S
+  // is transferred without sign inversion.
   for (auto compPF : systemPF.mComponents) {
     if (auto genPF = std::dynamic_pointer_cast<CPS::SP::Ph1::SynchronGenerator>(
             compPF)) {
-      if (domain == CPS::Domain::DP || domain == CPS::Domain::SP) {
-        auto comp = this->component<SimPowerComp<Complex>>(compPF->name());
-        auto terminal = comp->terminals()[0];
-        terminal->setPower(-genPF->getApparentPower());
-      } else if (domain == CPS::Domain::EMT) {
-        auto comp = this->component<SimPowerComp<Real>>(compPF->name());
-        auto terminal = comp->terminals()[0];
-        terminal->setPower(-genPF->getApparentPower());
-      }
-      //SPDLOG_LOGGER_INFO(mSLog, "Updated initial power of gen {}: {}", compPF->name(), genPF->getApparentPower());
+      setTargetTerminalPower(compPF->name(), -genPF->getApparentPower());
+    } else if (auto loadPF =
+                   std::dynamic_pointer_cast<CPS::SP::Ph1::Load>(compPF)) {
+      const Complex loadTerminalPower(loadPF->attributeTyped<Real>("P")->get(),
+                                      loadPF->attributeTyped<Real>("Q")->get());
+      setTargetTerminalPower(compPF->name(), loadTerminalPower);
     }
   }
 }
@@ -239,7 +260,7 @@ void SystemTopology::multiply(Int numCopies) {
 /// DEPRECATED: Unused
 void SystemTopology::reset() {
   // for (auto c : mComponents) {
-  // 	c->reset();
+  //   c->reset();
   // }
 }
 

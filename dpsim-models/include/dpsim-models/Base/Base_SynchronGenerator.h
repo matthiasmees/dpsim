@@ -19,148 +19,129 @@
 
 namespace CPS {
 namespace Base {
+
 /// @brief Base synchronous generator model
-///
-/// If parInPerUnit is not set, the parameters have to be given with their respective stator or rotor
-/// referred values. The calculation to per unit is performed in the initialization.
-/// The case where parInPerUnit is not set will be implemented later.
-/// parameter names include underscores and typical variables names found in literature instead of
-/// descriptive names in order to shorten formulas and increase the readability
 class SynchronGenerator {
 public:
   /// \brief State type of machine variables.
-  ///
-  /// Determines if the machine states are considered in per unit,
-  /// referred to the stator parameters or the rotor parameters.
   enum class StateType { perUnit, statorReferred, rotorReferred };
+
   /// \brief Machine parameters type.
   enum class ParameterType { perUnit, statorReferred, operational };
 
-  // Deprecated — uses legacy TurbineGovernor; prefer addGovernor(TurbineGovernorType1)
+  /// Initialization mode for the legacy Signal::TurbineGovernor.
+  ///
+  /// FromPowerflow means that the governor parameters are attached when
+  /// addGovernor() is called, while its equilibrium state is initialized later
+  /// from the synchronous-generator operating point established by
+  /// initializeFromNodesAndTerminals().
+  enum class LegacyGovernorInitialization { FromPowerflow };
 
+  // Legacy TurbineGovernor with explicit initial mechanical operating point.
+  // Kept unchanged for backwards compatibility.
+  void addGovernor(Real Ta, Real Tb, Real Tc, Real F1a, Real Fa, Real Fb,
+                   Real Fc, Real K, Real Tsr, Real Tsm, Real Tm_init,
+                   Real PmRef);
 
-  void addGovernor(Real Ta, Real Tb, Real Tc, Real F1a, Real Fa, Real Fb, Real Fc, Real K,
-                   Real Tsr, Real Tsm, Real Tm_init, Real PmRef);
+  // Legacy TurbineGovernor with automatic initial operating point derived from
+  // the generator's PF-initialized mechanical power.
+  void addGovernor(Real Ta, Real Tb, Real Tc, Real F1a, Real Fa, Real Fb,
+                   Real Fc, Real K, Real Tsr, Real Tsm,
+                   LegacyGovernorInitialization initialization);
+
   /// Add TurbineGovernorType1 (already constructed and initialised)
   void
   addGovernor(std::shared_ptr<Signal::TurbineGovernorType1> turbineGovernor);
-  // Deprecated scalar convenience — creates TurbineGovernorType1 internally; use object overload instead
+
+  /// Deprecated scalar convenience for TurbineGovernorType1.
   void addGovernor(Real T3, Real T4, Real T5, Real Tc, Real Ts, Real R,
                    Real Tmin, Real Tmax, Real OmRef, Real TmRef);
 
-  /// Add a modular governor + turbine pair (new API for SteamTurbineGovernor / SteamTurbine)
+  /// Add a modular governor + turbine pair
   void
   addGovernorAndTurbine(std::shared_ptr<Base::Governor> governor,
                         std::shared_ptr<Base::GovernorParameters> govParams,
                         std::shared_ptr<Base::Turbine> turbine,
                         std::shared_ptr<Base::TurbineParameters> turbineParams);
-  /// Add a pre-constructed governor + turbine pair (parameters already set)
+
+  /// Add a pre-constructed governor + turbine pair
   void addGovernorAndTurbine(std::shared_ptr<Base::Governor> governor,
                              std::shared_ptr<Base::Turbine> turbine);
 
   /// Add voltage regulator and exciter
   void addExciter(std::shared_ptr<Base::Exciter> exciter,
                   std::shared_ptr<Base::ExciterParameters> params);
+
   /// Add already constructed regulator and exciter
   void addExciter(std::shared_ptr<Base::Exciter> exciter);
 
   // Deprecated method
   void addExciter(Real Ta, Real Ka, Real Te, Real Ke, Real Tf, Real Kf,
                   Real Tr);
+
   /// Attach a PSS (initialised separately) to this generator
   void addPSS(std::shared_ptr<Base::PSS> pss,
               std::shared_ptr<Base::PSSParameters> parameters);
-  /// Attach a pre-constructed PSS (parameters already set)
+
+  /// Attach a pre-constructed PSS
   void addPSS(std::shared_ptr<Base::PSS> pss);
 
 protected:
-  ///
   NumericalMethod
-      mNumericalMethod; //not needed if sundials used; could instead determine implicit / explicit solve
+      mNumericalMethod; // not needed if sundials used; could instead determine implicit / explicit solve
+
   /// Simulation angular system speed
   Real mSystemOmega;
+
   /// Simulation time step
   Real mTimeStep;
+
   /// specifies if the machine parameters are transformed to per unit
   StateType mStateType = StateType::perUnit;
-  ///
+
   ParameterType mParameterType;
+
   /// Flag to remember when initial values are set
   Bool mInitialValuesSet = false;
 
   // ### Machine parameters ###
-  /// nominal power Pn [VA]
   Real mNomPower = 0;
-  /// nominal voltage Vn [V] (phase-to-phase RMS)
   Real mNomVolt = 0;
-  /// nominal frequency fn [Hz]
   Real mNomFreq = 0;
-  /// nominal angular frequency wn [Hz]
   Real mNomOmega = 0;
-  /// nominal field current Ifn [A]
   Real mNomFieldCur = 0;
-  /// Number of damping windings in q
   Int mNumDampingWindings = 0;
-  /// mNumber of poles
   Int mPoleNumber = 0;
 
-  /// d-axis mutual inductance Lmd [H]
   Real mLmd = 0;
-  /// q-axis mutual inductance Lmq [H]
   Real mLmq = 0;
-  /// field resistance Rfd [Ohm]
   Real mRfd = 0;
-  /// field leakage inductance Llfd [H]
   Real mLlfd = 0;
-  /// field inductance Lfd [H]
   Real mLfd = 0;
-  /// field winding inductance Lf [H]
   Real mLf = 0;
-  /// d-axis damper resistance Rkd [Ohm]
   Real mRkd = 0;
-  /// d-axis damper leakage inductance Llkd [H]
   Real mLlkd = 0;
-  /// d-axis damper inductance Lkd [H]
   Real mLkd = 0;
-  /// q-axis damper resistance 1 Rkq1 [Ohm]
   Real mRkq1 = 0;
-  /// q-axis damper leakage inductance 1 Llkq1 [H]
   Real mLlkq1 = 0;
-  /// q-axis damper inductance 1 Lkq1 [H]
   Real mLkq1 = 0;
-  /// q-axis damper resistance 2 Rkq2 [Ohm]
   Real mRkq2 = 0;
-  /// q-axis damper leakage inductance 2 Llkq2 [H]
   Real mLlkq2 = 0;
-  /// q-axis damper inductance 2 Lkq2 [H]
   Real mLkq2 = 0;
 
 public:
-  /// stator resistance Rs [Ohm]
   const Attribute<Real>::Ptr mRs;
-  /// leakage inductance Ll [H]
   const Attribute<Real>::Ptr mLl;
-  /// d-axis inductance Ld [H]
   const Attribute<Real>::Ptr mLd;
-  /// q-axis inductance Lq [H]
   const Attribute<Real>::Ptr mLq;
 
-  // Operational parameters
-  /// Transient d-axis inductance [H]
   const Attribute<Real>::Ptr mLd_t;
-  /// Transient q-axis inductance [H]
   const Attribute<Real>::Ptr mLq_t;
-  /// Subtransient d-axis inductance [H]
   const Attribute<Real>::Ptr mLd_s;
-  /// Subtransient q-axis inductance [H]
   const Attribute<Real>::Ptr mLq_s;
-  /// Transient time constant of d-axis [s]
   const Attribute<Real>::Ptr mTd0_t;
-  /// Transient time constant of q-axis [s]
   const Attribute<Real>::Ptr mTq0_t;
-  /// Subtransient time constant of d-axis [s]
   const Attribute<Real>::Ptr mTd0_s;
-  /// Subtransient time constant of q-axis [s]
   const Attribute<Real>::Ptr mTq0_s;
 
 protected:
@@ -170,140 +151,71 @@ protected:
   Real mInitMechPower = 0;
 
   // ### Stator base values ###
-  /// base stator voltage (phase-to-ground peak)
   Real mBase_V = 0;
-  /// base stator voltage (phase-to-ground RMS)
   Real mBase_V_RMS = 0;
-  /// base stator current peak
   Real mBase_I = 0;
-  /// base stator current RMS
   Real mBase_I_RMS = 0;
-  /// base stator impedance
   Real mBase_Z = 0;
-  /// base electrical angular frequency
   Real mBase_OmElec = 0;
-  /// base mechanical angular frequency
   Real mBase_OmMech = 0;
-  /// base stator inductance
   Real mBase_L = 0;
-  /// base torque
   Real mBase_T = 0;
-  /// base flux linkage
   Real mBase_Psi = 0;
 
-  /// base field current
   Real mBase_ifd = 0;
-  /// base field voltage
   Real mBase_vfd = 0;
-  /// base field impedance
   Real mBase_Zfd = 0;
-  /// base field inductance
   Real mBase_Lfd = 0;
 
-  // ### Useful Matrices ### (still needed? )
-  /// Inductance matrix which is numerically equal to the reactance matrix in per unit
+  // ### Useful Matrices ###
   Matrix mInductanceMat;
-  /// resistance matrix
   Matrix mResistanceMat;
-  /// Inverse of the inductance matrix
   Matrix mInvInductanceMat;
 
   // ### State variables ###
-  /// theta
   Real mThetaMech = 0;
 
 public:
-  /// rotor angle delta
   const Attribute<Real>::Ptr mDelta;
-  /// mechanical torque
   const Attribute<Real>::Ptr mMechTorque;
-  /// inertia constant H [s] for per unit or moment of inertia J [kg*m^2]
   const Attribute<Real>::Ptr mInertia;
-  /// rotor speed omega_r
   const Attribute<Real>::Ptr mOmMech;
-  /// Active part of the electrical power
   const Attribute<Real>::Ptr mElecActivePower;
-  /// Reactive part of the electrical power
   const Attribute<Real>::Ptr mElecReactivePower;
-  /// mechanical Power Pm [W]
   const Attribute<Real>::Ptr mMechPower;
-  /// electrical torque
   const Attribute<Real>::Ptr mElecTorque;
 
 protected:
-  /// \brief Vector of stator and rotor voltages.
-  ///
-  /// v_d - Stator voltage in d axis \n
-  /// v_fd - Rotor voltage field winding \n
-  /// v_kd - Rotor voltage damping winding in d axis \n
-  /// v_q - Stator voltage in q axis \n
-  /// v_kq1 - Rotor voltage damping winding 1 in q axis \n
-  /// v_kq2 - Rotor voltage damping winding 2 in q axis \n
-  /// v_0 - Stator voltage 0 component \n
   Matrix mVsr;
-  /// \brief Vector of stator and rotor currents.
-  ///
-  /// i_d - stator current in d axis
-  /// i_fd - Rotor current field winding
-  /// i_kd - Rotor current damping winding in d axis
-  /// i_q - stator current in q axis
-  /// i_kq1 - Rotor current damping winding 1 in q axis
-  /// i_kq2 - Rotor current damping winding 2 in q axis
-  /// i_0 - stator current 0 component
   Matrix mIsr;
-  /// \brief Vector of stator and rotor fluxes.
-  ///
-  /// psi_d - stator flux linkage in d axis
-  /// psi_fd - rotor flux linkage in field winding
-  /// psi_kd - rotor flux linkage in damping winding from d axis
-  /// psi_q - stator flux linkage in q axis
-  /// psi_kq1 - rotor flux linkage in damping winding 1 from q axis
-  /// psi_kq2 - rotor flux linkage in damping winding 2 from q axis
-  /// psi_0 - stator flux linkage 0 component
-  Matrix mPsisr; //equivalent to Fluxes
-  /// Initializes the per unit or stator referred machine parameters with the machine parameters given in per unit.
-  /// The initialization mode depends on the setting of state type.
+  Matrix mPsisr;
 
   // #### dq-frame specific variables ####
-  /// dq0 voltage calculated from terminal voltage
   Matrix mVdq0;
-  /// dq0 current calculated from terminal current
   Matrix mIdq0;
-  /// Flux state space matrix excluding omega term
   Matrix mFluxStateSpaceMat;
-  /// Omega-flux matrix for state space system
   Matrix mOmegaFluxMat;
-  /// Calculates currents from fluxes
   Matrix mFluxToCurrentMat;
-  /// Inductance to calculate magnetizing flux linkage from winding flux linkages
   Real mLad;
-  /// Inductance to calculate magnetizing flux linkage from winding flux linkages
   Real mLaq;
-  /// Determinant of d-axis inductance matrix
   Real mDetLd;
-  /// Determinant of q-axis inductance matrix
   Real mDetLq;
 
-  /// Determines if compensation elements are used
   Bool mCompensationOn;
-  /// Compensation Resistance
   Real mRcomp;
 
-  /// Initializes states in per unit. All machine parameters are assumed to be in per unit.
-  /// Function parameters have to be given in real units.
+  /// Initializes states in per unit.
   void initPerUnitStates();
 
   // #### Controllers ####
-  /// Determines if legacy TurbineGovernor is activated
   Bool mHasTurbineGovernor = false;
-  /// Determines if TurbineGovernorType1 is activated
   Bool mHasTurbineGovernorType1 = false;
-  /// Determines if modular Governor + Turbine pair is activated
   Bool mHasGovernorAndTurbine = false;
-  /// Determines if Exciter is activated
   Bool mHasExciter = false;
-  /// Determines if PSS is activated
   Bool mHasPSS = false;
+
+  /// True only for the new legacy-governor PF initialization mode.
+  Bool mLegacyGovernorInitFromPowerflow = false;
 
   // Deprecated
   Real mInitTerminalVoltage = 0;
@@ -332,22 +244,16 @@ protected:
         mMechPower(attributeList->create<Real>("P_mech", 0)),
         mElecTorque(attributeList->create<Real>("T_e", 0)){};
 
-  ///
   void setBaseParameters(Real nomPower, Real nomVolt, Real nomFreq);
-  ///
   void setBaseParameters(Real nomPower, Real nomVolt, Real nomFreq,
                          Real nomFieldCur);
 
-  ///
   void calcStateSpaceMatrixDQ();
-  ///
   Real calcHfromJ(Real J, Real omegaNominal, Int polePairNumber);
 
 public:
-  /// Destructor - does nothing.
   virtual ~SynchronGenerator() {}
 
-  /// Initializes the base and fundamental machine parameters in per unit
   void setBaseAndFundamentalPerUnitParameters(Real nomPower, Real nomVolt,
                                               Real nomFreq, Real nomFieldCur,
                                               Int poleNumber, Real Rs, Real Ll,
@@ -356,61 +262,47 @@ public:
                                               Real Rkq1, Real Llkq1, Real Rkq2,
                                               Real Llkq2, Real inertia);
 
-  /// Initializes the base and operational machine parameters in per unit.
-  /// The fundamental machine parameters in per unit are calculated and set accordingly.
   void setBaseAndOperationalPerUnitParameters(
       Real nomPower, Real nomVolt, Real nomFreq, Int poleNumber,
       Real nomFieldCur, Real Rs, Real Ld, Real Lq, Real Ld_t, Real Lq_t,
       Real Ld_s, Real Lq_s, Real Ll, Real Td0_t, Real Tq0_t, Real Td0_s,
       Real Tq0_s, Real inertia);
 
-  ///
   void setFundamentalPerUnitParameters(Int poleNumber, Real Rs, Real Ll,
                                        Real Lmd, Real Lmq, Real Rfd, Real Llfd,
                                        Real Rkd, Real Llkd, Real Rkq1,
                                        Real Llkq1, Real Rkq2, Real Llkq2,
                                        Real inertia);
 
-  ///
   void applyFundamentalPerUnitParameters();
 
-  ///
   void setAndApplyFundamentalPerUnitParameters(Int poleNumber, Real Rs, Real Ll,
                                                Real Lmd, Real Lmq, Real Rfd,
                                                Real Llfd, Real Rkd, Real Llkd,
                                                Real Rkq1, Real Llkq1, Real Rkq2,
                                                Real Llkq2, Real inertia);
 
-  ///
   void setOperationalPerUnitParameters(Int poleNumber, Real inertia, Real Rs,
                                        Real Ld, Real Lq, Real Ll, Real Ld_t,
                                        Real Lq_t, Real Ld_s, Real Lq_s,
                                        Real Td0_t, Real Tq0_t, Real Td0_s,
                                        Real Tq0_s);
 
-  ///
   void calculateFundamentalFromOperationalParameters();
 
-  ///
   void setInitialValues(Real initActivePower, Real initReactivePower,
                         Real initTerminalVolt, Real initVoltAngle,
                         Real initMechPower);
 
-  /// Switch to determine the integration method for the machine model.
   void setNumericalMethod(NumericalMethod method) { mNumericalMethod = method; }
 
-  /// Signal component modelling governor control and steam turbine (legacy)
   std::shared_ptr<Signal::TurbineGovernor> mTurbineGovernor;
-  /// Signal component modelling governor control and steam turbine (TurbineGovernorType1)
   std::shared_ptr<Signal::TurbineGovernorType1> mTurbineGovernorType1;
-  /// Modular governor (SteamTurbineGovernor / HydroTurbineGovernor)
   std::shared_ptr<Base::Governor> mGovernor;
-  /// Modular turbine (SteamTurbine / HydroTurbine)
   std::shared_ptr<Base::Turbine> mTurbine;
-  /// Signal component modelling voltage regulator and exciter
   std::shared_ptr<Base::Exciter> mExciter;
-  /// Power system stabilizer
   std::shared_ptr<Base::PSS> mPSS;
 };
+
 } // namespace Base
 } // namespace CPS

@@ -10,6 +10,7 @@
 #include <dpsim/PFSolver.h>
 #include <dpsim/SequentialScheduler.h>
 #include <iostream>
+#include <stdexcept>
 
 using namespace DPsim;
 using namespace CPS;
@@ -72,8 +73,25 @@ void PFSolver::setUpJacobianStorage() {
 
 void PFSolver::solveJacobianSystem() {
   auto sparseJ = mJ.sparseView();
-  Eigen::SparseLU<SparseMatrix> lu(sparseJ);
+
+  Eigen::SparseLU<SparseMatrix> lu;
+  lu.analyzePattern(sparseJ);
+  lu.factorize(sparseJ);
+
+  if (lu.info() != Eigen::Success) {
+    SPDLOG_LOGGER_ERROR(
+        mSLog, "Power-flow Jacobian factorization failed. The network may be "
+               "disconnected or the Jacobian may be numerically singular.");
+    throw std::runtime_error(
+        "Power-flow Jacobian factorization failed (singular/ill-conditioned)");
+  }
+
   mX = lu.solve(mF);
+
+  if (lu.info() != Eigen::Success) {
+    SPDLOG_LOGGER_ERROR(mSLog, "Power-flow Jacobian solve failed.");
+    throw std::runtime_error("Power-flow Jacobian solve failed");
+  }
 }
 
 void PFSolver::assignMatrixNodeIndices() {
@@ -115,6 +133,16 @@ void PFSolver::initializeComponents() {
   for (auto line : mLines) {
     line->calculatePerUnitParameters(mBaseApparentPower, mSystem.mSystemOmega);
   }
+
+  // SP::Ph1::Switch is a PF branch as well. We intentionally discover it
+  // directly from the topology here, so no PFSolver.h member is required.
+  for (auto comp : mSystem.mComponents) {
+    if (auto switchComp =
+            std::dynamic_pointer_cast<CPS::SP::Ph1::Switch>(comp)) {
+      switchComp->calculatePerUnitParameters(mBaseApparentPower);
+    }
+  }
+
   for (auto trans : mTransformers) {
     trans->calculatePerUnitParameters(mBaseApparentPower, mSystem.mSystemOmega);
   }
@@ -213,7 +241,7 @@ void PFSolver::determinePFBusType() {
           mSLog, "{}: only PV type component connected -> set as PV bus",
           node->name());
       mPVBuses.push_back(node);
-    } // PV and PQ type component connected -> set as PV bus (TODO: bus type should be modifiable by user afterwards)
+    } // PV and PQ type component connected -> set as PV bus
     else if (connectedPV && connectedPQ && !connectedVD) {
       SPDLOG_LOGGER_INFO(
           mSLog, "{}: PV and PQ type component connected -> set as PV bus",
@@ -309,6 +337,8 @@ CPS::Real PFSolver::componentBaseVoltage(CPS::TopologicalPowerComp::Ptr comp,
     return rxline->getBaseVoltage();
   if (auto line = std::dynamic_pointer_cast<CPS::SP::Ph1::PiLine>(comp))
     return line->getBaseVoltage();
+  if (auto switchComp = std::dynamic_pointer_cast<CPS::SP::Ph1::Switch>(comp))
+    return switchComp->getBaseVoltage();
   if (auto trans = std::dynamic_pointer_cast<CPS::SP::Ph1::Transformer>(comp)) {
     if (trans->terminal(0)->node()->name() == node->name())
       return trans->getNominalVoltageEnd1();
@@ -336,7 +366,8 @@ void PFSolver::propagateAndVerifyBaseVoltage() {
                             "according to connected components");
   mSLog->flush();
 
-  // Zones: nodes joined by a line share one voltage level; transformers are boundaries.
+  // Zones: nodes joined by a line or a CLOSED switch share one voltage level;
+  // transformers are voltage-level boundaries.
   std::vector<UInt> zoneParent(mSystem.mNodes.size());
   for (UInt i = 0; i < zoneParent.size(); ++i)
     zoneParent[i] = i;
@@ -359,6 +390,12 @@ void PFSolver::propagateAndVerifyBaseVoltage() {
                  std::dynamic_pointer_cast<CPS::SP::Ph1::RXLine>(comp))
       uniteZones(rxline->node(0)->matrixNodeIndex(),
                  rxline->node(1)->matrixNodeIndex());
+    else if (auto switchComp =
+                 std::dynamic_pointer_cast<CPS::SP::Ph1::Switch>(comp)) {
+      if (switchComp->isClosed())
+        uniteZones(switchComp->node(0)->matrixNodeIndex(),
+                   switchComp->node(1)->matrixNodeIndex());
+    }
   }
 
   // Generator/Transformer/NetworkInjection/VSI ratings are authoritative;
@@ -533,11 +570,25 @@ void PFSolver::setSolverAndComponentBehaviour(Solver::Behaviour behaviour) {
 
 void PFSolver::composeAdmittanceMatrix() {
   int n = mSystem.mNodes.size();
+  bool hasSwitch = false;
+
   if (n > 0) {
     mY = CPS::SparseMatrixComp(n, n);
+
     for (auto line : mLines) {
       line->pfApplyAdmittanceMatrixStamp(mY);
     }
+
+    // Stamp SP switches exactly as network branches. Closed/open state chooses
+    // R_closed/R_open inside SP::Ph1::Switch.
+    for (auto comp : mSystem.mComponents) {
+      if (auto switchComp =
+              std::dynamic_pointer_cast<CPS::SP::Ph1::Switch>(comp)) {
+        switchComp->pfApplyAdmittanceMatrixStamp(mY);
+        hasSwitch = true;
+      }
+    }
+
     for (auto trans : mTransformers) {
       //to check if this transformer could be ignored
       if (**trans->mResistance == 0 && **trans->mInductance == 0) {
@@ -551,7 +602,8 @@ void PFSolver::composeAdmittanceMatrix() {
       shunt->pfApplyAdmittanceMatrixStamp(mY);
     }
   }
-  if (mLines.empty() && mTransformers.empty()) {
+
+  if (mLines.empty() && !hasSwitch && mTransformers.empty()) {
     throw std::invalid_argument("There are no bus");
   }
 }
@@ -607,6 +659,18 @@ Bool PFSolver::runNewtonRaphson() {
     isConverged = checkConvergence();
     mIterations = i;
   }
+
+  if (isConverged) {
+    SPDLOG_LOGGER_INFO(
+        mSLog, "Power flow converged after {} Newton-Raphson iterations.",
+        mIterations);
+  } else {
+    SPDLOG_LOGGER_WARN(
+        mSLog,
+        "Power flow did not converge after {} Newton-Raphson iterations.",
+        mIterations);
+  }
+
   return isConverged;
 }
 

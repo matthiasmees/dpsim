@@ -103,7 +103,6 @@ void Base::SynchronGenerator::setFundamentalPerUnitParameters(
     Int poleNumber, Real Rs, Real Ll, Real Lmd, Real Lmq, Real Rfd, Real Llfd,
     Real Rkd, Real Llkd, Real Rkq1, Real Llkq1, Real Rkq2, Real Llkq2,
     Real inertia) {
-  // PoleNumber otherwise not set but currently not used in SynchronGeneratorDQ
   mPoleNumber = poleNumber;
   **mInertia = inertia;
 
@@ -123,7 +122,6 @@ void Base::SynchronGenerator::setFundamentalPerUnitParameters(
 }
 
 void Base::SynchronGenerator::applyFundamentalPerUnitParameters() {
-  // derive further parameters
   **mLd = **mLl + mLmd;
   **mLq = **mLl + mLmq;
   mLfd = mLlfd + mLmd;
@@ -131,13 +129,11 @@ void Base::SynchronGenerator::applyFundamentalPerUnitParameters() {
   mLkq1 = mLlkq1 + mLmq;
   mLkq2 = mLlkq2 + mLmq;
 
-  // base rotor values
   mBase_ifd = mLmd * mNomFieldCur;
   mBase_vfd = mNomPower / mBase_ifd;
   mBase_Zfd = mBase_vfd / mBase_ifd;
   mBase_Lfd = mBase_Zfd / mBase_OmElec;
 
-  // derive number of damping windings
   if (mRkq2 == 0 && mLlkq2 == 0)
     mNumDampingWindings = 1;
   else
@@ -150,12 +146,6 @@ void Base::SynchronGenerator::applyFundamentalPerUnitParameters() {
     mInductanceMat = Matrix::Zero(6, 6);
     mResistanceMat = Matrix::Zero(6, 6);
 
-    // Determinant of Lq(inductance matrix of q axis)
-    // Real detLq = -(mLl + mLmq)*(mLlkq1 + mLmq) + mLmq*mLmq;
-    // Determinant of Ld (inductance matrix of d axis)
-    // Real detLd = (mLmd + mLl)*(-mLlfd*mLlkd - mLlfd*mLmd - mLmd*mLlkd) +
-    // mLmd*mLmd*(mLlfd + mLlkd);
-
     mInductanceMat << **mLd, mLmd, mLmd, 0, 0, 0, mLmd, mLfd, mLmd, 0, 0, 0,
         mLmd, mLmd, mLkd, 0, 0, 0, 0, 0, 0, **mLq, mLmq, 0, 0, 0, 0, mLmq,
         mLkq1, 0, 0, 0, 0, 0, 0, **mLl;
@@ -163,7 +153,6 @@ void Base::SynchronGenerator::applyFundamentalPerUnitParameters() {
     mResistanceMat << **mRs, 0, 0, 0, 0, 0, 0, mRfd, 0, 0, 0, 0, 0, 0, mRkd, 0,
         0, 0, 0, 0, 0, **mRs, 0, 0, 0, 0, 0, 0, mRkq1, 0, 0, 0, 0, 0, 0, **mRs;
 
-    // Compute inverse Inductance Matrix:
     mInvInductanceMat = mInductanceMat.inverse();
   } else {
     mVsr = Matrix::Zero(7, 1);
@@ -171,12 +160,6 @@ void Base::SynchronGenerator::applyFundamentalPerUnitParameters() {
     mPsisr = Matrix::Zero(7, 1);
     mInductanceMat = Matrix::Zero(7, 7);
     mResistanceMat = Matrix::Zero(7, 7);
-
-    // Determinant of Lq(inductance matrix of q axis)
-    // Real detLq = -mLmq*mLlkq2*(mLlkq1 + mLl) - mLl*mLlkq1*(mLlkq2 + mLmq);
-    // Determinant of Ld (inductance matrix of d axis)
-    // Real detLd = (mLmd + mLl)*(-mLlfd*mLlkd - mLlfd*mLmd - mLmd*mLlkd) +
-    // mLmd*mLmd*(mLlfd + mLlkd);
 
     mInductanceMat << **mLd, mLmd, mLmd, 0, 0, 0, 0, mLmd, mLfd, mLmd, 0, 0, 0,
         0, mLmd, mLmd, mLkd, 0, 0, 0, 0, 0, 0, 0, **mLq, mLmq, mLmq, 0, 0, 0, 0,
@@ -187,7 +170,6 @@ void Base::SynchronGenerator::applyFundamentalPerUnitParameters() {
         mRkd, 0, 0, 0, 0, 0, 0, 0, **mRs, 0, 0, 0, 0, 0, 0, 0, mRkq1, 0, 0, 0,
         0, 0, 0, 0, mRkq2, 0, 0, 0, 0, 0, 0, 0, **mRs;
 
-    // Compute inverse Inductance Matrix:
     mInvInductanceMat = mInductanceMat.inverse();
   }
 }
@@ -226,40 +208,28 @@ void Base::SynchronGenerator::setInitialValues(Real initActivePower,
 }
 
 void Base::SynchronGenerator::initPerUnitStates() {
-  // Power in per unit
   Real init_P = mInitElecPower.real() / mNomPower;
   Real init_Q = mInitElecPower.imag() / mNomPower;
   Real init_S_abs = sqrt(pow(init_P, 2.) + pow(init_Q, 2.));
-  // Complex init_S = mInitElecPower;
-  // Terminal voltage in pu
+
   Real init_vt_abs = mInitTerminalVoltage / mBase_V;
-  // Complex init_vt = Complex(mInitTerminalVoltage*cos(mInitVoltAngle),
-  // mInitTerminalVoltage*sin(mInitVoltAngle));
   Real init_it_abs = init_S_abs / init_vt_abs;
-  // Complex init_it = std::conj( init_S / init_vt );
-  // Signed power-factor angle. acos(P / |S|) loses the sign of Q.
+
   const Real init_pf = init_S_abs > 1e-12 ? std::atan2(init_Q, init_P) : 0.0;
-  // Load angle
+
   Real init_delta = atan(((mLmq + **mLl) * init_it_abs * cos(init_pf) -
                           **mRs * init_it_abs * sin(init_pf)) /
                          (init_vt_abs + **mRs * init_it_abs * cos(init_pf) +
                           (mLmq + **mLl) * init_it_abs * sin(init_pf)));
-  // Real init_delta_deg = init_delta / PI * 180;
 
-  // Electrical torque
-  // Real init_Te = init_P + **mRs * pow(init_it, 2.);
-
-  // dq stator voltages and currents
   Real init_vd = init_vt_abs * sin(init_delta);
   Real init_vq = init_vt_abs * cos(init_delta);
   Real init_id = init_it_abs * sin(init_delta + init_pf);
   Real init_iq = init_it_abs * cos(init_delta + init_pf);
 
-  // Rotor voltage and current
   Real init_ifd = (init_vq + **mRs * init_iq + (mLmd + **mLl) * init_id) / mLmd;
   Real init_vfd = mRfd * init_ifd;
 
-  // Flux linkages
   Real init_psid = init_vq + **mRs * init_iq;
   Real init_psiq = -init_vd - **mRs * init_id;
   Real init_psifd = mLfd * init_ifd - mLmd * init_id;
@@ -267,10 +237,9 @@ void Base::SynchronGenerator::initPerUnitStates() {
   Real init_psiq1 = -mLmq * init_iq;
   Real init_psiq2 = -mLmq * init_iq;
 
-  // Initialize mechanical variables
   **mOmMech = 1;
   **mMechPower = mInitMechPower / mNomPower;
-  **mMechTorque = **mMechPower / 1;
+  **mMechTorque = **mMechPower;
   mThetaMech = mInitVoltAngle + init_delta - PI / 2.;
   **mDelta = init_delta;
 
@@ -285,6 +254,7 @@ void Base::SynchronGenerator::initPerUnitStates() {
     mPsisr << init_psid, init_psifd, init_psikd, init_psiq, init_psiq1, 0;
   }
 
+  // Keep the duplicate state assignment of the current branch unchanged.
   if (mNumDampingWindings == 2) {
     mVsr << init_vd, init_vfd, 0, init_vq, 0, 0, 0;
     mIsr << -init_id, init_ifd, 0, -init_iq, 0, 0, 0;
@@ -298,12 +268,30 @@ void Base::SynchronGenerator::initPerUnitStates() {
 
   **mElecTorque = (mPsisr(3, 0) * mIsr(0, 0) - mPsisr(0, 0) * mIsr(3, 0));
 
-  // Initialize controllers
+  // NEW: initialize the existing legacy TurbineGovernor from the same
+  // power-flow operating point used for the machine. No example-side Pm/Tm
+  // extraction is needed.
+  if (mHasTurbineGovernor && mLegacyGovernorInitFromPowerflow) {
+    if (!(mNomPower > 0.0)) {
+      auto log = CPS::Logger::get("SynchronGenerator", CPS::Logger::Level::off,
+                                  CPS::Logger::Level::info);
+      SPDLOG_LOGGER_ERROR(
+          log,
+          "Cannot initialize legacy TurbineGovernor from power flow because "
+          "nominal generator power is not positive");
+      throw CPS::InvalidArgumentException();
+    }
+
+    const Real initialMechanicalPowerPu = mInitMechPower / mNomPower;
+    mTurbineGovernor->initialize(initialMechanicalPowerPu,
+                                 initialMechanicalPowerPu);
+    mLegacyGovernorInitFromPowerflow = false;
+  }
+
   if (mHasExciter) {
-    // Note: field voltage scaled by Lmd/Rfd to transform from synchronous generator pu system
-    // to the exciter pu system
     mExciter->initializeStates(init_vt_abs, (mLmd / mRfd) * init_vfd);
   }
+
   if (mHasGovernorAndTurbine) {
     mGovernor->initializeStates(**mMechTorque);
     mTurbine->initializeStates(**mMechTorque);
@@ -322,8 +310,7 @@ void Base::SynchronGenerator::calcStateSpaceMatrixDQ() {
         0, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         0, 0, 0, 0, 0;
 
-    mFluxStateSpaceMat =
-        Matrix::Zero(7, 7); // order of lambdas: ds; fd; kd; qs; kq1; kq2; 0s
+    mFluxStateSpaceMat = Matrix::Zero(7, 7);
     mFluxStateSpaceMat << **mRs / **mLl * mLad / **mLl - **mRs / **mLl,
         **mRs / **mLl * mLad / mLlfd, **mRs / **mLl * mLad / mLlkd, 0, 0, 0, 0,
         mRfd / mLlfd * mLad / **mLl, mRfd / mLlfd * mLad / mLlfd - mRfd / mLlfd,
@@ -338,8 +325,7 @@ void Base::SynchronGenerator::calcStateSpaceMatrixDQ() {
         mRkq2 / mLlkq2 * mLaq / mLlkq2 - mRkq2 / mLlkq2, 0, 0, 0, 0, 0, 0, 0,
         -**mRs / **mLl;
 
-    mFluxToCurrentMat =
-        Matrix::Zero(7, 7); // need for electric torque id, iq ->1st and 4th row
+    mFluxToCurrentMat = Matrix::Zero(7, 7);
     mFluxToCurrentMat << 1. / **mLl - mLad / **mLl / **mLl,
         -mLad / mLlfd / **mLl, -mLad / mLlkd / **mLl, 0, 0, 0, 0,
         -mLad / **mLl / mLlfd, 1. / mLlfd - mLad / mLlfd / mLlfd,
@@ -361,8 +347,7 @@ void Base::SynchronGenerator::calcStateSpaceMatrixDQ() {
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0;
 
     mFluxStateSpaceMat = Matrix::Zero(6, 6);
-    mFluxStateSpaceMat << // same order as above; only without kq2
-        **mRs / **mLl * mLad / **mLl - **mRs / **mLl,
+    mFluxStateSpaceMat << **mRs / **mLl * mLad / **mLl - **mRs / **mLl,
         **mRs / **mLl * mLad / mLlfd, **mRs / **mLl * mLad / mLlkd, 0, 0, 0,
         mRfd / mLlfd * mLad / **mLl, mRfd / mLlfd * mLad / mLlfd - mRfd / mLlfd,
         mRfd / mLlfd * mLad / mLlkd, 0, 0, 0, mRkd / mLlkd * mLad / **mLl,
@@ -436,10 +421,8 @@ void CPS::Base::SynchronGenerator::addExciter(
 void CPS::Base::SynchronGenerator::addExciter(Real Ta, Real Ka, Real Te,
                                               Real Ke, Real Tf, Real Kf,
                                               Real Tr) {
-  // CLI-only logger
-  auto log = CPS::Logger::get("SynchronGenerator",
-                              CPS::Logger::Level::off,   // file level
-                              CPS::Logger::Level::info); // CLI level
+  auto log = CPS::Logger::get("SynchronGenerator", CPS::Logger::Level::off,
+                              CPS::Logger::Level::info);
 
   SPDLOG_LOGGER_WARN(
       log, "Deprecated API addExciter(Ta,Ka,Te,Ke,Tf,Kf,Tr) called. "
@@ -455,11 +438,8 @@ void CPS::Base::SynchronGenerator::addExciter(Real Ta, Real Ka, Real Te,
   params->Kf = Kf;
   params->Tr = Tr;
 
-  // Apply legacy amplifier limits for the deprecated path
   params->MaxVa = 1.0;
   params->MinVa = -0.9;
-
-  // No saturation by default
   params->Aef = 0.0;
   params->Bef = 0.0;
 
@@ -476,24 +456,52 @@ void CPS::Base::SynchronGenerator::addExciter(Real Ta, Real Ka, Real Te,
       params->Tr, params->MaxVa, params->MinVa);
 }
 
-void Base::SynchronGenerator::addGovernor(Real Ta, Real Tb, Real Tc, Real F1a, Real Fa,
-                                          Real Fb, Real Fc, Real K, Real Tsr,
-                                          Real Tsm, Real Tm_init, Real PmRef) {
+void Base::SynchronGenerator::addGovernor(Real Ta, Real Tb, Real Tc, Real F1a,
+                                          Real Fa, Real Fb, Real Fc, Real K,
+                                          Real Tsr, Real Tsm, Real Tm_init,
+                                          Real PmRef) {
   auto log = CPS::Logger::get("SynchronGenerator", CPS::Logger::Level::off,
                               CPS::Logger::Level::info);
   SPDLOG_LOGGER_WARN(
       log, "addGovernor(Ta, Tb, ...) uses the legacy TurbineGovernor "
            "model; prefer addGovernor(shared_ptr<TurbineGovernorType1>)");
+
   mTurbineGovernor = Signal::TurbineGovernor::make("TurbineGovernor",
                                                    CPS::Logger::Level::info);
   mTurbineGovernor->setParameters(Ta, Tb, Tc, F1a, Fa, Fb, Fc, K, Tsr, Tsm);
   mTurbineGovernor->initialize(PmRef, Tm_init);
+
+  mLegacyGovernorInitFromPowerflow = false;
   mHasTurbineGovernor = true;
 }
 
+void Base::SynchronGenerator::addGovernor(
+    Real Ta, Real Tb, Real Tc, Real F1a, Real Fa, Real Fb, Real Fc, Real K,
+    Real Tsr, Real Tsm, LegacyGovernorInitialization initialization) {
+  auto log = CPS::Logger::get("SynchronGenerator", CPS::Logger::Level::off,
+                              CPS::Logger::Level::info);
 
+  if (initialization != LegacyGovernorInitialization::FromPowerflow) {
+    SPDLOG_LOGGER_ERROR(log, "Unsupported legacy-governor initialization mode");
+    throw CPS::InvalidArgumentException();
+  }
 
+  mTurbineGovernor = Signal::TurbineGovernor::make("TurbineGovernor",
+                                                   CPS::Logger::Level::info);
+  mTurbineGovernor->setParameters(Ta, Tb, Tc, F1a, Fa, Fb, Fc, K, Tsr, Tsm);
 
+  // Do not initialize governor states here. The machine's PF operating point
+  // is not available until initializeFromNodesAndTerminals() has populated
+  // mInitMechPower. initPerUnitStates() will initialize this exact same legacy
+  // governor at the machine's mechanical equilibrium.
+  mLegacyGovernorInitFromPowerflow = true;
+  mHasTurbineGovernor = true;
+
+  SPDLOG_LOGGER_INFO(
+      log,
+      "Attached legacy TurbineGovernor; initial Pm/Tm will be derived from "
+      "the generator power-flow operating point");
+}
 
 void Base::SynchronGenerator::addGovernor(
     std::shared_ptr<Signal::TurbineGovernorType1> turbineGovernor) {
