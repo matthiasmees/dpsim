@@ -22,14 +22,14 @@ namespace ScenarioASynGenVBRSynGenVBR {
 // =============================================================================
 
 struct SimulationParameters {
-  String name = "EMT_Scenario_A_SynGenVBR_SynGenVBR";
+  String name = "EMT_Load_loss_SynGenVBR_SynGenVBR";
   Real frequency = 50.0;
   Real timeStep = 100e-6;
-  Real finalTime = 60.0;
+  Real finalTime = 20.0;
 
   // Both generator islands are initialized with the breaker open. The breaker
   // is closed during the EMT simulation.
-  Real breakerCloseTime = 10.0;
+  Real breakerCloseTime = 19.90;
 
   Bool recomputeSystemMatrix = true;
 };
@@ -120,7 +120,7 @@ struct SynGenVbrParameters {
     p.exciterTf = 0.3;
     p.exciterKf = 0.01;
     p.exciterTr = 0.02;
-    p.exciterMaximumRegulatorVoltage = 9.0;
+    p.exciterMaximumRegulatorVoltage = 19.0;
     p.exciterMinimumRegulatorVoltage = -5.0;
 
 
@@ -178,265 +178,6 @@ struct SynGenVbrParameters {
     return p;
   }
 };
-
-struct GasTransformerParameters {
-  Real nominalVoltageLow = 10.5e3;
-  Real nominalVoltageHigh = 220e3;
-  Real ratedPower = 50e6;
-  Real ratioMagnitude = nominalVoltageLow / nominalVoltageHigh;
-  Real ratioPhase = 0.0;
-
-  Real resistance() const {
-    const Real baseImpedance =
-        nominalVoltageHigh * nominalVoltageHigh / ratedPower;
-    return 0.00376196 * baseImpedance;
-  }
-
-  Real inductance(Real frequency) const {
-    const Real baseImpedance =
-        nominalVoltageHigh * nominalVoltageHigh / ratedPower;
-    return 0.1007298 * baseImpedance / (2.0 * PI * frequency);
-  }
-};
-
-struct PshTransformerParameters {
-  Real nominalVoltageLow = 18.0e3;
-  Real nominalVoltageHigh = 220e3;
-  Real ratedPower = 200e6;
-  Real ratioMagnitude = nominalVoltageLow / nominalVoltageHigh;
-  Real ratioPhase = 0.0;
-
-  Real resistance() const { return 0.41745 * 2.0; }
-
-  Real inductance() const { return 0.0481260775594524 * 2.0; }
-};
-
-struct CableParameters {
-  Real baseVoltage = 220e3;
-  Real resistance = 5.04669;
-  Real inductance = 0.13523123641;
-  Real capacitance = 1.93522865e-6;
-  Real conductance = 1e-15;
-};
-
-struct Line3Parameters {
-  Real baseVoltage = 220e3;
-  Real length = 5.0;
-
-  Real resistance() const { return 0.0749 * length; }
-  Real inductance() const { return 1.270693e-3 * length; }
-  Real capacitance() const { return 0.00466961e-6 * length; }
-
-  Real conductance = 1e-15;
-};
-
-struct BreakerParameters {
-  Real openResistance = 1e12;
-  // Retain the numerically robust value from the already working breaker
-  // example. The old Scenario A draft declared 1e-8 Ohm, but that breaker
-  // branch was commented out and therefore not validated there.
-  Real closedResistance = 1e-3;
-};
-
-struct Parameters {
-  SimulationParameters simulation;
-
-  SynGenVbrParameters gasGenerator = SynGenVbrParameters::gas();
-  SynGenVbrParameters pshGenerator = SynGenVbrParameters::psh();
-
-  GasTransformerParameters gasTransformer;
-  PshTransformerParameters pshTransformer;
-  CableParameters cable;
-  Line3Parameters line3;
-  BreakerParameters breaker;
-
-  // The initial angle is applied to the isolated PSH island in the SP
-  // initialization and can be changed to study out-of-phase closing.
-  Real pshInitialAngleDegrees = 0.0;
-};
-
-// =============================================================================
-// Power-flow / steady-state initialization
-// =============================================================================
-
-struct PowerFlowResult {
-  SystemTopology system;
-
-  Complex gasPower;
-  Complex pshPower;
-
-  Complex gasBusVoltage;
-  Complex pshBusVoltage;
-
-  Complex breakerGridSideVoltage;
-  Complex breakerPshSideVoltage;
-};
-
-Complex
-generatorPositivePower(const std::shared_ptr<SP::Ph1::NetworkInjection> &source,
-                       const SimNode<Complex>::Ptr &sourceBus) {
-  const Complex voltage = sourceBus->singleVoltage();
-
-  // NetworkInjection uses the component-consumer convention. Generator-positive
-  // injected power therefore has the opposite sign.
-  const Complex consumerCurrent = (**source->mIntfCurrent)(0, 0);
-  return -voltage * std::conj(consumerCurrent);
-}
-
-PowerFlowResult buildAndRunPowerFlow(const Parameters &p) {
-  const String simulationName = p.simulation.name + "_PF";
-
-  SPDLOG_INFO("Scenario A bases:"
-              "\n  GEN_gas: S_rated={} VA, V_rated={} V_LL RMS, H={} s"
-              "\n  GEN_psh: S_rated={} VA, V_rated={} V_LL RMS, H={} s"
-              "\n  TR_gas : {}/{} V, S_rated={} VA, R={} Ohm, L={} H"
-              "\n  TR_psh : {}/{} V, S_rated={} VA, R={} Ohm, L={} H"
-              "\n  breaker: R_open={} Ohm, R_closed={} Ohm",
-              p.gasGenerator.ratedPower, p.gasGenerator.ratedVoltage,
-              p.gasGenerator.inertia, p.pshGenerator.ratedPower,
-              p.pshGenerator.ratedVoltage, p.pshGenerator.inertia,
-              p.gasTransformer.nominalVoltageLow,
-              p.gasTransformer.nominalVoltageHigh, p.gasTransformer.ratedPower,
-              p.gasTransformer.resistance(),
-              p.gasTransformer.inductance(p.simulation.frequency),
-              p.pshTransformer.nominalVoltageLow,
-              p.pshTransformer.nominalVoltageHigh, p.pshTransformer.ratedPower,
-              p.pshTransformer.resistance(), p.pshTransformer.inductance(),
-              p.breaker.openResistance, p.breaker.closedResistance);
-
-  std::filesystem::create_directories("logs/" + simulationName);
-  Logger::setLogDir("logs/" + simulationName);
-
-  // Node names intentionally match the EMT topology so that
-  // SystemTopology::initWithPowerflow() can transfer all phasors.
-  auto busGas = SimNode<Complex>::make("BUS_gas", PhaseType::Single);
-  auto busB = SimNode<Complex>::make("BUS_b", PhaseType::Single);
-  auto busA = SimNode<Complex>::make("BUS_a", PhaseType::Single);
-  auto busPsha = SimNode<Complex>::make("BUS_psha", PhaseType::Single);
-  auto busTrPsh = SimNode<Complex>::make("BUS_tr_psh", PhaseType::Single);
-  auto busPsh = SimNode<Complex>::make("BUS_psh", PhaseType::Single);
-
-  auto gasInjection =
-      SP::Ph1::NetworkInjection::make("GEN_gas_PF", Logger::Level::debug);
-  gasInjection->setParameters(Math::polar(p.gasGenerator.ratedVoltage, 0.0),
-                              p.simulation.frequency);
-
-  auto pshInjection =
-      SP::Ph1::NetworkInjection::make("GEN_psh_PF", Logger::Level::debug);
-  pshInjection->setParameters(
-      Math::polar(p.pshGenerator.ratedVoltage,
-                  p.pshInitialAngleDegrees * PI / 180.0),
-      p.simulation.frequency);
-
-  auto gasTransformer = SP::Ph1::Transformer::make("TR_gas_PF", "TR_gas_PF",
-                                                   Logger::Level::debug, true);
-  gasTransformer->setParameters(
-      p.gasTransformer.nominalVoltageLow, p.gasTransformer.nominalVoltageHigh,
-      p.gasTransformer.ratedPower, p.gasTransformer.ratioMagnitude,
-      p.gasTransformer.ratioPhase, p.gasTransformer.resistance(),
-      p.gasTransformer.inductance(p.simulation.frequency));
-
-  auto cable = SP::Ph1::PiLine::make("cable_PF", Logger::Level::debug);
-  cable->setParameters(p.cable.resistance, p.cable.inductance,
-                       p.cable.capacitance, p.cable.conductance);
-
-  auto line3 = SP::Ph1::PiLine::make("line_3_PF", Logger::Level::debug);
-  line3->setParameters(p.line3.resistance(), p.line3.inductance(),
-                       p.line3.capacitance(), p.line3.conductance);
-
-  auto breaker =
-      SP::Ph1::Switch::make("breaker_GEN_psh_PF", Logger::Level::debug);
-  breaker->setParameters(p.breaker.openResistance, p.breaker.closedResistance,
-                         false);
-
-  auto pshTransformer = SP::Ph1::Transformer::make("TR_psh_PF", "TR_psh_PF",
-                                                   Logger::Level::debug, true);
-  pshTransformer->setParameters(
-      p.pshTransformer.nominalVoltageLow, p.pshTransformer.nominalVoltageHigh,
-      p.pshTransformer.ratedPower, p.pshTransformer.ratioMagnitude,
-      p.pshTransformer.ratioPhase, p.pshTransformer.resistance(),
-      p.pshTransformer.inductance());
-
-  gasInjection->connect({busGas});
-  gasTransformer->connect({busGas, busB});
-  cable->connect({busB, busA});
-  line3->connect({busA, busPsha});
-  breaker->connect({busPsha, busTrPsh});
-  pshTransformer->connect({busPsh, busTrPsh});
-  pshInjection->connect({busPsh});
-
-  SystemTopology system(
-      p.simulation.frequency,
-      SystemNodeList{busGas, busB, busA, busPsha, busTrPsh, busPsh},
-      SystemComponentList{gasInjection, gasTransformer, cable, line3, breaker,
-                          pshTransformer, pshInjection});
-
-  auto logger = DataLogger::make(simulationName);
-
-  logger->logAttribute("V_BUS_gas_PF", busGas->attribute("v"));
-  logger->logAttribute("V_BUS_b_PF", busB->attribute("v"));
-  logger->logAttribute("V_BUS_a_PF", busA->attribute("v"));
-  logger->logAttribute("V_BUS_psha_PF", busPsha->attribute("v"));
-  logger->logAttribute("V_BUS_tr_psh_PF", busTrPsh->attribute("v"));
-  logger->logAttribute("V_BUS_psh_PF", busPsh->attribute("v"));
-
-  logger->logAttribute("I_GEN_gas_PF", gasInjection->attribute("i_intf"));
-  logger->logAttribute("I_GEN_psh_PF", pshInjection->attribute("i_intf"));
-  logger->logAttribute("I_breaker_GEN_psh_PF", breaker->attribute("i_intf"));
-
-  Simulation simulation(simulationName, Logger::Level::info);
-  simulation.setSystem(system);
-  simulation.setTimeStep(1.0);
-  simulation.setFinalTime(1.0);
-  simulation.setDomain(Domain::SP);
-  simulation.setSolverType(Solver::Type::MNA);
-  simulation.doInitFromNodesAndTerminals(true);
-  simulation.addLogger(logger);
-  simulation.run();
-
-  const Complex gasPower = generatorPositivePower(gasInjection, busGas);
-  const Complex pshPower = generatorPositivePower(pshInjection, busPsh);
-
-  const Complex gasVoltage = busGas->singleVoltage();
-  const Complex pshVoltage = busPsh->singleVoltage();
-  const Complex breakerGridVoltage = busPsha->singleVoltage();
-  const Complex breakerPshVoltage = busTrPsh->singleVoltage();
-
-  const auto finiteComplex = [](const Complex &value) {
-    return std::isfinite(value.real()) && std::isfinite(value.imag());
-  };
-
-  if (!(std::abs(gasVoltage) > 0.0) || !(std::abs(pshVoltage) > 0.0) ||
-      !finiteComplex(gasVoltage) || !finiteComplex(pshVoltage) ||
-      !finiteComplex(gasPower) || !finiteComplex(pshPower) ||
-      !finiteComplex(breakerGridVoltage) || !finiteComplex(breakerPshVoltage)) {
-    throw std::runtime_error(
-        "Invalid SP steady-state result for Scenario A with two "
-        "SynchronGeneratorVBR components.");
-  }
-
-  SPDLOG_INFO(
-      "Solved open-breaker SP initialization:"
-      "\n  GEN_gas: P={} W, Q={} var, |V|={} V_LL RMS, angle={} deg"
-      "\n  GEN_psh: P={} W, Q={} var, |V|={} V_LL RMS, angle={} deg"
-      "\n  breaker grid side: |V|={} V_LL RMS, angle={} deg"
-      "\n  breaker PSH side : |V|={} V_LL RMS, angle={} deg"
-      "\n  breaker mismatch : |dV|={} V_LL RMS, dAngle={} deg",
-      gasPower.real(), gasPower.imag(), std::abs(gasVoltage),
-      std::arg(gasVoltage) * 180.0 / PI, pshPower.real(), pshPower.imag(),
-      std::abs(pshVoltage), std::arg(pshVoltage) * 180.0 / PI,
-      std::abs(breakerGridVoltage), std::arg(breakerGridVoltage) * 180.0 / PI,
-      std::abs(breakerPshVoltage), std::arg(breakerPshVoltage) * 180.0 / PI,
-      std::abs(breakerGridVoltage - breakerPshVoltage),
-      std::arg(breakerGridVoltage / breakerPshVoltage) * 180.0 / PI);
-
-  return {system,     gasPower,           pshPower,         gasVoltage,
-          pshVoltage, breakerGridVoltage, breakerPshVoltage};
-}
-
-// =============================================================================
-// EMT model
-// =============================================================================
 
 void configureGenerator(
     const std::shared_ptr<EMT::Ph3::SynchronGeneratorVBR> &generator,
@@ -509,6 +250,236 @@ void configureGenerator(
       parameters.exciterMaximumRegulatorVoltage);
 }
 
+struct GasTransformerParameters {
+  Real nominalVoltageLow = 10.5e3;
+  Real nominalVoltageHigh = 220e3;
+  Real ratedPower = 50e6;
+  Real ratioMagnitude = nominalVoltageLow / nominalVoltageHigh;
+  Real ratioPhase = 0.0;
+
+  Real resistance() const {
+    const Real baseImpedance =
+        nominalVoltageHigh * nominalVoltageHigh / ratedPower;
+    return 0.00376196 * baseImpedance;
+  }
+
+  Real inductance(Real frequency) const {
+    const Real baseImpedance =
+        nominalVoltageHigh * nominalVoltageHigh / ratedPower;
+    return 0.1007298 * baseImpedance / (2.0 * PI * frequency);
+  }
+};
+
+struct L2TransformerParameters {
+  Real nominalVoltageLow = 10.0e3;
+  Real nominalVoltageHigh = 220e3;
+  Real ratedPower = 50e6;
+  Real ratioMagnitude = nominalVoltageLow / nominalVoltageHigh;
+  Real ratioPhase = 0.0;
+
+  Real resistance() const { return 1.82078864*2; }
+
+  Real inductance() const { return 0.15518646*2; }
+};
+
+struct CableParameters {
+  Real baseVoltage = 220e3;
+  Real resistance = 5.04669;
+  Real inductance = 0.13523123641;
+  Real capacitance = 1.93522865e-6;
+  Real conductance = 1e-15;
+};
+
+struct Line3Parameters {
+  Real baseVoltage = 220e3;
+  Real length = 5.0;
+
+  Real resistance() const { return 0.0749 * length; }
+  Real inductance() const { return 1.270693e-3 * length; }
+  Real capacitance() const { return 0.00466961e-6 * length; }
+
+  Real conductance = 1e-15;
+};
+
+struct BreakerParameters {
+  Real openResistance = 1e12;
+  // Retain the numerically robust value from the already working breaker
+  // example. The old Scenario A draft declared 1e-8 Ohm, but that breaker
+  // branch was commented out and therefore not validated there.
+  Real closedResistance = 1e-3;
+};
+
+struct Parameters {
+  SimulationParameters simulation;
+
+  SynGenVbrParameters gasGenerator = SynGenVbrParameters::gas();
+  SynGenVbrParameters pshGenerator = SynGenVbrParameters::psh();
+
+  GasTransformerParameters gasTransformer;
+  L2TransformerParameters L2Transformer;
+  CableParameters cable;
+  Line3Parameters line3;
+  BreakerParameters breaker;
+
+  // The initial angle is applied to the isolated PSH island in the SP
+  // initialization and can be changed to study out-of-phase closing.
+  Real pshInitialAngleDegrees = 0.0;
+};
+
+// =============================================================================
+// Power-flow / steady-state initialization
+// =============================================================================
+
+struct PowerFlowResult {
+  SystemTopology system;
+
+  Complex gasPower;
+  Complex pshPower;
+
+  Complex gasBusVoltage;
+  Complex pshBusVoltage;
+
+  Complex breakerGridSideVoltage;
+  Complex breakerPshSideVoltage;
+};
+
+Complex
+generatorPositivePower(const std::shared_ptr<SP::Ph1::NetworkInjection> &source,
+                       const SimNode<Complex>::Ptr &sourceBus) {
+  const Complex voltage = sourceBus->singleVoltage();
+
+  // NetworkInjection uses the component-consumer convention. Generator-positive
+  // injected power therefore has the opposite sign.
+  const Complex consumerCurrent = (**source->mIntfCurrent)(0, 0);
+  return -voltage * std::conj(consumerCurrent);
+}
+
+PowerFlowResult buildAndRunPowerFlow(const Parameters &p) {
+  const String simulationName = p.simulation.name + "_PF";
+
+  SPDLOG_INFO("Scenario A bases:"
+              "\n  GEN_gas: S_rated={} VA, V_rated={} V_LL RMS, H={} s"
+              "\n  GEN_psh: S_rated={} VA, V_rated={} V_LL RMS, H={} s"
+              "\n  TR_gas : {}/{} V, S_rated={} VA, R={} Ohm, L={} H"
+              "\n  TR_psh : {}/{} V, S_rated={} VA, R={} Ohm, L={} H"
+              "\n  breaker: R_open={} Ohm, R_closed={} Ohm",
+              p.gasGenerator.ratedPower, p.gasGenerator.ratedVoltage,
+              p.gasGenerator.inertia, p.pshGenerator.ratedPower,
+              p.pshGenerator.ratedVoltage, p.pshGenerator.inertia,
+              p.gasTransformer.nominalVoltageLow,
+              p.gasTransformer.nominalVoltageHigh, p.gasTransformer.ratedPower,
+              p.gasTransformer.resistance(),
+              p.gasTransformer.inductance(p.simulation.frequency),
+              p.L2Transformer.nominalVoltageLow,
+              p.L2Transformer.nominalVoltageHigh, p.L2Transformer.ratedPower,
+              p.L2Transformer.resistance(), p.L2Transformer.inductance(),
+              1e12, 1e-3);
+
+  std::filesystem::create_directories("logs/" + simulationName);
+  Logger::setLogDir("logs/" + simulationName);
+
+  // Node names intentionally match the EMT topology so that
+  // SystemTopology::initWithPowerflow() can transfer all phasors.
+  auto busGas = SimNode<Complex>::make("BUS_gas", PhaseType::Single);
+  auto busB = SimNode<Complex>::make("BUS_b", PhaseType::Single);
+  auto busL2 = SimNode<Complex>::make("BUS_L2", PhaseType::Single);
+  auto busL2b = SimNode<Complex>::make("BUS_L2b", PhaseType::Single);
+
+  auto gasInjection =
+      SP::Ph1::NetworkInjection::make("GEN_gas_PF", Logger::Level::debug);
+  gasInjection->setParameters(Math::polar(p.gasGenerator.ratedVoltage, 0.0),
+                              p.simulation.frequency);
+
+  // auto gasInjection = SP::Ph1::SynchronGenerator::make("GEN_gas_PF", Logger::Level::debug);
+	// // setPointVoltage is defined as the voltage at the transfomer primary side and should be transformed to network side
+	// gasInjection->setParameters(50e6, 10.5e3, 0, 10.5e3, PowerflowBusType::VD);
+	// gasInjection->setBaseVoltage(10.5e3);                  
+
+
+  auto gasTransformer = SP::Ph1::Transformer::make("TR_gas_PF", "TR_gas_PF",
+                                                   Logger::Level::debug, true);
+  gasTransformer->setParameters(
+      p.gasTransformer.nominalVoltageLow, p.gasTransformer.nominalVoltageHigh,
+      p.gasTransformer.ratedPower, p.gasTransformer.ratioMagnitude,
+      p.gasTransformer.ratioPhase, p.gasTransformer.resistance(),
+      p.gasTransformer.inductance(p.simulation.frequency));
+  gasTransformer->setBaseVoltage(220e3);
+
+  // auto breaker =
+  //     SP::Ph1::Switch::make("breaker_load_b", Logger::Level::debug);
+  // breaker->setParameters(1e12, 1e-3,
+  //                        true);
+
+
+  auto L2Transformer = SP::Ph1::Transformer::make("TR_L_PF", "TR_L_PF",
+                                                   Logger::Level::debug, true);
+  L2Transformer->setParameters(
+      p.L2Transformer.nominalVoltageLow, p.L2Transformer.nominalVoltageHigh,
+      p.L2Transformer.ratedPower, p.L2Transformer.ratioMagnitude,
+      p.L2Transformer.ratioPhase, p.L2Transformer.resistance(),
+      p.L2Transformer.inductance());
+  L2Transformer->setBaseVoltage(220e3);
+
+  auto LOAD_2 = SP::Ph1::Load::make("LOAD_2_PF", Logger::Level::debug);
+	LOAD_2->setParameters(5e6, 3.098721e6, 10e3);
+
+	auto LOAD_2b = SP::Ph1::Load::make("LOAD_2b_PF", Logger::Level::debug);
+	LOAD_2b->setParameters(15e6, 0, 10e3);
+
+  auto breaker = SP::Ph1::PiLine::make("breaker_load_b", Logger::Level::debug);
+	breaker->setParameters(1e-8, 1e-5, 0, 1e-15);
+	breaker->setBaseVoltage(10e3);
+
+  gasInjection->connect({busGas});
+  gasTransformer->connect({busGas, busB});
+  L2Transformer->connect({busL2, busB});
+  LOAD_2->connect({busL2});
+  breaker->connect({busL2, busL2b});
+  LOAD_2b->connect({busL2b});
+
+
+
+  SystemTopology system(
+      p.simulation.frequency,
+      SystemNodeList{busGas, busB, busL2, busL2b},
+      SystemComponentList{gasInjection, gasTransformer, breaker,
+                          L2Transformer, LOAD_2, LOAD_2b});
+
+  auto logger = DataLogger::make(simulationName);
+
+  logger->logAttribute("V_BUS_gas_PF", busGas->attribute("v"));
+  logger->logAttribute("V_BUS_b_PF", busB->attribute("v"));
+  logger->logAttribute("V_BUS_L2_PF", busL2->attribute("v"));
+  logger->logAttribute("V_BUS_L2b_PF", busL2b->attribute("v"));
+  
+
+  logger->logAttribute("I_GEN_gas_PF", gasInjection->attribute("i_intf"));
+  logger->logAttribute("I_breaker_PF", breaker->attribute("i_intf"));
+
+  Simulation simulation(simulationName, Logger::Level::debug);
+  simulation.setSystem(system);
+  simulation.setTimeStep(1.0);
+  simulation.setFinalTime(1.0);
+  simulation.setDomain(Domain::SP);
+  simulation.setSolverType(Solver::Type::NRP);
+  simulation.setSolverAndComponentBehaviour(Solver::Behaviour::Initialization);
+  simulation.doInitFromNodesAndTerminals(true);
+  simulation.addLogger(logger);
+  simulation.run();
+
+  const Complex gasPower = generatorPositivePower(gasInjection, busGas);
+  const Complex gasVoltage = busGas->singleVoltage();
+ 
+
+  return {system, gasPower, gasVoltage};
+}
+
+// =============================================================================
+// EMT model
+// =============================================================================
+
+
+
 void runEmt(const Parameters &p, const PowerFlowResult &powerFlow) {
   const String simulationName = p.simulation.name + "_EMT";
 
@@ -517,20 +488,16 @@ void runEmt(const Parameters &p, const PowerFlowResult &powerFlow) {
 
   auto busGas = SimNode<Real>::make("BUS_gas", PhaseType::ABC);
   auto busB = SimNode<Real>::make("BUS_b", PhaseType::ABC);
-  auto busA = SimNode<Real>::make("BUS_a", PhaseType::ABC);
-  auto busPsha = SimNode<Real>::make("BUS_psha", PhaseType::ABC);
-  auto busTrPsh = SimNode<Real>::make("BUS_tr_psh", PhaseType::ABC);
-  auto busPsh = SimNode<Real>::make("BUS_psh", PhaseType::ABC);
+  auto busL2 = SimNode<Real>::make("BUS_L2", PhaseType::ABC);
+  auto busL2b = SimNode<Real>::make("BUS_L2b", PhaseType::ABC);
+
 
   auto gasGenerator =
       EMT::Ph3::SynchronGeneratorVBR::make("GEN_gas", Logger::Level::debug);
-  auto pshGenerator =
-      EMT::Ph3::SynchronGeneratorVBR::make("GEN_psh", Logger::Level::debug);
-
+  
   configureGenerator(gasGenerator, p.gasGenerator, powerFlow.gasPower,
                      "GEN_gas_exciter");
-  configureGenerator(pshGenerator, p.pshGenerator, powerFlow.pshPower,
-                     "GEN_psh_exciter");
+
 
   auto gasTransformer = EMT::Ph3::Transformer::make("TR_gas", "TR_gas",
                                                     Logger::Level::debug, true);
@@ -542,49 +509,44 @@ void runEmt(const Parameters &p, const PowerFlowResult &powerFlow) {
       Math::singlePhaseParameterToThreePhase(
           p.gasTransformer.inductance(p.simulation.frequency)));
 
-  auto cable = EMT::Ph3::PiLine::make("cable", Logger::Level::debug);
-  cable->setParameters(
-      Math::singlePhaseParameterToThreePhase(p.cable.resistance),
-      Math::singlePhaseParameterToThreePhase(p.cable.inductance),
-      Math::singlePhaseParameterToThreePhase(p.cable.capacitance),
-      Math::singlePhaseParameterToThreePhase(p.cable.conductance));
+  
 
-  auto line3 = EMT::Ph3::PiLine::make("line_3", Logger::Level::debug);
-  line3->setParameters(
-      Math::singlePhaseParameterToThreePhase(p.line3.resistance()),
-      Math::singlePhaseParameterToThreePhase(p.line3.inductance()),
-      Math::singlePhaseParameterToThreePhase(p.line3.capacitance()),
-      Math::singlePhaseParameterToThreePhase(p.line3.conductance));
 
   auto breaker =
-      EMT::Ph3::Switch::make("breaker_GEN_psh", Logger::Level::debug);
+      EMT::Ph3::Switch::make("breaker_load_b", Logger::Level::debug);
   breaker->setParameters(
-      Math::singlePhaseParameterToThreePhase(p.breaker.openResistance),
-      Math::singlePhaseParameterToThreePhase(p.breaker.closedResistance));
-  breaker->openSwitch();
+      Math::singlePhaseParameterToThreePhase(1e12),
+      Math::singlePhaseParameterToThreePhase(1e-3));
+  breaker->closeSwitch();
 
-  auto pshTransformer = EMT::Ph3::Transformer::make("TR_psh", "TR_psh",
+  auto L2Transformer = EMT::Ph3::Transformer::make("TR_L2", "TR_L2",
                                                     Logger::Level::debug, true);
-  pshTransformer->setParameters(
-      p.pshTransformer.nominalVoltageLow, p.pshTransformer.nominalVoltageHigh,
-      p.pshTransformer.ratedPower, p.pshTransformer.ratioMagnitude,
-      p.pshTransformer.ratioPhase,
-      Math::singlePhaseParameterToThreePhase(p.pshTransformer.resistance()),
-      Math::singlePhaseParameterToThreePhase(p.pshTransformer.inductance()));
+  L2Transformer->setParameters(
+      p.L2Transformer.nominalVoltageLow, p.L2Transformer.nominalVoltageHigh,
+      p.L2Transformer.ratedPower, p.L2Transformer.ratioMagnitude,
+      p.L2Transformer.ratioPhase,
+      Math::singlePhaseParameterToThreePhase(p.L2Transformer.resistance()),
+      Math::singlePhaseParameterToThreePhase(p.L2Transformer.inductance()));
+
+  auto LOAD_2 = EMT::Ph3::RXLoad::make("LOAD_2", Logger::Level::debug);
+	LOAD_2->setParameters(CPS::Math::singlePhasePowerToThreePhase(5.0e6), 
+	CPS::Math::singlePhasePowerToThreePhase(3.098721e6), 10.0e3);
+
+	auto LOAD_2b = EMT::Ph3::RXLoad::make("LOAD_2b", Logger::Level::debug);
+	LOAD_2b->setParameters(CPS::Math::singlePhasePowerToThreePhase(15.0e6), 
+	CPS::Math::singlePhasePowerToThreePhase(0), 10.0e3);
 
   gasGenerator->connect({busGas});
   gasTransformer->connect({busGas, busB});
-  cable->connect({busB, busA});
-  line3->connect({busA, busPsha});
-  breaker->connect({busPsha, busTrPsh});
-  pshTransformer->connect({busPsh, busTrPsh});
-  pshGenerator->connect({busPsh});
+  L2Transformer->connect({busL2, busB});
+  breaker->connect({busL2, busL2b});
+  LOAD_2->connect({busL2});
+  LOAD_2b->connect({busL2b});
 
   SystemTopology system(
       p.simulation.frequency,
-      SystemNodeList{busGas, busB, busA, busPsha, busTrPsh, busPsh},
-      SystemComponentList{gasGenerator, gasTransformer, cable, line3, breaker,
-                          pshTransformer, pshGenerator});
+      SystemNodeList{busGas, busB, busL2, busL2b},
+      SystemComponentList{gasGenerator, gasTransformer, L2Transformer, breaker, LOAD_2, LOAD_2b});
 
   // The open-breaker SP topology contains both islands and identically named
   // nodes. This initializes both synchronous machines and both breaker sides.
@@ -593,23 +555,19 @@ void runEmt(const Parameters &p, const PowerFlowResult &powerFlow) {
   // SynchronGeneratorVBR expects terminal power in DPsim's consumer-positive
   // convention and negates it during initializeFromNodesAndTerminals().
   gasGenerator->terminal(0)->setPower(-powerFlow.gasPower);
-  pshGenerator->terminal(0)->setPower(-powerFlow.pshPower);
 
   auto logger = DataLogger::make(simulationName);
 
   logger->logAttribute("BUS_gas_v", busGas->attribute("v"));
   logger->logAttribute("BUS_b_v", busB->attribute("v"));
-  logger->logAttribute("BUS_a_v", busA->attribute("v"));
-  logger->logAttribute("BUS_psha_v", busPsha->attribute("v"));
-  logger->logAttribute("BUS_tr_psh_v", busTrPsh->attribute("v"));
-  logger->logAttribute("BUS_psh_v", busPsh->attribute("v"));
+  logger->logAttribute("BUS_L2_v", busL2->attribute("v"));
+  logger->logAttribute("BUS_L2b_v", busL2b->attribute("v"));
+
 
   logger->logAttribute("TR_gas_i", gasTransformer->attribute("i_intf"));
-  logger->logAttribute("cable_i", cable->attribute("i_intf"));
-  logger->logAttribute("line_3_i", line3->attribute("i_intf"));
   logger->logAttribute("breaker_GEN_psh_i", breaker->attribute("i_intf"));
   logger->logAttribute("breaker_GEN_psh_v", breaker->attribute("v_intf"));
-  logger->logAttribute("TR_psh_i", pshTransformer->attribute("i_intf"));
+  logger->logAttribute("TR_L2_i", L2Transformer->attribute("i_intf"));
 
   logger->logAttribute("GEN_gas_w_r", gasGenerator->attribute("w_r"));
   logger->logAttribute("GEN_gas_P_elec", gasGenerator->attribute("P_elec"));
@@ -620,19 +578,11 @@ void runEmt(const Parameters &p, const PowerFlowResult &powerFlow) {
   logger->logAttribute("GEN_gas_delta_r", gasGenerator->attribute("delta_r"));
   logger->logAttribute("GEN_gas_T_e", gasGenerator->attribute("T_e"));
 
-  logger->logAttribute("GEN_psh_w_r", pshGenerator->attribute("w_r"));
-  logger->logAttribute("GEN_psh_P_elec", pshGenerator->attribute("P_elec"));
-  logger->logAttribute("GEN_psh_Q_elec", pshGenerator->attribute("Q_elec"));
-  logger->logAttribute("GEN_psh_P_mech", pshGenerator->attribute("P_mech"));
-  logger->logAttribute("GEN_psh_i_intf", pshGenerator->attribute("i_intf"));
-  logger->logAttribute("GEN_psh_v_intf", pshGenerator->attribute("v_intf"));
-  logger->logAttribute("GEN_psh_delta_r", pshGenerator->attribute("delta_r"));
-  logger->logAttribute("GEN_psh_T_e", pshGenerator->attribute("T_e"));
 
   Simulation simulation(simulationName, Logger::Level::info);
 
   simulation.addEvent(
-      SwitchEvent3Ph::make(p.simulation.breakerCloseTime, breaker, true));
+      SwitchEvent3Ph::make(p.simulation.breakerCloseTime, breaker, false));
 
   simulation.setSystem(system);
   simulation.setTimeStep(p.simulation.timeStep);
@@ -675,14 +625,7 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  if (!(parameters.simulation.timeStep > 0.0) ||
-      !(parameters.simulation.finalTime > 0.0) ||
-      !(parameters.simulation.breakerCloseTime >= 0.0) ||
-      !(parameters.simulation.breakerCloseTime <
-        parameters.simulation.finalTime)) {
-    throw std::invalid_argument("Require dt>0, finalTime>0, and "
-                                "0<=breakerCloseTime<finalTime.");
-  }
+  
 
   const auto powerFlow =
       ScenarioASynGenVBRSynGenVBR::buildAndRunPowerFlow(parameters);

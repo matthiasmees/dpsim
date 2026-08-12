@@ -24,7 +24,7 @@ namespace ScenarioASynGenVBRSynGenVBRGflSiemens {
 // =============================================================================
 
 struct SimulationParameters {
-  String name = "EMT_Scenario_A_SynGenVBR_GFL_SynGenVBR";
+  String name = "EMT_Scenario_A_SynGenVBR_GFL_SynGenVBR_15M_busA_with_droop";
   Real frequency = 50.0;
   Real timeStep = 100e-6;
   Real finalTime = 15.0;
@@ -36,7 +36,7 @@ struct SimulationParameters {
   // The PV GFL starts from the zero-power PF operating point and receives the
   // same reactive-power reference step as in the Siemens GFL scenario.
   Real gflReactivePowerStepTime = 5.0;
-  Real gflReactivePowerAfterStep = -25e6;
+  Real gflReactivePowerAfterStep = -15e6;
 
   // Diagnostic event switches. Defaults reproduce the requested sequence:
   // GFL Q step first, PSH breaker closing second.
@@ -73,6 +73,7 @@ struct SynGenVbrParameters {
   Real governorTa = 0.0;
   Real governorTb = 0.0;
   Real governorTc = 0.0;
+  Real governorF1a = 0.0;
   Real governorFa = 0.0;
   Real governorFb = 0.0;
   Real governorFc = 0.0;
@@ -117,6 +118,7 @@ struct SynGenVbrParameters {
     p.governorTa = 1.0;
     p.governorTb = 0.5;
     p.governorTc = 0.2;
+    p.governorF1a = 0.3;
     p.governorFa = 0.3;
     p.governorFb = 0.25;
     p.governorFc = 0.3;
@@ -163,6 +165,7 @@ struct SynGenVbrParameters {
     p.governorTa = 0.3;
     p.governorTb = 7.0;
     p.governorTc = 0.5;
+    p.governorF1a = 0.3;
     p.governorFa = 0.25;
     p.governorFb = 0.3;
     p.governorFc = 0.15;
@@ -246,8 +249,8 @@ struct BreakerParameters {
 struct GflValidationParameters {
   // Siemens GFL validation/controller parameters copied from the working
   // Scenario A GFM/GFL example.
-  Real frequencyToActivePowerGainPu = 4.0;
-  Real voltageToReactivePowerGainPu = 2.0;
+  Real frequencyToActivePowerGainPu = 4.0*0;
+  Real voltageToReactivePowerGainPu = 4.0*0;
 
   Real pllKp = 0.449 / (9.1e-3 + 250e-6);
   Real pllKi = 250e-6 / (5.9 * (9.1e-3 + 250e-6));
@@ -694,6 +697,7 @@ PowerFlowResult buildAndRunPowerFlow(const Parameters &p) {
   pshTransformer->connect({busPsh, busTrPsh});
   pshInjection->connect({busPsh});
 
+  // pvTransformer->connect({busA, busPv}); // ja dodao
   pvTransformer->connect({busA, busPv});
   pvEquivalent->connect({busPv});
 
@@ -803,7 +807,7 @@ void configureGenerator(
 
   if (enableGovernor) {
     generator->addGovernor(
-        parameters.governorTa, parameters.governorTb, parameters.governorTc,
+        parameters.governorTa, parameters.governorTb, parameters.governorTc, parameters.governorF1a,
         parameters.governorFa, parameters.governorFb, parameters.governorFc,
         parameters.governorGain, parameters.governorSpeedRelayTimeConstant,
         parameters.governorServoMotorTimeConstant, mechanicalPowerPerUnit,
@@ -833,7 +837,7 @@ void configureGenerator(
       "\n  Rs={} pu, Ld={} pu, Lq={} pu, Ld'={} pu, Lq'={} pu"
       "\n  Ld''={} pu, Lq''={} pu, Ll={} pu, H={} s"
       "\n  Td0'={} s, Tq0'={} s, Td0''={} s, Tq0''={} s"
-      "\n  governor: Ta={}, Tb={}, Tc={}, Fa={}, Fb={}, Fc={}, K={}, "
+      "\n  governor: Ta={}, Tb={}, Tc={}, F1a = {}, Fa={}, Fb={}, Fc={}, K={}, "
       "Tsr={}, Tsm={}"
       "\n  exciter: Ta={}, Ka={}, Te={}, Ke={}, Tf={}, Kf={}, Tr={}, "
       "Vr=[{},{}]",
@@ -845,7 +849,7 @@ void configureGenerator(
       parameters.lqSubtransient, parameters.leakageInductance,
       parameters.inertia, parameters.td0Transient, parameters.tq0Transient,
       parameters.td0Subtransient, parameters.tq0Subtransient,
-      parameters.governorTa, parameters.governorTb, parameters.governorTc,
+      parameters.governorTa, parameters.governorTb, parameters.governorTc, parameters.governorF1a,
       parameters.governorFa, parameters.governorFb, parameters.governorFc,
       parameters.governorGain, parameters.governorSpeedRelayTimeConstant,
       parameters.governorServoMotorTimeConstant, parameters.exciterTa,
