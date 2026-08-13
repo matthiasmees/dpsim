@@ -16,9 +16,14 @@ using namespace CPS::Signal;
 
 namespace {
 
-  
 constexpr Real MAXIMUM_VALVE_OPENING_RATE = 0.3;
 constexpr Real MAXIMUM_VALVE_CLOSING_RATE = -0.3;
+
+// Power-flow solutions of unloaded machines may contain tiny numerical
+// residuals around zero. Values inside this tolerance are treated as the
+// corresponding physical valve limit, while genuinely invalid operating
+// points are still rejected.
+constexpr Real VALVE_LIMIT_TOLERANCE = 1e-9;
 
 Real exactFirstOrderStep(Real previousState, Real timeConstant,
                          Real steadyStateInput, Real timeStep) {
@@ -32,15 +37,16 @@ Real turbineSteadyStateGain(Real F1a, Real Fa, Real Fb, Real Fc) {
 
 } // namespace
 
-void TurbineGovernor::setParameters(Real Ta, Real Tb, Real Tc, Real F1a, Real Fa, Real Fb,
-                                    Real Fc, Real K, Real Tsr, Real Tsm) {
+void TurbineGovernor::setParameters(Real Ta, Real Tb, Real Tc, Real F1a,
+                                    Real Fa, Real Fb, Real Fc, Real K, Real Tsr,
+                                    Real Tsm) {
   const Real steadyStateGain = turbineSteadyStateGain(F1a, Fa, Fb, Fc);
 
   if (!(Ta > 0.0) || !(Tb > 0.0) || !(Tc > 0.0) || !(Tsr > 0.0) ||
       !(Tsm > 0.0) || !(steadyStateGain > 0.0) || !std::isfinite(Ta) ||
-      !std::isfinite(Tb) || !std::isfinite(Tc) || !std::isfinite(Fa) ||
-      !std::isfinite(Fb) || !std::isfinite(Fc) || !std::isfinite(K) ||
-      !std::isfinite(Tsr) || !std::isfinite(Tsm)) {
+      !std::isfinite(Tb) || !std::isfinite(Tc) || !std::isfinite(F1a) ||
+      !std::isfinite(Fa) || !std::isfinite(Fb) || !std::isfinite(Fc) ||
+      !std::isfinite(K) || !std::isfinite(Tsr) || !std::isfinite(Tsm)) {
     SPDLOG_LOGGER_ERROR(
         mSLog,
         "Invalid TurbineGovernor parameters: require Ta, Tb, Tc, Tsr, Tsm "
@@ -51,6 +57,7 @@ void TurbineGovernor::setParameters(Real Ta, Real Tb, Real Tc, Real F1a, Real Fa
   mTa = Ta;
   mTb = Tb;
   mTc = Tc;
+
   mF1a = F1a;
   mFa = Fa;
   mFb = Fb;
@@ -70,8 +77,7 @@ void TurbineGovernor::setParameters(Real Ta, Real Tb, Real Tc, Real F1a, Real Fa
                      "\nFb: {:e}"
                      "\nFc: {:e}"
                      "\nsteady-state gain: {:e}",
-                     mTa, mTb, mTc, mF1a, mFa, mFb, mFc,
-                     steadyStateGain);
+                     mTa, mTb, mTc, mF1a, mFa, mFb, mFc, steadyStateGain);
 
   SPDLOG_LOGGER_INFO(mSLog,
                      "Governor parameters:"
@@ -89,21 +95,31 @@ void TurbineGovernor::initialize(Real PmRef, Real Tm_init) {
 
   const Real steadyStateGain = turbineSteadyStateGain(mF1a, mFa, mFb, mFc);
 
-  // PmRef and Tm_init are desired turbine-output torque/power in pu. The
-  // internal governor signal is a valve position, so it must be divided by
-  // the complete static turbine gain.
-  const Real valveReference = PmRef / steadyStateGain;
-  const Real valveInitial = Tm_init / steadyStateGain;
+  // PmRef and Tm_init are desired turbine-output torque/power in pu.
+  // The internal governor signal is a valve position, so both values have
+  // to be converted to the valve domain using the complete static turbine
+  // gain.
+  const Real valveReferenceRaw = PmRef / steadyStateGain;
+  const Real valveInitialRaw = Tm_init / steadyStateGain;
 
-  if (valveInitial < 0.0 || valveInitial > 1.0 || valveReference < 0.0 ||
-      valveReference > 1.0) {
+  // Reject actual violations of the physical valve range. However, tolerate
+  // tiny power-flow residuals such as -1e-11 pu for an unloaded generator.
+  if (valveInitialRaw < -VALVE_LIMIT_TOLERANCE ||
+      valveInitialRaw > 1.0 + VALVE_LIMIT_TOLERANCE ||
+      valveReferenceRaw < -VALVE_LIMIT_TOLERANCE ||
+      valveReferenceRaw > 1.0 + VALVE_LIMIT_TOLERANCE) {
     SPDLOG_LOGGER_ERROR(
         mSLog,
         "TurbineGovernor operating point is outside valve limits: "
-        "valve_init={}, valve_ref={}, limits=[0,1]",
-        valveInitial, valveReference);
+        "valve_init={}, valve_ref={}, limits=[0,1], tolerance={}",
+        valveInitialRaw, valveReferenceRaw, VALVE_LIMIT_TOLERANCE);
     throw CPS::InvalidArgumentException();
   }
+
+  // Project numerical residuals at the physical boundaries exactly onto the
+  // valid interval. This keeps a zero-load PF operating point stationary.
+  const Real valveReference = std::clamp(valveReferenceRaw, 0.0, 1.0);
+  const Real valveInitial = std::clamp(valveInitialRaw, 0.0, 1.0);
 
   // Exact equilibrium of the complete governor and three-stage turbine.
   Psr_in = valveReference;
@@ -124,14 +140,16 @@ void TurbineGovernor::initialize(Real PmRef, Real Tm_init) {
                      "TurbineGovernor steady-state initialization:"
                      "\nPmRef: {:e}"
                      "\nTm_init: {:e}"
+                     "\nvalve_ref_raw: {:e}"
+                     "\nvalve_init_raw: {:e}"
                      "\nvalve_ref: {:e}"
                      "\nvalve_init: {:e}"
                      "\nT1: {:e}"
                      "\nT2: {:e}"
                      "\nT3: {:e}"
                      "\nTm: {:e}",
-                     PmRef, Tm_init, valveReference, valveInitial, T1, T2, T3,
-                     mTm);
+                     PmRef, Tm_init, valveReferenceRaw, valveInitialRaw,
+                     valveReference, valveInitial, T1, T2, T3, mTm);
 }
 
 Real TurbineGovernor::step(Real Om, Real OmRef, Real PmRef, Real dt) {
@@ -146,9 +164,9 @@ Real TurbineGovernor::step(Real Om, Real OmRef, Real PmRef, Real dt) {
 
   const Real steadyStateGain = turbineSteadyStateGain(mF1a, mFa, mFb, mFc);
 
-  // Convert the desired mechanical-torque command to the valve domain. This
-  // is essential because SynchronGeneratorVBR supplies PmRef in turbine-output
-  // pu, while the turbine's internal static gain is generally not one.
+  // Convert the desired mechanical-torque command to the valve domain.
+  // SynchronGeneratorVBR supplies PmRef in turbine-output pu, whereas the
+  // governor internally operates on valve position.
   Psr_in = (PmRef + (OmRef - Om) * mK) / steadyStateGain;
   Psr_in = std::clamp(Psr_in, 0.0, 1.0);
 
@@ -160,8 +178,9 @@ Real TurbineGovernor::step(Real Om, Real OmRef, Real PmRef, Real dt) {
 
   mVcv = std::clamp(mVcv + dt * mpVcv, 0.0, 1.0);
 
-  // Exact zero-order-hold discretization of the three turbine lags. A correct
-  // steady-state initialization remains exactly stationary at the first step.
+  // Exact zero-order-hold discretization of the three turbine lags. With a
+  // consistent steady-state initialization, the first step remains exactly
+  // at the operating point.
   T1 = exactFirstOrderStep(T1, mTa, mVcv, dt);
   T2 = exactFirstOrderStep(T2, mTb, T1, dt);
   T3 = exactFirstOrderStep(T3, mTc, T2, dt);

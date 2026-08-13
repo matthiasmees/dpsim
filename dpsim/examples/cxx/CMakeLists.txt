@@ -152,6 +152,7 @@ set(INVERTER_SOURCES
 	Restoration/EMT_Scenario_A_GFM_GFL_GFM.cpp
 	Restoration/EMT_Scenario_A_SynGenVBR_GFL_SynGenVBR.cpp
 	Restoration/EMT_Load_loss_SynGenVBR_SynGenVBR.cpp
+	Restoration/EMT_Load_loss_SynGenVBR_GFL.cpp
 )
 
 set(SSN_SOURCES

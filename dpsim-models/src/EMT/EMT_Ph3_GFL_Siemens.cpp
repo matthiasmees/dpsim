@@ -71,6 +71,8 @@ EMT::Ph3::GFL_Siemens::GFL_Siemens(String uid, String name,
           mAttributes->create<Matrix>("i_cf_pu", Matrix::Zero(3, 1))),
       mPccVoltageDqPu(
           mAttributes->create<Matrix>("v_pcc_dq_pu", Matrix::Zero(2, 1))),
+      mFilteredPccVoltageDqPu(mAttributes->create<Matrix>(
+          "v_pcc_filtered_dq_pu", Matrix::Zero(2, 1))),
       mPccCurrentDqPu(
           mAttributes->create<Matrix>("i_pcc_dq_pu", Matrix::Zero(2, 1))),
       mFilteredPccCurrentDqPu(mAttributes->create<Matrix>(
@@ -145,7 +147,7 @@ EMT::Ph3::GFL_Siemens::GFL_Siemens(String uid, String name,
       mSLog,
       "Create {} {}: per-unit CSI-derived GFL with SRF PLL, inverse "
       "frequency/voltage droop, filtered P/Q and PCC-current measurements, "
-      "and SRF current control",
+      "filtered PCC-voltage feedforward, and SRF current control",
       type(), name);
 }
 
@@ -270,12 +272,14 @@ void EMT::Ph3::GFL_Siemens::setCurrentControllerParameters(
 
 void EMT::Ph3::GFL_Siemens::setMeasurementFilterTimeConstants(
     Real activePowerTimeConstant, Real reactivePowerTimeConstant,
-    Real currentTimeConstant) {
+    Real currentTimeConstant, Real voltageFeedforwardTimeConstant) {
   if (!(activePowerTimeConstant >= 0.0) ||
       !(reactivePowerTimeConstant >= 0.0) || !(currentTimeConstant >= 0.0) ||
+      !(voltageFeedforwardTimeConstant >= 0.0) ||
       !std::isfinite(activePowerTimeConstant) ||
       !std::isfinite(reactivePowerTimeConstant) ||
-      !std::isfinite(currentTimeConstant)) {
+      !std::isfinite(currentTimeConstant) ||
+      !std::isfinite(voltageFeedforwardTimeConstant)) {
     throw std::invalid_argument(
         "GFL_Siemens measurement-filter time constants must be finite and "
         "non-negative");
@@ -284,6 +288,7 @@ void EMT::Ph3::GFL_Siemens::setMeasurementFilterTimeConstants(
   mActivePowerMeasurementTimeConstant = activePowerTimeConstant;
   mReactivePowerMeasurementTimeConstant = reactivePowerTimeConstant;
   mCurrentMeasurementTimeConstant = currentTimeConstant;
+  mVoltageFeedforwardMeasurementTimeConstant = voltageFeedforwardTimeConstant;
 }
 
 void EMT::Ph3::GFL_Siemens::setControllerLimitsPerUnit(
@@ -516,40 +521,6 @@ void EMT::Ph3::GFL_Siemens::initializeParentFromNodesAndTerminals(
   const Matrix capacitorCurrentErrorAbc =
       actualCapacitorCurrentAbc - expectedCapacitorCurrentAbc;
 
-  SPDLOG_INFO("\n========== GFL SUBCOMPONENT STATE INITIALIZATION =========="
-              "\nExpected instantaneous Ilf abc [A]:"
-              "\n  [{}, {}, {}]"
-              "\nActual initialized Ilf abc [A]:"
-              "\n  [{}, {}, {}]"
-              "\nIlf error abc [A]:"
-              "\n  [{}, {}, {}], norm = {}"
-              "\nExpected instantaneous Icf abc [A]:"
-              "\n  [{}, {}, {}]"
-              "\nActual initialized Icf abc [A]:"
-              "\n  [{}, {}, {}]"
-              "\nIcf error abc [A]:"
-              "\n  [{}, {}, {}], norm = {}"
-              "\n===========================================================",
-
-              expectedFilterCurrentAbc(0, 0), expectedFilterCurrentAbc(1, 0),
-              expectedFilterCurrentAbc(2, 0),
-
-              actualFilterCurrentAbc(0, 0), actualFilterCurrentAbc(1, 0),
-              actualFilterCurrentAbc(2, 0),
-
-              filterCurrentErrorAbc(0, 0), filterCurrentErrorAbc(1, 0),
-              filterCurrentErrorAbc(2, 0), filterCurrentErrorAbc.norm(),
-
-              expectedCapacitorCurrentAbc(0, 0),
-              expectedCapacitorCurrentAbc(1, 0),
-              expectedCapacitorCurrentAbc(2, 0),
-
-              actualCapacitorCurrentAbc(0, 0), actualCapacitorCurrentAbc(1, 0),
-              actualCapacitorCurrentAbc(2, 0),
-
-              capacitorCurrentErrorAbc(0, 0), capacitorCurrentErrorAbc(1, 0),
-              capacitorCurrentErrorAbc(2, 0), capacitorCurrentErrorAbc.norm());
-
   **mIntfVoltage = pccVoltageComplex.real();
   **mIntfCurrent = interfaceCurrentComplex.real();
   **mPccCurrent = pccCurrentComplex.real();
@@ -567,6 +538,7 @@ void EMT::Ph3::GFL_Siemens::initializeParentFromNodesAndTerminals(
 
   const Matrix pccVoltagePu = pccVoltageComplex.real() / mBaseVoltagePhasePeak;
   **mPccVoltageDqPu = abcToDq(pccVoltagePu, **mTheta);
+  **mFilteredPccVoltageDqPu = **mPccVoltageDqPu;
   **mPccCurrentDqPu = abcToDq(**mPccCurrentPu, **mTheta);
   **mFilteredPccCurrentDqPu = **mPccCurrentDqPu;
   **mFilterCurrentDqPu = abcToDq(**mFilterCurrentPu, **mTheta);
@@ -632,17 +604,19 @@ void EMT::Ph3::GFL_Siemens::initializeParentFromNodesAndTerminals(
   const Real omegaPu = **mFrequencyPu;
   const Real idRef = (**mCurrentReferenceDqPu)(0, 0);
   const Real iqRef = (**mCurrentReferenceDqPu)(1, 0);
+  const Real vdFeedforward = (**mFilteredPccVoltageDqPu)(0, 0);
+  const Real vqFeedforward = (**mFilteredPccVoltageDqPu)(1, 0);
 
   Matrix currentControllerIntegral = Matrix::Zero(2, 1);
   currentControllerIntegral(0, 0) =
       sourceVoltageDqPu(0, 0) -
       (**mCurrentControllerKp * (**mCurrentErrorDqPu)(0, 0) +
-       **mCurrentControllerFeedforward * vd -
+       **mCurrentControllerFeedforward * vdFeedforward -
        omegaPu * mFilterInductiveReactancePu * iqRef);
   currentControllerIntegral(1, 0) =
       sourceVoltageDqPu(1, 0) -
       (**mCurrentControllerKp * (**mCurrentErrorDqPu)(1, 0) +
-       **mCurrentControllerFeedforward * vq +
+       **mCurrentControllerFeedforward * vqFeedforward +
        omegaPu * mFilterInductiveReactancePu * idRef);
 
   **mCurrentControllerIntegralPu = currentControllerIntegral;
@@ -829,12 +803,15 @@ void EMT::Ph3::GFL_Siemens::mnaParentInitialize(
   SPDLOG_LOGGER_INFO(
       mSLog,
       "GFL_Siemens measurement filters: dt={} s, tau_P={} s, tau_Q={} s, "
-      "tau_I={} s, alpha_P={}, alpha_Q={}, alpha_I={}",
+      "tau_I={} s, tau_Vff={} s, alpha_P={}, alpha_Q={}, alpha_I={}, "
+      "alpha_Vff={}",
       mTimeStep, mActivePowerMeasurementTimeConstant,
       mReactivePowerMeasurementTimeConstant, mCurrentMeasurementTimeConstant,
+      mVoltageFeedforwardMeasurementTimeConstant,
       firstOrderAlpha(mTimeStep, mActivePowerMeasurementTimeConstant),
       firstOrderAlpha(mTimeStep, mReactivePowerMeasurementTimeConstant),
-      firstOrderAlpha(mTimeStep, mCurrentMeasurementTimeConstant));
+      firstOrderAlpha(mTimeStep, mCurrentMeasurementTimeConstant),
+      firstOrderAlpha(mTimeStep, mVoltageFeedforwardMeasurementTimeConstant));
 
   (void)leftVector;
 }
@@ -874,6 +851,8 @@ void EMT::Ph3::GFL_Siemens::updateMeasurementFilters() {
       firstOrderAlpha(mTimeStep, mReactivePowerMeasurementTimeConstant);
   const Real currentAlpha =
       firstOrderAlpha(mTimeStep, mCurrentMeasurementTimeConstant);
+  const Real voltageFeedforwardAlpha =
+      firstOrderAlpha(mTimeStep, mVoltageFeedforwardMeasurementTimeConstant);
 
   **mFilteredActivePowerPu +=
       activePowerAlpha * (**mElecActivePowerPu - **mFilteredActivePowerPu);
@@ -882,6 +861,8 @@ void EMT::Ph3::GFL_Siemens::updateMeasurementFilters() {
       (**mElecReactivePowerPu - **mFilteredReactivePowerPu);
   **mFilteredPccCurrentDqPu +=
       currentAlpha * (**mPccCurrentDqPu - **mFilteredPccCurrentDqPu);
+  **mFilteredPccVoltageDqPu +=
+      voltageFeedforwardAlpha * (**mPccVoltageDqPu - **mFilteredPccVoltageDqPu);
 }
 
 void EMT::Ph3::GFL_Siemens::updateController(Int timeStepCount) {
@@ -889,17 +870,20 @@ void EMT::Ph3::GFL_Siemens::updateController(Int timeStepCount) {
   updateMeasurementFilters();
 
   // ---------------------------------------------------------------------
-  // SRF PLL: omega = omega_base + Kp*vq + integral(Ki*vq).
+  // SRF PLL:
+  //
+  //   xi_dot = Ki * vq
+  //   omega  = omega_base + Kp * vq + xi
+  //   theta_dot = omega
+  //
+  // Use the same trapezoidal PLL-state integration as updateOpenLoop().
+  // The previous implementation omitted the xi_pll update in closed-loop
+  // operation, effectively reducing the PLL to its proportional path.
   // ---------------------------------------------------------------------
   **mPllVoltageErrorPu = (**mPccVoltageDqPu)(1, 0);
 
-  // mnaParentPreStep(step=0) is called for the first solution at t=dt.
-  // The initialized theta represents t=0, so it must be advanced on every
-  // pre-step, including timeStepCount == 0.
-  **mTheta +=
-      0.5 * mTimeStep * mBaseOmega * (mPreviousFrequencyPu + **mFrequencyPu);
-
-  **mTheta = std::remainder(**mTheta, TWO_PI);
+  **mPllIntegral += 0.5 * mTimeStep * **mPllKi *
+                    (mPreviousPllVoltageErrorPu + **mPllVoltageErrorPu);
 
   const Real omegaUnclamped =
       mBaseOmega + **mPllKp * **mPllVoltageErrorPu + **mPllIntegral;
@@ -909,9 +893,20 @@ void EMT::Ph3::GFL_Siemens::updateController(Int timeStepCount) {
                                mMaximumFrequencyPu, **mFrequencyRefPu);
   **mOmega = **mFrequencyPu * mBaseOmega;
 
+  // PLL anti-windup: when the frequency is clamped, back-calculate the
+  // integral state so that omega = omega_base + Kp*vq + xi remains exact.
   if (**mFrequencyPu != frequencyUnclampedPu) {
     **mPllIntegral = **mOmega - mBaseOmega - **mPllKp * **mPllVoltageErrorPu;
   }
+
+  // mnaParentPreStep(step=0) is called for the first solution at t=dt.
+  // The initialized theta represents t=0, so advance it on every pre-step.
+  // Use the previous and newly calculated PLL frequencies consistently,
+  // matching updateOpenLoop().
+  **mTheta +=
+      0.5 * mTimeStep * mBaseOmega * (mPreviousFrequencyPu + **mFrequencyPu);
+
+  **mTheta = std::remainder(**mTheta, TWO_PI);
 
   // ---------------------------------------------------------------------
   // CSI inverse droop laws. No PT command filters are retained.
@@ -960,16 +955,22 @@ void EMT::Ph3::GFL_Siemens::updateController(Int timeStepCount) {
   const Real idRef = (**mCurrentReferenceDqPu)(0, 0);
   const Real iqRef = (**mCurrentReferenceDqPu)(1, 0);
 
+  // Feed forward a sensor-filtered PCC voltage instead of the raw EMT
+  // instantaneous dq voltage. This prevents fast switching/network transients
+  // from being copied directly into the controlled-source voltage command.
+  const Real vdFeedforward = (**mFilteredPccVoltageDqPu)(0, 0);
+  const Real vqFeedforward = (**mFilteredPccVoltageDqPu)(1, 0);
+
   Matrix voltageCommandUnclamped = Matrix::Zero(2, 1);
   voltageCommandUnclamped(0, 0) =
       **mCurrentControllerKp * (**mCurrentErrorDqPu)(0, 0) +
       (**mCurrentControllerIntegralPu)(0, 0) +
-      **mCurrentControllerFeedforward * vd -
+      **mCurrentControllerFeedforward * vdFeedforward -
       omegaPu * mFilterInductiveReactancePu * iqRef;
   voltageCommandUnclamped(1, 0) =
       **mCurrentControllerKp * (**mCurrentErrorDqPu)(1, 0) +
       (**mCurrentControllerIntegralPu)(1, 0) +
-      **mCurrentControllerFeedforward * vq +
+      **mCurrentControllerFeedforward * vqFeedforward +
       omegaPu * mFilterInductiveReactancePu * idRef;
 
   Bool voltageCommandLimited = false;
@@ -1080,6 +1081,7 @@ void EMT::Ph3::GFL_Siemens::mnaParentAddPreStepDependencies(
   modifiedAttributes.push_back(mCapacitorCurrent);
   modifiedAttributes.push_back(mCapacitorCurrentPu);
   modifiedAttributes.push_back(mPccVoltageDqPu);
+  modifiedAttributes.push_back(mFilteredPccVoltageDqPu);
   modifiedAttributes.push_back(mPccCurrentDqPu);
   modifiedAttributes.push_back(mFilteredPccCurrentDqPu);
   modifiedAttributes.push_back(mFilterCurrentDqPu);
@@ -1116,47 +1118,25 @@ void EMT::Ph3::GFL_Siemens::mnaParentPreStep(Real time, Int timeStepCount) {
         "GFL_Siemens controller was not initialized from power-flow data");
   }
 
-  if (timeStepCount <= 2) {
-    SPDLOG_INFO("GFL PRE step={} t={}: "
-                "Vabc=[{}, {}, {}], Iabc=[{}, {}, {}], "
-                "theta={}, fpu={}, Vcmd_dq=[{}, {}]",
-                timeStepCount, time, (**mIntfVoltage)(0, 0),
-                (**mIntfVoltage)(1, 0), (**mIntfVoltage)(2, 0),
-                (**mIntfCurrent)(0, 0), (**mIntfCurrent)(1, 0),
-                (**mIntfCurrent)(2, 0), **mTheta, **mFrequencyPu,
-                (**mVoltageCommandDqPu)(0, 0), (**mVoltageCommandDqPu)(1, 0));
-  }
-
   if (mWithControl)
     updateController(timeStepCount);
   else
     updateOpenLoop(timeStepCount);
 
   if (timeStepCount <= 2) {
-    SPDLOG_INFO("GFL PRE-AFTER-CONTROL step={} t={}: "
-                "Vdq=[{}, {}], Ipcc_dq=[{}, {}], "
-                "Iref=[{}, {}], error=[{}, {}], "
-                "theta={}, fpu={}, Vcmd=[{}, {}]",
-                timeStepCount, time, (**mPccVoltageDqPu)(0, 0),
-                (**mPccVoltageDqPu)(1, 0), (**mPccCurrentDqPu)(0, 0),
-                (**mPccCurrentDqPu)(1, 0), (**mCurrentReferenceDqPu)(0, 0),
-                (**mCurrentReferenceDqPu)(1, 0), (**mCurrentErrorDqPu)(0, 0),
-                (**mCurrentErrorDqPu)(1, 0), **mTheta, **mFrequencyPu,
-                (**mVoltageCommandDqPu)(0, 0), (**mVoltageCommandDqPu)(1, 0));
-  }
-
-  if (timeStepCount <= 2) {
     SPDLOG_LOGGER_INFO(
         mSLog,
         "GFL_Siemens pre-step {} at t={} s:"
-        "\n  Vdq=[{}, {}] pu, Idq=[{}, {}] pu, Ifilt_dq=[{}, {}] pu"
+        "\n  Vdq=[{}, {}] pu, Vff_dq=[{}, {}] pu"
+        "\n  Idq=[{}, {}] pu, Ifilt_dq=[{}, {}] pu"
         "\n  Iref=[{}, {}] pu, Ierr=[{}, {}] pu"
         "\n  P/Q measured=[{}, {}] pu, filtered=[{}, {}] pu"
         "\n  PLL: vq={}, xi={}, f={} pu, theta={}"
         "\n  P/Q command=[{}, {}] pu"
         "\n  xi_i=[{}, {}] pu, Vcmd=[{}, {}] pu",
         timeStepCount, time, (**mPccVoltageDqPu)(0, 0),
-        (**mPccVoltageDqPu)(1, 0), (**mPccCurrentDqPu)(0, 0),
+        (**mPccVoltageDqPu)(1, 0), (**mFilteredPccVoltageDqPu)(0, 0),
+        (**mFilteredPccVoltageDqPu)(1, 0), (**mPccCurrentDqPu)(0, 0),
         (**mPccCurrentDqPu)(1, 0), (**mFilterCurrentDqPu)(0, 0),
         (**mFilterCurrentDqPu)(1, 0), (**mCurrentReferenceDqPu)(0, 0),
         (**mCurrentReferenceDqPu)(1, 0), (**mCurrentErrorDqPu)(0, 0),
@@ -1192,28 +1172,6 @@ void EMT::Ph3::GFL_Siemens::mnaParentPostStep(
     Real time, Int timeStepCount, Attribute<Matrix>::Ptr &leftVector) {
   mnaCompUpdateCurrent(**leftVector);
   mnaCompUpdateVoltage(**leftVector);
-
-  if (timeStepCount <= 2) {
-    const Matrix actualIlf = -mSubFilterInductor->mIntfCurrent->get();
-
-    const Matrix actualIcf = -mSubFilterCapacitor->mIntfCurrent->get();
-
-    SPDLOG_INFO(
-        "GFL POST step={} t={}: "
-        "Vpcc_abc=[{}, {}, {}], "
-        "Iintf_abc=[{}, {}, {}], "
-        "Ilf_abc=[{}, {}, {}], "
-        "Icf_abc=[{}, {}, {}]",
-        timeStepCount, time,
-
-        (**mIntfVoltage)(0, 0), (**mIntfVoltage)(1, 0), (**mIntfVoltage)(2, 0),
-
-        (**mIntfCurrent)(0, 0), (**mIntfCurrent)(1, 0), (**mIntfCurrent)(2, 0),
-
-        actualIlf(0, 0), actualIlf(1, 0), actualIlf(2, 0),
-
-        actualIcf(0, 0), actualIcf(1, 0), actualIcf(2, 0));
-  }
 
   if (timeStepCount <= 2) {
     const Matrix pccCurrent = -**mIntfCurrent;
