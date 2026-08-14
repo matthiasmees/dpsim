@@ -82,9 +82,16 @@ void SP::Ph1::Switch::pfApplyAdmittanceMatrixStamp(SparseMatrixCompRow &Y) {
   const Int bus0 = matrixNodeIndex(0);
   const Int bus1 = matrixNodeIndex(1);
 
-  const Real resistancePerUnit =
-      isClosed() ? mClosedResistancePerUnit : mOpenResistancePerUnit;
+  // In a Newton-Raphson power flow an open breaker is a topological cut.
+  // Do not weakly connect an otherwise unsupplied island with 1/R_open:
+  // that creates a numerically ill-conditioned and physically meaningless
+  // constant-power problem behind the open breaker.
+  if (!isClosed()) {
+    SPDLOG_LOGGER_INFO(mSLog, "PF stamp switch {}: state=open, y=0 pu", name());
+    return;
+  }
 
+  const Real resistancePerUnit = mClosedResistancePerUnit;
   if (resistancePerUnit <= 0.0)
     throw std::invalid_argument("SP::Ph1::Switch " + name() +
                                 ": invalid per-unit resistance");
@@ -96,8 +103,7 @@ void SP::Ph1::Switch::pfApplyAdmittanceMatrixStamp(SparseMatrixCompRow &Y) {
   Y.coeffRef(bus1, bus0) -= admittance;
   Y.coeffRef(bus1, bus1) += admittance;
 
-  SPDLOG_LOGGER_INFO(mSLog, "PF stamp switch {}: state={}, y={} pu", name(),
-                     isClosed() ? "closed" : "open",
+  SPDLOG_LOGGER_INFO(mSLog, "PF stamp switch {}: state=closed, y={} pu", name(),
                      Logger::complexToString(admittance));
 }
 

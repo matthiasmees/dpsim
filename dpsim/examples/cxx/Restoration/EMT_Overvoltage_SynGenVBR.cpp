@@ -29,7 +29,7 @@ struct Parameters {
   Real pfFinalTime = 1.0;
   Real timeStep = 100e-6;
   Real finalTime = 15.0;
-  Real breakerOpenTime = 5.0;
+  Real breakerCloseTime = 5.0;
   Bool recomputeSystemMatrix = true;
   Int logDownSampling = 10;
 
@@ -116,6 +116,10 @@ struct Parameters {
   Real cableCapacitance = 0.21915e-6 * 10.5;
   Real cableConductance = 1e-15;
 
+  // Cable-end shunts, represented intentionally as loads
+  Real shuntActivePower = 0.15e6;
+  Real shuntReactivePower = 15e6;
+  Real shuntNominalVoltage = 220e3;
 };
 
 int main() {
@@ -126,13 +130,18 @@ int main() {
   //
   // PF and EMT have exactly the same graph:
   //
-  // GEN_gas -- BUS_gas -- TR_gas -- BUS_b -- TR_ld2 -- BUS_load_2
-  //                                                       |          |
-  //                                                    LOAD_2a   BR_load_2b
-  //                                                                  |
-  //                                                           BUS_load_2b
-  //                                                                  |
-  //                                                               LOAD_2b
+  //                                      +-- TR_ld2 -- BUS_load_2 -- LOAD_2a
+  //                                      |                  |
+  // GEN_gas -- BUS_gas -- TR_gas -- BUS_b                  +-- LOAD_2b
+  //                                      |
+  //                                      +-- BR_cable (OPEN at t=0)
+  //                                             |
+  //                                        BUS_breaker -- cable -- BUS_a
+  //                                             |                    |
+  //                                          shunt_b              shunt_a
+  //
+  // shunt_b and shunt_a are intentionally represented as constant-P/Q
+  // SP::Ph1::Load components in PF and EMT::Ph3::RXLoad components in EMT.
   //
   // PF and EMT use identical component and node names. The two systems are
   // separate SystemTopology objects, so this is safe and lets the stock
@@ -182,13 +191,13 @@ int main() {
                           p.load2aNominalVoltage);
   load2aPF->modifyPowerFlowBusType(PowerflowBusType::PQ);
 
-  // PF breaker: actual SP::Ph1::Switch, initially closed
+  // PF breaker: actual SP::Ph1::Switch, initially OPEN
   auto breakerPF = SP::Ph1::Switch::make("BR_cable", Logger::Level::off);
   breakerPF->setParameters(p.breakerOpenResistance, p.breakerClosedResistance,
                            false);
   breakerPF->setBaseVoltage(220e3);
 
-  // PF LOAD_2b behind the breaker
+  // PF LOAD_2b on BUS_load_2 (not behind BR_cable)
   auto load2bPF = SP::Ph1::Load::make("LOAD_2b", Logger::Level::off);
   load2bPF->setParameters(p.load2bActivePower, p.load2bReactivePower,
                           p.load2bNominalVoltage);
@@ -202,14 +211,14 @@ int main() {
 
   // shunt at bus B
   auto shunt_b_PF = SP::Ph1::Load::make("shunt_b", Logger::Level::off);
-  shunt_b_PF->setParameters(0.15e6, 15e6,
-                          220e3);
+  shunt_b_PF->setParameters(p.shuntActivePower, p.shuntReactivePower,
+                            p.shuntNominalVoltage);
   shunt_b_PF->modifyPowerFlowBusType(PowerflowBusType::PQ);
 
   // shunt at bus A
   auto shunt_a_PF = SP::Ph1::Load::make("shunt_a", Logger::Level::off);
-  shunt_a_PF->setParameters(0.15e6, 15e6,
-                          220e3);
+  shunt_a_PF->setParameters(p.shuntActivePower, p.shuntReactivePower,
+                            p.shuntNominalVoltage);
   shunt_a_PF->modifyPowerFlowBusType(PowerflowBusType::PQ);
 
   // PF connectivity: identical graph to EMT
@@ -220,21 +229,22 @@ int main() {
   load2bPF->connect({busLoadPF});
 
   breakerPF->connect({busBPF, busBreakerPF});
-  cablePF->connect({busBreakerPF, busAPF}); 
+  cablePF->connect({busBreakerPF, busAPF});
   shunt_b_PF->connect({busBreakerPF});
   shunt_a_PF->connect({busAPF});
-  
+
   SystemTopology systemPF(
-      p.frequency, 
+      p.frequency,
       SystemNodeList{busGasPF, busBPF, busLoadPF, busBreakerPF, busAPF},
-      SystemComponentList{gasGeneratorPF, trGasPF, trLoadPF, load2aPF,
-                          load2bPF, breakerPF, cablePF, shunt_b_PF, shunt_a_PF});
+      SystemComponentList{gasGeneratorPF, trGasPF, trLoadPF, load2aPF, load2bPF,
+                          breakerPF, cablePF, shunt_b_PF, shunt_a_PF});
 
   auto loggerPF = DataLogger::make(pfSimName);
   loggerPF->logAttribute("BUS_gas_v", busGasPF->attribute("v"));
   loggerPF->logAttribute("BUS_b_v", busBPF->attribute("v"));
   loggerPF->logAttribute("BUS_load_2_v", busLoadPF->attribute("v"));
   loggerPF->logAttribute("BUS_breaker_v", busBreakerPF->attribute("v"));
+  loggerPF->logAttribute("BUS_a_v", busAPF->attribute("v"));
 
   Simulation simulationPF(pfSimName, Logger::Level::debug);
   simulationPF.setSystem(systemPF);
@@ -253,6 +263,7 @@ int main() {
               "\n  V_BUS_b      = {} V RMS, angle = {} deg"
               "\n  V_BUS_load2  = {} V RMS, angle = {} deg"
               "\n  V_BUS_breaker = {} V RMS, angle = {} deg"
+              "\n  V_BUS_a       = {} V RMS, angle = {} deg"
               "\n  GEN_gas      = P={} MW, Q={} Mvar",
               Math::abs(busGasPF->singleVoltage()),
               Math::phase(busGasPF->singleVoltage()) * 180.0 / PI,
@@ -262,6 +273,8 @@ int main() {
               Math::phase(busLoadPF->singleVoltage()) * 180.0 / PI,
               Math::abs(busBreakerPF->singleVoltage()),
               Math::phase(busBreakerPF->singleVoltage()) * 180.0 / PI,
+              Math::abs(busAPF->singleVoltage()),
+              Math::phase(busAPF->singleVoltage()) * 180.0 / PI,
               gasGeneratorPF->getApparentPower().real() / 1e6,
               gasGeneratorPF->getApparentPower().imag() / 1e6);
 
@@ -341,7 +354,7 @@ int main() {
   auto shunt_b = EMT::Ph3::RXLoad::make("shunt_b", Logger::Level::off);
   auto shunt_a = EMT::Ph3::RXLoad::make("shunt_a", Logger::Level::off);
 
-  // EMT breaker, same topological position and same open/closed resistance
+  // EMT breaker, same topological position and initially open
   auto breaker = EMT::Ph3::Switch::make("BR_cable", Logger::Level::off);
   breaker->setParameters(
       Math::singlePhaseParameterToThreePhase(p.breakerOpenResistance),
@@ -367,12 +380,11 @@ int main() {
   cable->connect({busBreaker, busA});
   shunt_b->connect({busBreaker});
   shunt_a->connect({busA});
-  
 
-  SystemTopology systemEMT(p.frequency,
-                           SystemNodeList{busGas, busB, busLoad, busA, busBreaker},
-                           SystemComponentList{gasGenerator, trGas, trLoad,
-                                               load2a, load2b, breaker, cable, shunt_b, shunt_a});
+  SystemTopology systemEMT(
+      p.frequency, SystemNodeList{busGas, busB, busLoad, busA, busBreaker},
+      SystemComponentList{gasGenerator, trGas, trLoad, load2a, load2b, breaker,
+                          cable, shunt_b, shunt_a});
 
   // Central PF -> EMT operating-point transfer:
   //   - solved node voltages by exact node name
@@ -382,8 +394,18 @@ int main() {
   // No example-side power extraction or terminal assignment is required.
   systemEMT.initWithPowerflow(systemPF, Domain::EMT);
 
-//   shunt_b->setParameters(CPS::Math::singlePhasePowerToThreePhase(0.15e6), CPS::Math::singlePhasePowerToThreePhase(15e6), 220e3);
-//   shunt_a->setParameters(CPS::Math::singlePhasePowerToThreePhase(0.15e6), CPS::Math::singlePhasePowerToThreePhase(15e6), 220e3);
+  // The cable-side island is de-energized in the initial PF, so its solved
+  // node voltages are exactly 0 V.  Keep the shunts physically present as
+  // RX loads by parameterizing their impedance from rated P/Q and V instead
+  // of trying to derive R/X from a zero-voltage PF terminal.
+  shunt_b->setParameters(
+      CPS::Math::singlePhasePowerToThreePhase(p.shuntActivePower),
+      CPS::Math::singlePhasePowerToThreePhase(p.shuntReactivePower),
+      p.shuntNominalVoltage);
+  shunt_a->setParameters(
+      CPS::Math::singlePhasePowerToThreePhase(p.shuntActivePower),
+      CPS::Math::singlePhasePowerToThreePhase(p.shuntReactivePower),
+      p.shuntNominalVoltage);
 
   auto loggerEMT = DataLogger::make(emtSimName, true, p.logDownSampling);
 
@@ -396,7 +418,8 @@ int main() {
   loggerEMT->logAttribute("GEN_gas_v", gasGenerator->attribute("v_intf"));
   loggerEMT->logAttribute("GEN_gas_i", gasGenerator->attribute("i_intf"));
   loggerEMT->logAttribute("GEN_gas_w_r", gasGenerator->attribute("w_r"));
-  loggerEMT->logAttribute("GEN_gas_delta_r", gasGenerator->attribute("delta_r"));
+  loggerEMT->logAttribute("GEN_gas_delta_r",
+                          gasGenerator->attribute("delta_r"));
   loggerEMT->logAttribute("GEN_gas_P_elec", gasGenerator->attribute("P_elec"));
   loggerEMT->logAttribute("GEN_gas_Q_elec", gasGenerator->attribute("Q_elec"));
   loggerEMT->logAttribute("GEN_gas_P_mech", gasGenerator->attribute("P_mech"));
@@ -419,17 +442,20 @@ int main() {
   simulationEMT.doSystemMatrixRecomputation(p.recomputeSystemMatrix);
   simulationEMT.addLogger(loggerEMT);
 
-  // false = open three-phase breaker -> disconnect LOAD_2b
+  // true = close the initially-open three-phase breaker and energize the cable section
   simulationEMT.addEvent(
-      SwitchEvent3Ph::make(p.breakerOpenTime, breaker, true));
+      SwitchEvent3Ph::make(p.breakerCloseTime, breaker, true));
 
-  SPDLOG_INFO("\n  Starting EMT load-loss simulation:"
+  SPDLOG_INFO("\n  Starting EMT cable-energization simulation:"
               "\n  dt={} s"
               "\n  finalTime={} s"
-              "\n  BR_load_2b opens at t={} s"
-              "\n  disconnected load: P={} MW, Q={} Mvar",
-              p.timeStep, p.finalTime, p.breakerOpenTime,
-              p.load2bActivePower / 1e6, p.load2bReactivePower / 1e6);
+              "\n  BR_cable initial state: OPEN"
+              "\n  BR_cable closes at t={} s"
+              "\n  cable-side shunt at BUS_breaker: P={} MW, Q={} Mvar"
+              "\n  cable-side shunt at BUS_a      : P={} MW, Q={} Mvar",
+              p.timeStep, p.finalTime, p.breakerCloseTime,
+              p.shuntActivePower / 1e6, p.shuntReactivePower / 1e6,
+              p.shuntActivePower / 1e6, p.shuntReactivePower / 1e6);
 
   simulationEMT.run();
 

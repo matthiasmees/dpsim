@@ -38,9 +38,33 @@ void PFSolverPowerPolar::generateInitialSolution(Real time,
   resize_sol(n);
   resize_complex_sol(n);
 
+  // determinePFBusType() already removed every unsupplied island from the
+  // PQ/PV lists. Build a mask of the buses that still participate in PF.
+  std::vector<Bool> activeBus(n, false);
+  for (const auto &node : mPQBuses)
+    activeBus[node->matrixNodeIndex()] = true;
+  for (const auto &node : mPVBuses)
+    activeBus[node->matrixNodeIndex()] = true;
+  for (const auto &node : mVDBuses)
+    activeBus[node->matrixNodeIndex()] = true;
+
   if (can_keep) {
     sol_V = mLastConvergedV;
     sol_D = mLastConvergedD;
+  }
+
+  // A currently unsupplied bus must never inherit the generic 1 pu initial
+  // guess or a voltage from an earlier warm-start state. Its PF operating
+  // point is explicitly de-energized: V=0, S=0.
+  for (UInt idx = 0; idx < n; ++idx) {
+    if (!activeBus[idx]) {
+      sol_P(idx) = 0.0;
+      sol_Q(idx) = 0.0;
+      sol_V(idx) = 0.0;
+      sol_D(idx) = 0.0;
+      sol_S_complex(idx) = CPS::Complex(0.0, 0.0);
+      sol_V_complex(idx) = CPS::Complex(0.0, 0.0);
+    }
   }
 
   // update components

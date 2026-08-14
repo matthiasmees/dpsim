@@ -9,7 +9,10 @@
 #include <dpsim-models/MathUtils.h>
 #include <dpsim/PFSolver.h>
 #include <dpsim/SequentialScheduler.h>
+
+#include <algorithm>
 #include <iostream>
+#include <queue>
 #include <stdexcept>
 
 using namespace DPsim;
@@ -190,7 +193,8 @@ void PFSolver::determinePFBusType() {
 
   SPDLOG_LOGGER_INFO(mSLog, "-- Determine powerflow bus type for each node");
 
-  // Determine powerflow bus type of each node through analysis of system topology
+  // First perform the normal bus classification based on the components
+  // connected to each node.
   for (auto node : mSystem.mNodes) {
     bool connectedPV = false;
     bool connectedPQ = false;
@@ -223,44 +227,36 @@ void PFSolver::determinePFBusType() {
       }
     }
 
-    // determine powerflow bus types according connected type of connected components
-    // only PQ type component connected -> set as PQ bus
     if (!connectedPV && connectedPQ && !connectedVD) {
       SPDLOG_LOGGER_INFO(
           mSLog, "{}: only PQ type component connected -> set as PQ bus",
           node->name());
       mPQBuses.push_back(node);
-    } // no component connected -> set as PQ bus (P & Q will be zero)
-    else if (!connectedPV && !connectedPQ && !connectedVD) {
+    } else if (!connectedPV && !connectedPQ && !connectedVD) {
       SPDLOG_LOGGER_INFO(mSLog, "{}: no component connected -> set as PQ bus",
                          node->name());
       mPQBuses.push_back(node);
-    } // only PV type component connected -> set as PV bus
-    else if (connectedPV && !connectedPQ && !connectedVD) {
+    } else if (connectedPV && !connectedPQ && !connectedVD) {
       SPDLOG_LOGGER_INFO(
           mSLog, "{}: only PV type component connected -> set as PV bus",
           node->name());
       mPVBuses.push_back(node);
-    } // PV and PQ type component connected -> set as PV bus
-    else if (connectedPV && connectedPQ && !connectedVD) {
+    } else if (connectedPV && connectedPQ && !connectedVD) {
       SPDLOG_LOGGER_INFO(
           mSLog, "{}: PV and PQ type component connected -> set as PV bus",
           node->name());
       mPVBuses.push_back(node);
-    } // only VD type component connected -> set as VD bus
-    else if (!connectedPV && !connectedPQ && connectedVD) {
+    } else if (!connectedPV && !connectedPQ && connectedVD) {
       SPDLOG_LOGGER_INFO(
           mSLog, "{}: only VD type component connected -> set as VD bus",
           node->name());
       mVDBuses.push_back(node);
-    } // VD and PV type component connect -> set as VD bus
-    else if (connectedPV && !connectedPQ && connectedVD) {
+    } else if (connectedPV && !connectedPQ && connectedVD) {
       SPDLOG_LOGGER_INFO(
           mSLog, "{}: VD and PV type component connect -> set as VD bus",
           node->name());
       mVDBuses.push_back(node);
-    } // VD, PV and PQ type component connect -> set as VD bus
-    else if (connectedPV && connectedPQ && connectedVD) {
+    } else if (connectedPV && connectedPQ && connectedVD) {
       SPDLOG_LOGGER_INFO(
           mSLog, "{}: VD, PV and PQ type component connect -> set as VD bus",
           node->name());
@@ -273,16 +269,113 @@ void PFSolver::determinePFBusType() {
     }
   }
 
+  // ------------------------------------------------------------------------
+  // Initial-topology filtering
+  // ------------------------------------------------------------------------
+  // A bus only belongs to the NR problem if it is electrically reachable from
+  // at least one VD/slack bus through branches that conduct in the INITIAL PF
+  // topology. In particular, an open SP::Ph1::Switch is a hard graph cut.
+  //
+  // Without this filtering an island containing constant-P/Q loads behind an
+  // open breaker is still added to the Newton system. Together with a finite
+  // 1/R_open switch stamp this creates an ill-conditioned/non-physical PF.
+  const UInt n = static_cast<UInt>(mSystem.mNodes.size());
+  std::vector<std::vector<UInt>> neighbours(n);
+
+  const auto addBranch = [&](const auto &branch) {
+    if (!branch)
+      return;
+
+    auto node0 = branch->node(0);
+    auto node1 = branch->node(1);
+    if (!node0 || !node1 || node0->isGround() || node1->isGround())
+      return;
+
+    const UInt i = node0->matrixNodeIndex();
+    const UInt j = node1->matrixNodeIndex();
+    if (i >= n || j >= n)
+      return;
+
+    neighbours[i].push_back(j);
+    neighbours[j].push_back(i);
+  };
+
+  // These are the passive two-terminal branches stamped by this PF solver.
+  for (const auto &line : mLines)
+    addBranch(line);
+  for (const auto &trafo : mTransformers)
+    addBranch(trafo);
+
+  for (const auto &comp : mSystem.mComponents) {
+    if (auto sw = std::dynamic_pointer_cast<CPS::SP::Ph1::Switch>(comp)) {
+      if (sw->isClosed())
+        addBranch(sw);
+    }
+  }
+
+  std::vector<Bool> energized(n, false);
+  std::queue<UInt> pending;
+
+  for (const auto &vd : mVDBuses) {
+    const UInt idx = vd->matrixNodeIndex();
+    if (idx < n && !energized[idx]) {
+      energized[idx] = true;
+      pending.push(idx);
+    }
+  }
+
+  if (pending.empty())
+    throw std::invalid_argument(
+        "Power flow has no VD/slack bus from which to energize the network");
+
+  while (!pending.empty()) {
+    const UInt i = pending.front();
+    pending.pop();
+
+    for (const UInt j : neighbours[i]) {
+      if (!energized[j]) {
+        energized[j] = true;
+        pending.push(j);
+      }
+    }
+  }
+
+  const auto isEnergized = [&](const CPS::TopologicalNode::Ptr &node) {
+    const UInt idx = node->matrixNodeIndex();
+    return idx < n && energized[idx];
+  };
+
+  const auto removeDeenergized = [&](CPS::TopologicalNode::List &buses) {
+    buses.erase(
+        std::remove_if(buses.begin(), buses.end(),
+                       [&](const auto &node) { return !isEnergized(node); }),
+        buses.end());
+  };
+
+  removeDeenergized(mPQBuses);
+  removeDeenergized(mPVBuses);
+
   rebuildBusIndexAggregates();
 
-  // Snapshot so each solve can reset before Q-limit switching (solver is reused).
+  // Snapshot the already-filtered classification so a Q-limit reset never
+  // re-introduces buses from an unsupplied island.
   mPQBusesOrig = mPQBuses;
   mPVBusesOrig = mPVBuses;
 
-  SPDLOG_LOGGER_INFO(mSLog, "#### Create index vectors for power flow solver:");
+  SPDLOG_LOGGER_INFO(mSLog,
+                     "#### Create index vectors for energized power flow:");
   SPDLOG_LOGGER_INFO(mSLog, "PQ Buses: {}", logVector(mPQBusIndices));
   SPDLOG_LOGGER_INFO(mSLog, "PV Buses: {}", logVector(mPVBusIndices));
   SPDLOG_LOGGER_INFO(mSLog, "VD Buses: {}", logVector(mVDBusIndices));
+
+  for (const auto &node : mSystem.mNodes) {
+    if (!isEnergized(node)) {
+      SPDLOG_LOGGER_INFO(mSLog,
+                         "{}: disconnected from every VD bus by open topology "
+                         "-> exclude from NR and initialize V=0 pu",
+                         node->name());
+    }
+  }
 }
 
 void PFSolver::rebuildBusIndexAggregates() {
@@ -579,8 +672,8 @@ void PFSolver::composeAdmittanceMatrix() {
       line->pfApplyAdmittanceMatrixStamp(mY);
     }
 
-    // Stamp SP switches exactly as network branches. Closed/open state chooses
-    // R_closed/R_open inside SP::Ph1::Switch.
+    // Open SP switches now contribute exactly zero admittance for PF. Closed
+    // switches stamp R_closed as before.
     for (auto comp : mSystem.mComponents) {
       if (auto switchComp =
               std::dynamic_pointer_cast<CPS::SP::Ph1::Switch>(comp)) {
