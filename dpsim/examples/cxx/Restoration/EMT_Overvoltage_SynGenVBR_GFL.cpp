@@ -1,0 +1,655 @@
+// SPDX-FileCopyrightText: 2026 Institute for Automation of Complex Power Systems,
+// EONERC, RWTH Aachen University
+// SPDX-License-Identifier: MPL-2.0
+
+#include "../Examples.h"
+
+#include <DPsim.h>
+
+#include <dpsim-models/EMT/EMT_Ph3_RXLoad.h>
+#include <dpsim-models/EMT/EMT_Ph3_Switch.h>
+#include <dpsim-models/EMT/EMT_Ph3_SynchronGeneratorVBR.h>
+#include <dpsim-models/EMT/EMT_Ph3_Transformer.h>
+#include <dpsim-models/SP/SP_Ph1_Load.h>
+#include <dpsim-models/SP/SP_Ph1_Switch.h>
+#include <dpsim-models/SP/SP_Ph1_SynchronGenerator.h>
+#include <dpsim-models/SP/SP_Ph1_Transformer.h>
+#include <dpsim-models/Signal/Exciter.h>
+
+#include <memory>
+
+using namespace DPsim;
+using namespace CPS;
+
+struct Parameters {
+  // Simulation
+  String name = "EMT_Overvoltage_SynGenVBR_GFL";
+  Real frequency = 50.0;
+  Real pfTimeStep = 1.0;
+  Real pfFinalTime = 1.0;
+  Real timeStep = 100e-6;
+  Real finalTime = 15.0;
+  Real breakerCloseTime = 5.0;
+  Bool recomputeSystemMatrix = true;
+  Real gflReactivePowerStepTime = 5.0;
+  Real gflActivePowerStepTime = 5.0;
+  Int logDownSampling = 10;
+
+  // Synchronous generator GEN_gas
+  Real genRatedPower = 50e6;
+  Real genRatedVoltage = 10.5e3;
+  Real genNominalFrequency = 50.0;
+  Int genPoleNumber = 2;
+  Real genNominalFieldCurrent = 1300.0;
+
+  Real genStatorResistance = 0.002;
+  Real genLd = 2.4;
+  Real genLq = 1.33;
+  Real genLdTransient = 0.31;
+  Real genLqTransient = 1.2;
+  Real genLdSubtransient = 0.24;
+  Real genLqSubtransient = 0.35;
+  Real genLeakageInductance = 0.135;
+  Real genTd0Transient = 1.45;
+  Real genTq0Transient = 1.0;
+  Real genTd0Subtransient = 0.022;
+  Real genTq0Subtransient = 0.0095;
+  Real genInertia = 5.0;
+
+  // Turbine governor
+  Real govTa = 1.0;
+  Real govTb = 0.5;
+  Real govTc = 0.2;
+  Real govF1a = 0.3;
+  Real govFa = 0.3;
+  Real govFb = 0.25;
+  Real govFc = 0.3;
+  Real govGain = 20.0;
+  Real govSpeedRelayTimeConstant = 0.1;
+  Real govServoMotorTimeConstant = 0.1;
+
+  // Exciter
+  Real excTa = 0.005;
+  Real excKa = 200.0;
+  Real excTe = 0.05;
+  Real excKe = 0.5;
+  Real excTf = 0.3;
+  Real excKf = 0.01;
+  Real excTr = 0.02;
+  Real excMaximumRegulatorVoltage = 19.0;
+  Real excMinimumRegulatorVoltage = -5.0;
+
+  // Transformer TR_gas
+  Real trGasVoltageLow = 10.5e3;
+  Real trGasVoltageHigh = 220e3;
+  Real trGasRatedPower = 50e6;
+  Real trGasRatioMagnitude = 10.5e3 / 220e3;
+  Real trGasRatioPhase = 0.0;
+  Real trGasResistance = 3.64157728;
+  Real trGasInductance = 0.31037265855769886;
+
+  // Transformer TR_ld2
+  Real trLoadVoltageLow = 10.0e3;
+  Real trLoadVoltageHigh = 220e3;
+  Real trLoadRatedPower = 50e6;
+  Real trLoadRatioMagnitude = 10.0e3 / 220e3;
+  Real trLoadRatioPhase = 0.0;
+  Real trLoadResistance = 3.64157728;
+  Real trLoadInductance = 0.31037292;
+
+  // LOAD_2a
+  Real load2aActivePower = 5e6;
+  Real load2aReactivePower = 3.098721e6;
+  Real load2aNominalVoltage = 10e3;
+
+  // LOAD_2b
+  Real load2bActivePower = 15e6;
+  Real load2bReactivePower = 0.0;
+  Real load2bNominalVoltage = 10e3;
+
+  // BR_load_2b
+  Real breakerOpenResistance = 1e12;
+  Real breakerClosedResistance = 1e-3;
+
+  // Cable parameters
+  Real cableBaseVoltage = 220e3;
+  Real cableResistance = 0.032 * 10.5;
+  Real cableInductance = 0.321493e-3 * 10.5;
+  Real cableCapacitance = 0.21915e-6 * 10.5;
+  Real cableConductance = 1e-15;
+
+  // Cable-end shunts, represented intentionally as loads
+  Real shuntActivePower = 0.15e6;
+  Real shuntReactivePower = 15e6;
+  Real shuntNominalVoltage = 220e3;
+
+  // ---------------------------------------------------------------------------
+  // PV GFL and transformer
+  // ---------------------------------------------------------------------------
+  Real gflRatedPower = 50e6;
+  Real gflRatedVoltage = 11.0e3;
+  Real gflNetworkVoltage = 220e3;
+
+  Real trPvResistance = 0.0;
+  Real trPvInductance = 0.928e-3;
+
+  // The GFL starts at zero P/Q and reacts to the load-loss disturbance
+  // through its inverse frequency/voltage droop.
+  Real gflInitialActivePower = 0.0;
+  Real gflInitialReactivePower = 0.0;
+
+  // GFL reactive-power reference step
+  Real gflReactivePowerAfterStep = -9e6;
+  Real gflActivePowerAfterStep = 2e6;
+  // GFL inverse-droop gains
+  Real gflFrequencyToActivePowerGainPu = 4.0;
+  Real gflVoltageToReactivePowerGainPu = 2.0*2;
+
+  // PLL
+  Real gflPllKp = 0.449 / (9.1e-3 + 250e-6);
+  Real gflPllKi = 250e-6 / (5.9 * (9.1e-3 + 250e-6));
+
+  // Current controller
+  Real gflCurrentControllerKp = 0.74 / 10.0;
+  Real gflCurrentControllerKi = 11.9 / 10.0;
+  Real gflPccVoltageFeedforwardGain = 1.0;
+
+  // Measurement filters
+  Real gflActivePowerMeasurementTimeConstant = 0.05;
+  Real gflReactivePowerMeasurementTimeConstant = 0.05;
+  Real gflCurrentMeasurementTimeConstant = 0.5e-3;
+  Real gflVoltageFeedforwardMeasurementTimeConstant = 1.0e-3;
+
+  // Controller limits
+  Real gflMinimumFrequencyPu = 0.80;
+  Real gflMaximumFrequencyPu = 1.20;
+  Real gflMaximumCurrentReferencePu = 1.50;
+  Real gflMaximumVoltageCommandPu = 1.20;
+  Real gflMinimumVoltageForCurrentReferencePu = 0.05;
+
+  // ---------------------------------------------------------------------------
+  // Siemens validation filter
+  // ---------------------------------------------------------------------------
+  Real gflFilterReferencePower = 50e3;
+  Real gflFilterReferenceVoltage = 257.0;
+  Real gflFilterReferenceFrequency = 50.0;
+
+  Real gflFilterResistance = 0.0279;
+  Real gflFilterInductance = 2.72e-4;
+  Real gflFilterCapacitance = 3.5e-6;
+
+  Real gflFilterBaseImpedance() const {
+    return gflFilterReferenceVoltage * gflFilterReferenceVoltage /
+           gflFilterReferencePower;
+  }
+
+  Real gflFilterBaseOmega() const {
+    return 2.0 * PI * gflFilterReferenceFrequency;
+  }
+
+  Real gflFilterResistancePu() const {
+    return gflFilterResistance / gflFilterBaseImpedance();
+  }
+
+  Real gflFilterInductiveReactancePu() const {
+    return gflFilterBaseOmega() * gflFilterInductance /
+           gflFilterBaseImpedance();
+  }
+
+  Real gflFilterCapacitiveSusceptancePu() const {
+    return gflFilterBaseOmega() * gflFilterCapacitance *
+           gflFilterBaseImpedance();
+  }
+};
+
+int main() {
+  const Parameters p;
+
+  // ==========================================================================
+  // 1. POWER FLOW
+  //
+  // PF and EMT have exactly the same graph:
+  //
+  //                                      +-- TR_ld2 -- BUS_load_2 -- LOAD_2a
+  //                                      |                  |
+  // GEN_gas -- BUS_gas -- TR_gas -- BUS_b                  +-- LOAD_2b
+  //                                      |
+  //                                      +-- BR_cable (OPEN at t=0)
+  //                                             |
+  //                                        BUS_breaker -- cable -- BUS_a
+  //                                             |                    |
+  //                                          shunt_b              shunt_a
+  //
+  // shunt_b and shunt_a are intentionally represented as constant-P/Q
+  // SP::Ph1::Load components in PF and EMT::Ph3::RXLoad components in EMT.
+  //
+  // PF and EMT use identical component and node names. The two systems are
+  // separate SystemTopology objects, so this is safe and lets the stock
+  // initWithPowerflow() exact-name lookup initialize GEN_gas correctly.
+  // ==========================================================================
+
+  const String pfSimName = p.name + "_PF";
+  Logger::setLogDir("logs/" + pfSimName);
+
+  // PF nodes
+  auto busGasPF = SimNode<Complex>::make("BUS_gas", PhaseType::Single);
+  auto busBPF = SimNode<Complex>::make("BUS_b", PhaseType::Single);
+  auto busLoadPF = SimNode<Complex>::make("BUS_load_2", PhaseType::Single);
+  auto busAPF = SimNode<Complex>::make("BUS_a", PhaseType::Single);
+  auto busBreakerPF = SimNode<Complex>::make("BUS_breaker", PhaseType::Single);
+  auto busPvPF = SimNode<Complex>::make("BUS_pv", PhaseType::Single);
+
+  // PF synchronous generator: VD/slack bus. P is only an initial estimate;
+  // the converged slack P/Q are solved by the NRP solver.
+  auto gasGeneratorPF =
+      SP::Ph1::SynchronGenerator::make("GEN_gas", Logger::Level::off);
+  gasGeneratorPF->setParameters(p.genRatedPower, p.genRatedVoltage,
+                                p.load2aActivePower + p.load2bActivePower,
+                                p.genRatedVoltage, PowerflowBusType::VD);
+  gasGeneratorPF->setBaseVoltage(p.genRatedVoltage);
+
+  // PF TR_gas
+  auto trGasPF =
+      SP::Ph1::Transformer::make("TR_gas", "TR_gas", Logger::Level::off, true);
+  trGasPF->setParameters(p.trGasVoltageLow, p.trGasVoltageHigh,
+                         p.trGasRatedPower, p.trGasRatioMagnitude,
+                         p.trGasRatioPhase, p.trGasResistance,
+                         p.trGasInductance);
+  trGasPF->setBaseVoltage(p.trGasVoltageHigh);
+
+  // PF TR_ld2
+  auto trLoadPF =
+      SP::Ph1::Transformer::make("TR_ld2", "TR_ld2", Logger::Level::off, true);
+  trLoadPF->setParameters(p.trLoadVoltageLow, p.trLoadVoltageHigh,
+                          p.trLoadRatedPower, p.trLoadRatioMagnitude,
+                          p.trLoadRatioPhase, p.trLoadResistance,
+                          p.trLoadInductance);
+  trLoadPF->setBaseVoltage(p.trLoadVoltageHigh);
+
+  // PF LOAD_2a
+  auto load2aPF = SP::Ph1::Load::make("LOAD_2a", Logger::Level::off);
+  load2aPF->setParameters(p.load2aActivePower, p.load2aReactivePower,
+                          p.load2aNominalVoltage);
+  load2aPF->modifyPowerFlowBusType(PowerflowBusType::PQ);
+
+  // PF breaker: actual SP::Ph1::Switch, initially OPEN
+  auto breakerPF = SP::Ph1::Switch::make("BR_cable", Logger::Level::off);
+  breakerPF->setParameters(p.breakerOpenResistance, p.breakerClosedResistance,
+                           false);
+  breakerPF->setBaseVoltage(220e3);
+
+  // PF LOAD_2b on BUS_load_2 (not behind BR_cable)
+  auto load2bPF = SP::Ph1::Load::make("LOAD_2b", Logger::Level::off);
+  load2bPF->setParameters(p.load2bActivePower, p.load2bReactivePower,
+                          p.load2bNominalVoltage);
+  load2bPF->modifyPowerFlowBusType(PowerflowBusType::PQ);
+
+  // PF cable
+  auto cablePF = SP::Ph1::PiLine::make("cable", Logger::Level::off);
+  cablePF->setParameters(p.cableResistance, p.cableInductance,
+                         p.cableCapacitance, p.cableConductance);
+  cablePF->setBaseVoltage(p.cableBaseVoltage);
+
+  // shunt at bus B
+  auto shunt_b_PF = SP::Ph1::Load::make("shunt_b", Logger::Level::off);
+  shunt_b_PF->setParameters(p.shuntActivePower, p.shuntReactivePower,
+                            p.shuntNominalVoltage);
+  shunt_b_PF->modifyPowerFlowBusType(PowerflowBusType::PQ);
+
+  // shunt at bus A
+  auto shunt_a_PF = SP::Ph1::Load::make("shunt_a", Logger::Level::off);
+  shunt_a_PF->setParameters(p.shuntActivePower, p.shuntReactivePower,
+                            p.shuntNominalVoltage);
+  shunt_a_PF->modifyPowerFlowBusType(PowerflowBusType::PQ);
+
+  // PF TR_pv: network side -> converter side.
+  auto trPvPF =
+      SP::Ph1::Transformer::make("TR_pv", "TR_pv", Logger::Level::off, false);
+  trPvPF->setParameters(p.gflNetworkVoltage, p.gflRatedVoltage, p.gflRatedPower,
+                        p.gflNetworkVoltage / p.gflRatedVoltage, 0.0,
+                        p.trPvResistance, p.trPvInductance);
+  trPvPF->setBaseVoltage(p.gflNetworkVoltage);
+
+  // PF surrogate for the GFL.
+  auto pvPF = SP::Ph1::Load::make("pv", Logger::Level::off);
+  pvPF->setParameters(p.gflInitialActivePower, p.gflInitialReactivePower,
+                      p.gflRatedVoltage);
+  pvPF->modifyPowerFlowBusType(PowerflowBusType::PQ);
+
+  // PF connectivity: identical graph to EMT
+  gasGeneratorPF->connect({busGasPF});
+  trGasPF->connect({busGasPF, busBPF});
+  trLoadPF->connect({busLoadPF, busBPF});
+  load2aPF->connect({busLoadPF});
+  load2bPF->connect({busLoadPF});
+
+  breakerPF->connect({busBPF, busBreakerPF});
+  cablePF->connect({busBreakerPF, busAPF});
+  shunt_b_PF->connect({busBreakerPF});
+  shunt_a_PF->connect({busAPF});
+
+  trPvPF->connect({busBPF, busPvPF});
+  pvPF->connect({busPvPF});
+
+  SystemTopology systemPF(
+      p.frequency,
+      SystemNodeList{busGasPF, busBPF, busLoadPF, busBreakerPF, busAPF, busPvPF},
+      SystemComponentList{gasGeneratorPF, trGasPF, trLoadPF, load2aPF, load2bPF,
+                          breakerPF, cablePF, shunt_b_PF, shunt_a_PF,
+                        trPvPF, pvPF});
+
+  auto loggerPF = DataLogger::make(pfSimName);
+  loggerPF->logAttribute("BUS_gas_v", busGasPF->attribute("v"));
+  loggerPF->logAttribute("BUS_b_v", busBPF->attribute("v"));
+  loggerPF->logAttribute("BUS_load_2_v", busLoadPF->attribute("v"));
+  loggerPF->logAttribute("BUS_breaker_v", busBreakerPF->attribute("v"));
+  loggerPF->logAttribute("BUS_a_v", busAPF->attribute("v"));
+  loggerPF->logAttribute("BUS_pv_v", busPvPF->attribute("v"));
+
+  Simulation simulationPF(pfSimName, Logger::Level::debug);
+  simulationPF.setSystem(systemPF);
+  simulationPF.setTimeStep(p.pfTimeStep);
+  simulationPF.setFinalTime(p.pfFinalTime);
+  simulationPF.setDomain(Domain::SP);
+  simulationPF.setSolverType(Solver::Type::NRP);
+  simulationPF.setSolverAndComponentBehaviour(
+      Solver::Behaviour::Initialization);
+  simulationPF.doInitFromNodesAndTerminals(false);
+  simulationPF.addLogger(loggerPF);
+  simulationPF.run();
+
+  SPDLOG_INFO("PF operating point:"
+              "\n  V_GEN        = {} V RMS, angle = {} deg"
+              "\n  V_BUS_b      = {} V RMS, angle = {} deg"
+              "\n  V_BUS_load2  = {} V RMS, angle = {} deg"
+              "\n  V_BUS_breaker = {} V RMS, angle = {} deg"
+              "\n  V_BUS_a       = {} V RMS, angle = {} deg"
+              "\n  GEN_gas      = P={} MW, Q={} Mvar"
+              "\n  V_BUS_pv     : |V|={} V RMS, angle={} deg"
+              "\n  GFL_pv       : P={} MW, Q={} Mvar",
+              Math::abs(busGasPF->singleVoltage()),
+              Math::phase(busGasPF->singleVoltage()) * 180.0 / PI,
+              Math::abs(busBPF->singleVoltage()),
+              Math::phase(busBPF->singleVoltage()) * 180.0 / PI,
+              Math::abs(busLoadPF->singleVoltage()),
+              Math::phase(busLoadPF->singleVoltage()) * 180.0 / PI,
+              Math::abs(busBreakerPF->singleVoltage()),
+              Math::phase(busBreakerPF->singleVoltage()) * 180.0 / PI,
+              Math::abs(busAPF->singleVoltage()),
+              Math::phase(busAPF->singleVoltage()) * 180.0 / PI,
+              gasGeneratorPF->getApparentPower().real() / 1e6,
+              gasGeneratorPF->getApparentPower().imag() / 1e6,
+              Math::abs(busPvPF->singleVoltage()),
+              Math::phase(busPvPF->singleVoltage()) * 180.0 / PI,
+              p.gflInitialActivePower / 1e6, p.gflInitialReactivePower / 1e6);
+
+  // ==========================================================================
+  // 2. EMT
+  // ==========================================================================
+
+  const String emtSimName = p.name + "_EMT";
+  Logger::setLogDir("logs/" + emtSimName);
+
+  // EMT nodes. No manual PF-result phasors are passed here.
+  auto busGas = SimNode<Real>::make("BUS_gas", PhaseType::ABC);
+  auto busB = SimNode<Real>::make("BUS_b", PhaseType::ABC);
+  auto busLoad = SimNode<Real>::make("BUS_load_2", PhaseType::ABC);
+
+  auto busA = SimNode<Real>::make("BUS_a", PhaseType::ABC);
+  auto busBreaker = SimNode<Real>::make("BUS_breaker", PhaseType::ABC); 
+
+  auto busPv = SimNode<Real>::make("BUS_pv", PhaseType::ABC);
+
+  // EMT synchronous generator
+  auto gasGenerator =
+      EMT::Ph3::SynchronGeneratorVBR::make("GEN_gas", Logger::Level::off);
+
+  gasGenerator->setBaseAndOperationalPerUnitParameters(
+      p.genRatedPower, p.genRatedVoltage, p.genNominalFrequency,
+      p.genPoleNumber, p.genNominalFieldCurrent, p.genStatorResistance, p.genLd,
+      p.genLq, p.genLdTransient, p.genLqTransient, p.genLdSubtransient,
+      p.genLqSubtransient, p.genLeakageInductance, p.genTd0Transient,
+      p.genTq0Transient, p.genTd0Subtransient, p.genTq0Subtransient,
+      p.genInertia);
+
+  // Keep the existing legacy Signal::TurbineGovernor used by this project,
+  // but derive its equilibrium Pm/Tm automatically from the PF operating point.
+  gasGenerator->addGovernor(
+      p.govTa, p.govTb, p.govTc, p.govF1a, p.govFa, p.govFb, p.govFc, p.govGain,
+      p.govSpeedRelayTimeConstant, p.govServoMotorTimeConstant,
+      Base::SynchronGenerator::LegacyGovernorInitialization::FromPowerflow);
+
+  auto exciterParameters = std::make_shared<Signal::ExciterParameters>();
+  exciterParameters->Ta = p.excTa;
+  exciterParameters->Ka = p.excKa;
+  exciterParameters->Te = p.excTe;
+  exciterParameters->Ke = p.excKe;
+  exciterParameters->Tf = p.excTf;
+  exciterParameters->Kf = p.excKf;
+  exciterParameters->Tr = p.excTr;
+  exciterParameters->maxVr = p.excMaximumRegulatorVoltage;
+  exciterParameters->minVr = p.excMinimumRegulatorVoltage;
+
+  auto exciter = Signal::Exciter::make("GEN_gas_exciter", Logger::Level::off);
+  gasGenerator->addExciter(exciter, exciterParameters);
+
+  // EMT TR_gas
+  auto trGas =
+      EMT::Ph3::Transformer::make("TR_gas", "TR_gas", Logger::Level::off, true);
+  trGas->setParameters(
+      p.trGasVoltageLow, p.trGasVoltageHigh, p.trGasRatedPower,
+      p.trGasRatioMagnitude, p.trGasRatioPhase,
+      Math::singlePhaseParameterToThreePhase(p.trGasResistance),
+      Math::singlePhaseParameterToThreePhase(p.trGasInductance));
+
+  // EMT TR_ld2
+  auto trLoad =
+      EMT::Ph3::Transformer::make("TR_ld2", "TR_ld2", Logger::Level::off, true);
+  trLoad->setParameters(
+      p.trLoadVoltageLow, p.trLoadVoltageHigh, p.trLoadRatedPower,
+      p.trLoadRatioMagnitude, p.trLoadRatioPhase,
+      Math::singlePhaseParameterToThreePhase(p.trLoadResistance),
+      Math::singlePhaseParameterToThreePhase(p.trLoadInductance));
+
+  // EMT loads intentionally have NO setParameters() call.
+  // initWithPowerflow() transfers their PF P/Q to the matching EMT terminals.
+  // RXLoad then derives R/X from that P/Q and the actual solved PF bus voltage
+  // in doInitFromNodesAndTerminals(true).
+  auto load2a = EMT::Ph3::RXLoad::make("LOAD_2a", Logger::Level::off);
+  auto load2b = EMT::Ph3::RXLoad::make("LOAD_2b", Logger::Level::off);
+
+  auto shunt_b = EMT::Ph3::RXLoad::make("shunt_b", Logger::Level::off);
+  auto shunt_a = EMT::Ph3::RXLoad::make("shunt_a", Logger::Level::off);
+
+  // EMT breaker, same topological position and initially open
+  auto breaker = EMT::Ph3::Switch::make("BR_cable", Logger::Level::off);
+  breaker->setParameters(
+      Math::singlePhaseParameterToThreePhase(p.breakerOpenResistance),
+      Math::singlePhaseParameterToThreePhase(p.breakerClosedResistance));
+  breaker->openSwitch();
+
+  // EMT cable
+  auto cable = EMT::Ph3::PiLine::make("cable", Logger::Level::off);
+  cable->setParameters(
+      Math::singlePhaseParameterToThreePhase(p.cableResistance),
+      Math::singlePhaseParameterToThreePhase(p.cableInductance),
+      Math::singlePhaseParameterToThreePhase(p.cableCapacitance),
+      Math::singlePhaseParameterToThreePhase(p.cableConductance));
+
+
+  // ---------------------------------------------------------------------------
+  // EMT TR_pv + GFL
+  // ---------------------------------------------------------------------------
+  auto trPv =
+      EMT::Ph3::Transformer::make("TR_pv", "TR_pv", Logger::Level::off, false);
+  trPv->setParameters(p.gflNetworkVoltage, p.gflRatedVoltage, p.gflRatedPower,
+                      p.gflNetworkVoltage / p.gflRatedVoltage, 0.0,
+                      Math::singlePhaseParameterToThreePhase(p.trPvResistance),
+                      Math::singlePhaseParameterToThreePhase(p.trPvInductance));
+
+  auto pvGfl = EMT::Ph3::GFL_Siemens::make("pv", "pv", Logger::Level::off);
+
+  const Real gflInitialVoltagePu =
+      Math::abs(busPvPF->singleVoltage()) / p.gflRatedVoltage;
+
+  pvGfl->setBaseParameters(p.gflRatedPower, p.gflRatedVoltage, p.frequency);
+
+  pvGfl->setReferencesPerUnit(1.0, gflInitialVoltagePu,
+                              p.gflInitialActivePower / p.gflRatedPower,
+                              p.gflInitialReactivePower / p.gflRatedPower);
+
+  pvGfl->setDroopParametersPerUnit(p.gflFrequencyToActivePowerGainPu,
+                                   p.gflVoltageToReactivePowerGainPu);
+
+  pvGfl->setPllParameters(p.gflPllKp, p.gflPllKi);
+
+  pvGfl->setCurrentControllerParameters(p.gflCurrentControllerKp,
+                                        p.gflCurrentControllerKi,
+                                        p.gflPccVoltageFeedforwardGain);
+
+  pvGfl->setMeasurementFilterTimeConstants(
+      p.gflActivePowerMeasurementTimeConstant,
+      p.gflReactivePowerMeasurementTimeConstant,
+      p.gflCurrentMeasurementTimeConstant,
+      p.gflVoltageFeedforwardMeasurementTimeConstant);
+
+  pvGfl->setControllerLimitsPerUnit(
+      p.gflMinimumFrequencyPu, p.gflMaximumFrequencyPu,
+      p.gflMaximumCurrentReferencePu, p.gflMaximumVoltageCommandPu,
+      p.gflMinimumVoltageForCurrentReferencePu);
+
+  pvGfl->setFilterParametersPerUnit(p.gflFilterInductiveReactancePu(),
+                                    p.gflFilterCapacitiveSusceptancePu(),
+                                    p.gflFilterResistancePu());
+
+  pvGfl->withControl(true);
+
+  // EMT connectivity: exactly the same graph as PF
+  gasGenerator->connect({busGas});
+  trGas->connect({busGas, busB});
+  trLoad->connect({busLoad, busB});
+  load2a->connect({busLoad});
+  load2b->connect({busLoad});
+
+  breaker->connect({busB, busBreaker});
+  cable->connect({busBreaker, busA});
+  shunt_b->connect({busBreaker});
+  shunt_a->connect({busA});
+
+  trPv->connect({busB, busPv});
+  pvGfl->connect({busPv});
+
+  SystemTopology systemEMT(
+      p.frequency, SystemNodeList{busGas, busB, busLoad, busA, busBreaker, busPv},
+      SystemComponentList{gasGenerator, trGas, trLoad, load2a, load2b, breaker,
+                          cable, shunt_b, shunt_a,
+                        trPv, pvGfl});
+
+  // Central PF -> EMT operating-point transfer:
+  //   - solved node voltages by exact node name
+  //   - synchronous-generator terminal P/Q with generator sign conversion
+  //   - load terminal P/Q with consumer-positive sign convention
+  //
+  // No example-side power extraction or terminal assignment is required.
+  systemEMT.initWithPowerflow(systemPF, Domain::EMT);
+
+  // The cable-side island is de-energized in the initial PF, so its solved
+  // node voltages are exactly 0 V.  Keep the shunts physically present as
+  // RX loads by parameterizing their impedance from rated P/Q and V instead
+  // of trying to derive R/X from a zero-voltage PF terminal.
+  shunt_b->setParameters(
+      CPS::Math::singlePhasePowerToThreePhase(p.shuntActivePower),
+      CPS::Math::singlePhasePowerToThreePhase(p.shuntReactivePower),
+      p.shuntNominalVoltage);
+
+  shunt_a->setParameters(
+      CPS::Math::singlePhasePowerToThreePhase(p.shuntActivePower),
+      CPS::Math::singlePhasePowerToThreePhase(p.shuntReactivePower),
+      p.shuntNominalVoltage);
+
+  auto loggerEMT = DataLogger::make(emtSimName, true, p.logDownSampling);
+
+  loggerEMT->logAttribute("BUS_gas_v", busGas->attribute("v"));
+  loggerEMT->logAttribute("BUS_b_v", busB->attribute("v"));
+  loggerEMT->logAttribute("BUS_load_2_v", busLoad->attribute("v"));
+  loggerEMT->logAttribute("BUS_breaker_v", busBreaker->attribute("v"));
+  loggerEMT->logAttribute("BUS_a_v", busA->attribute("v"));
+
+  loggerEMT->logAttribute("GEN_gas_v", gasGenerator->attribute("v_intf"));
+  loggerEMT->logAttribute("GEN_gas_i", gasGenerator->attribute("i_intf"));
+  loggerEMT->logAttribute("GEN_gas_w_r", gasGenerator->attribute("w_r"));
+  loggerEMT->logAttribute("GEN_gas_delta_r",
+                          gasGenerator->attribute("delta_r"));
+  loggerEMT->logAttribute("GEN_gas_P_elec", gasGenerator->attribute("P_elec"));
+  loggerEMT->logAttribute("GEN_gas_Q_elec", gasGenerator->attribute("Q_elec"));
+  loggerEMT->logAttribute("GEN_gas_P_mech", gasGenerator->attribute("P_mech"));
+
+  loggerEMT->logAttribute("BR_breaker_v", breaker->attribute("v_intf"));
+  loggerEMT->logAttribute("BR_breaker_i", breaker->attribute("i_intf"));
+  loggerEMT->logAttribute("LOAD_2a_i", load2a->attribute("i_intf"));
+  loggerEMT->logAttribute("LOAD_2b_i", load2b->attribute("i_intf"));
+
+  loggerEMT->logAttribute("TR_pv_i", trPv->attribute("i_intf"));
+  loggerEMT->logAttribute("GFL_pv_P_ref_pu", pvGfl->attribute("P_ref_pu"));
+  loggerEMT->logAttribute("GFL_pv_Q_ref_pu", pvGfl->attribute("Q_ref_pu"));
+  loggerEMT->logAttribute("GFL_pv_P_elec_pu", pvGfl->attribute("P_elec_pu"));
+  loggerEMT->logAttribute("GFL_pv_Q_elec_pu", pvGfl->attribute("Q_elec_pu"));
+  loggerEMT->logAttribute("GFL_pv_frequency_pu", pvGfl->attribute("frequency_pu"));
+  loggerEMT->logAttribute("GFL_pv_V_magnitude_pu", pvGfl->attribute("V_magnitude_pu"));
+  loggerEMT->logAttribute("GFL_pv_i_pcc_dq_pu", pvGfl->attribute("i_pcc_dq_pu"));
+  loggerEMT->logAttribute("GFL_pv_i_ref_dq_pu", pvGfl->attribute("i_ref_dq_pu"));
+  loggerEMT->logAttribute("GFL_pv_v_cmd_dq_pu", pvGfl->attribute("v_cmd_dq_pu"));
+  loggerEMT->logAttribute("GFL_pv_v_pcc_dq_pu", pvGfl->attribute("v_pcc_dq_pu"));
+
+  Simulation simulationEMT(emtSimName, Logger::Level::info);
+  simulationEMT.setSystem(systemEMT);
+  simulationEMT.setTimeStep(p.timeStep);
+  simulationEMT.setFinalTime(p.finalTime);
+  simulationEMT.setDomain(Domain::EMT);
+
+  // Dynamic models derive all internal initial states from the operating point
+  // written by initWithPowerflow(). SynchronGeneratorVBR also initializes the
+  // attached legacy TurbineGovernor from its PF-derived mechanical equilibrium.
+  simulationEMT.doInitFromNodesAndTerminals(true);
+  simulationEMT.doSystemMatrixRecomputation(p.recomputeSystemMatrix);
+  simulationEMT.addLogger(loggerEMT);
+
+  // true = close the initially-open three-phase breaker and energize the cable section
+  simulationEMT.addEvent(
+      SwitchEvent3Ph::make(p.breakerCloseTime, breaker, true));
+
+  // GFL reactive-power reference step.
+  const Real qStepTime =
+      std::round(p.gflReactivePowerStepTime / p.timeStep) * p.timeStep;
+  const Real qAfterStepPu = p.gflReactivePowerAfterStep / p.gflRatedPower;
+
+  simulationEMT.addEvent(AttributeEvent<Real>::make(
+      qStepTime, pvGfl->mReactivePowerRefPu, qAfterStepPu));
+
+// Change the GFL active-power setpoint after the load-loss event.
+  // The GFL uses per-unit references, therefore -1 MW on a 50 MVA base is
+  // -0.02 pu.
+  const Real gflActivePowerStepTime =
+      std::round(p.gflActivePowerStepTime / p.timeStep) * p.timeStep;
+  const Real gflActivePowerAfterStepPu =
+      p.gflActivePowerAfterStep / p.gflRatedPower;
+
+  simulationEMT.addEvent(AttributeEvent<Real>::make(gflActivePowerStepTime,
+                                                    pvGfl->mActivePowerRefPu,
+                                                    gflActivePowerAfterStepPu));
+
+  SPDLOG_INFO("\n  Starting EMT cable-energization simulation:"
+              "\n  dt={} s"
+              "\n  finalTime={} s"
+              "\n  BR_cable initial state: OPEN"
+              "\n  BR_cable closes at t={} s"
+              "\n  cable-side shunt at BUS_breaker: P={} MW, Q={} Mvar"
+              "\n  cable-side shunt at BUS_a      : P={} MW, Q={} Mvar",
+              p.timeStep, p.finalTime, p.breakerCloseTime,
+              p.shuntActivePower / 1e6, p.shuntReactivePower / 1e6,
+              p.shuntActivePower / 1e6, p.shuntReactivePower / 1e6);
+
+  simulationEMT.run();
+
+  return 0;
+}
