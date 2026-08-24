@@ -100,7 +100,6 @@ endif()
 
 if(WITH_OPENMP)
 	list(APPEND DPSIM_SOURCES OpenMPLevelScheduler.cpp)
-	list(APPEND DPSIM_CXX_FLAGS ${OpenMP_CXX_FLAGS})
 	list(APPEND DPSIM_LIBRARIES OpenMP::OpenMP_CXX)
 endif()
 
