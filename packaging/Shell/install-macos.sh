@@ -10,6 +10,7 @@
 #   - Homebrew build dependencies
 #   - Eigen 3 from Homebrew
 #   - Graphviz from Homebrew
+#   - OpenMP runtime (libomp) from Homebrew
 #   - SuiteSparse and spdlog fetched by DPsim
 #   - repository-local Python 3.14 virtual environment: dpsim-python
 #   - pybind11 Python bindings
@@ -19,6 +20,7 @@
 #   - pytest tooling
 #   - pre-commit tooling
 #   - modern Homebrew Ruby for the markdownlint pre-commit hook
+#   - modern Homebrew Node.js for the commitlint pre-commit hook
 #   - native CMake/Ninja build including C++ examples
 #   - independent `pip install .` package build
 #   - Jupyter kernel registration
@@ -132,8 +134,10 @@ BREW_PACKAGES=(
 	ninja
 	eigen@3
 	graphviz
+	libomp
 	python@3.14
 	ruby
+	node
 	pkg-config
 )
 
@@ -142,8 +146,10 @@ brew install "${BREW_PACKAGES[@]}"
 
 EIGEN_PREFIX="$(brew --prefix eigen@3)"
 GRAPHVIZ_PREFIX="$(brew --prefix graphviz)"
+OPENMP_PREFIX="$(brew --prefix libomp)"
 PYTHON_PREFIX="$(brew --prefix python@3.14)"
 RUBY_PREFIX="$(brew --prefix ruby)"
+NODE_PREFIX="$(brew --prefix node)"
 
 PYTHON_BASE="${PYTHON_PREFIX}/bin/python3.14"
 
@@ -153,7 +159,11 @@ PYTHON_BASE="${PYTHON_PREFIX}/bin/python3.14"
 # Homebrew Ruby is keg-only. Put it ahead of Apple's /usr/bin/ruby for this
 # setup process so pre-commit creates its markdownlint environment with a
 # sufficiently recent Ruby.
-export PATH="${RUBY_PREFIX}/bin:${PATH}"
+export PATH="${RUBY_PREFIX}/bin:${NODE_PREFIX}/bin:${BREW_PREFIX}/bin:${PATH}"
+hash -r
+
+export CPPFLAGS="-I${OPENMP_PREFIX}/include${CPPFLAGS:+ ${CPPFLAGS}}"
+export LDFLAGS="-L${OPENMP_PREFIX}/lib${LDFLAGS:+ ${LDFLAGS}}"
 
 command -v ruby >/dev/null 2>&1 \
 	|| die "Ruby could not be found after installing Homebrew Ruby."
@@ -167,13 +177,33 @@ if (( RUBY_MAJOR < 3 || (RUBY_MAJOR == 3 && RUBY_MINOR < 1) )); then
 	die "Ruby >= 3.1 is required for the markdownlint pre-commit hook; found ${RUBY_VERSION}."
 fi
 
+command -v node >/dev/null 2>&1 \
+	|| die "Node.js could not be found after installing Homebrew Node.js."
+
+NODE_VERSION="$(node --version)"
+NODE_VERSION_NUMBER="${NODE_VERSION#v}"
+NODE_MAJOR="${NODE_VERSION_NUMBER%%.*}"
+
+if (( NODE_MAJOR < 20 )); then
+	die "Node.js >= 20 is required for the commitlint pre-commit hook; found ${NODE_VERSION}."
+fi
+
+[[ -d "${OPENMP_PREFIX}/include" ]] \
+	|| die "libomp include directory not found below ${OPENMP_PREFIX}."
+
+[[ -d "${OPENMP_PREFIX}/lib" ]] \
+	|| die "libomp library directory not found below ${OPENMP_PREFIX}."
+
 log "Dependency versions"
 printf '  CMake:    %s\n' "$(cmake --version | head -n1)"
 printf '  Ninja:    %s\n' "$(ninja --version)"
 printf '  Eigen 3:  %s\n' "$(brew list --versions eigen@3)"
 printf '  Graphviz: %s\n' "$(dot -V 2>&1)"
+printf '  libomp:   %s\n' "$(brew list --versions libomp)"
+printf '  OpenMP:   %s\n' "${OPENMP_PREFIX}"
 printf '  Python:   %s\n' "$("${PYTHON_BASE}" --version 2>&1)"
 printf '  Ruby:     %s\n' "$(ruby --version)"
+printf '  Node.js:  %s\n' "$(node --version)"
 
 # ---------------------------------------------------------------------------
 # Repository
@@ -314,7 +344,7 @@ printf '  JupyterLab:  %s\n' "$("${PYTHON}" -c 'import jupyterlab; print(jupyter
 
 # Put Eigen 3 first deliberately. Do not allow another Eigen installation to
 # win package discovery.
-CMAKE_PREFIX_PATH_VALUE="${EIGEN_PREFIX};${GRAPHVIZ_PREFIX};${BREW_PREFIX}"
+CMAKE_PREFIX_PATH_VALUE="${EIGEN_PREFIX};${GRAPHVIZ_PREFIX};${OPENMP_PREFIX};${BREW_PREFIX}"
 
 EIGEN3_DIR="${EIGEN_PREFIX}/share/eigen3/cmake"
 
@@ -325,6 +355,12 @@ fi
 
 [[ -n "${EIGEN3_DIR}" && -d "${EIGEN3_DIR}" ]] \
 	|| die "Could not locate Eigen3Config.cmake below ${EIGEN_PREFIX}."
+
+OPENMP_INCLUDE_DIR="${OPENMP_PREFIX}/include"
+OPENMP_LIBRARY="${OPENMP_PREFIX}/lib/libomp.dylib"
+
+[[ -f "${OPENMP_LIBRARY}" ]] \
+	|| die "OpenMP library not found at ${OPENMP_LIBRARY}."
 
 # ---------------------------------------------------------------------------
 # Configure native developer build
@@ -337,6 +373,9 @@ printf '  Architecture:    %s\n' "${ARCH}"
 printf '  Parallel jobs:   %s\n' "${JOBS}"
 printf '  Eigen prefix:    %s\n' "${EIGEN_PREFIX}"
 printf '  Graphviz prefix: %s\n' "${GRAPHVIZ_PREFIX}"
+printf '  OpenMP prefix:   %s\n' "${OPENMP_PREFIX}"
+printf '  OpenMP include:  %s\n' "${OPENMP_INCLUDE_DIR}"
+printf '  OpenMP library:  %s\n' "${OPENMP_LIBRARY}"
 printf '  Python:          %s\n' "${PYTHON}"
 
 cmake \
@@ -348,8 +387,13 @@ cmake \
 	-DCMAKE_PREFIX_PATH="${CMAKE_PREFIX_PATH_VALUE}" \
 	-DEigen3_DIR="${EIGEN3_DIR}" \
 	-DGraphviz_ROOT="${GRAPHVIZ_PREFIX}" \
+	-DOpenMP_ROOT="${OPENMP_PREFIX}" \
+	-DOpenMP_CXX_FLAGS="-Xpreprocessor -fopenmp" \
+	-DOpenMP_CXX_INCLUDE_DIR="${OPENMP_INCLUDE_DIR}" \
+	-DOpenMP_CXX_LIB_NAMES="omp" \
+	-DOpenMP_omp_LIBRARY="${OPENMP_LIBRARY}" \
+	-DOpenMP_libomp_LIBRARY="${OPENMP_LIBRARY}" \
 	-DPython3_EXECUTABLE="${PYTHON}" \
-	-DPYTHON_EXECUTABLE="${PYTHON}" \
 	-Dpybind11_DIR="${PYBIND11_DIR}" \
 	-DFETCH_EIGEN=OFF \
 	-DFETCH_SUITESPARSE=ON \
@@ -357,6 +401,7 @@ cmake \
 	-DFETCH_PYBIND=OFF \
 	-DWITH_PYBIND=ON \
 	-DWITH_GRAPHVIZ=ON \
+	-DWITH_OPENMP=ON \
 	-DWITH_CIM=OFF \
 	-DWITH_VILLAS=OFF \
 	-DDPSIM_BUILD_EXAMPLES=ON \
@@ -376,6 +421,17 @@ if [[ -f "${BUILD_DIR}/CMakeCache.txt" ]]; then
 				die "Graphviz include directory is unexpectedly broad: ${GRAPHVIZ_INCLUDE_CACHE}. Expected a graphviz-specific include directory."
 				;;
 		esac
+	fi
+fi
+
+if [[ -f "${BUILD_DIR}/CMakeCache.txt" ]]; then
+	if ! grep -q '^WITH_OPENMP:BOOL=ON$' "${BUILD_DIR}/CMakeCache.txt"; then
+		die "WITH_OPENMP is not enabled in ${BUILD_DIR}/CMakeCache.txt."
+	fi
+
+	if ! grep -q '^OpenMP_CXX_FOUND:BOOL=TRUE$' "${BUILD_DIR}/CMakeCache.txt" \
+		&& ! grep -q '^OpenMP_CXX_FOUND:INTERNAL=TRUE$' "${BUILD_DIR}/CMakeCache.txt"; then
+		die "CMake did not detect OpenMP CXX support using Homebrew libomp at ${OPENMP_PREFIX}."
 	fi
 fi
 
@@ -407,12 +463,14 @@ rm -rf \
 	"${BUILD_DIR}"/lib.macosx-* \
 	"${BUILD_DIR}"/bdist.macosx-*
 
-PIP_CMAKE_ARGS="-DCMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH_VALUE} -DEigen3_DIR=${EIGEN3_DIR} -DGraphviz_ROOT=${GRAPHVIZ_PREFIX}"
+PIP_CMAKE_ARGS="-DCMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH_VALUE} -DEigen3_DIR=${EIGEN3_DIR} -DGraphviz_ROOT=${GRAPHVIZ_PREFIX} -DOpenMP_ROOT=${OPENMP_PREFIX} -DOpenMP_CXX_FLAGS=-Xpreprocessor\\ -fopenmp -DOpenMP_CXX_INCLUDE_DIR=${OPENMP_INCLUDE_DIR} -DOpenMP_CXX_LIB_NAMES=omp -DOpenMP_omp_LIBRARY=${OPENMP_LIBRARY} -DOpenMP_libomp_LIBRARY=${OPENMP_LIBRARY} -DWITH_OPENMP=ON"
 
 log "Installing DPsim into ${VENV_PATH} with pip"
 
 CMAKE_GENERATOR=Ninja \
 ARCHFLAGS="-arch ${ARCH}" \
+CPPFLAGS="${CPPFLAGS}" \
+LDFLAGS="${LDFLAGS}" \
 CMAKE_ARGS="${PIP_CMAKE_ARGS}" \
 DPSIM_PYTHON_WITH_VILLAS=0 \
 "${PYTHON}" -m pip install . -v
@@ -487,19 +545,38 @@ fi
 # Pre-commit
 # ---------------------------------------------------------------------------
 
-log "Installing pre-commit hooks"
+log "Preparing pre-commit environments"
 
-# PATH still contains Homebrew Ruby here. This is required when pre-commit
-# creates the Ruby environment for the markdownlint hook.
-printf '  Ruby used for hook installation: %s\n' "$(command -v ruby)"
-printf '  Ruby version:                    %s\n' "$(ruby --version)"
+printf '  Ruby used for hook installation:    %s\n' "$(command -v ruby)"
+printf '  Ruby version:                       %s\n' "$(ruby --version)"
+printf '  Node.js used for hook installation: %s\n' "$(command -v node)"
+printf '  Node.js version:                    %s\n' "$(node --version)"
+
+# pre-commit caches language-specific environments outside the repository.
+# Recreate them after selecting the Homebrew Ruby and Node.js installations.
+"${VENV_PATH}/bin/pre-commit" clean
+"${VENV_PATH}/bin/pre-commit" gc || true
+
+log "Installing pre-commit hooks"
 
 "${VENV_PATH}/bin/pre-commit" validate-config
 "${VENV_PATH}/bin/pre-commit" install --install-hooks
 
-# We intentionally do not run `pre-commit run --all-files` here. Several hooks
-# are formatters and may modify source files. Developers can run it explicitly
-# after setup and inspect the resulting diff.
+# Smoke-test commitlint without creating a real Git commit.
+COMMITLINT_TEST_FILE="$(mktemp)"
+trap 'rm -f "${COMMITLINT_TEST_FILE}"' EXIT
+
+printf 'build: test macOS development setup\n' > "${COMMITLINT_TEST_FILE}"
+
+"${VENV_PATH}/bin/pre-commit" run commitlint \
+	--hook-stage commit-msg \
+	--commit-msg-filename "${COMMITLINT_TEST_FILE}"
+
+rm -f "${COMMITLINT_TEST_FILE}"
+trap - EXIT
+
+# Do not run all source-file hooks automatically because formatter hooks may
+# modify the checkout.
 
 # ---------------------------------------------------------------------------
 # Final summary
@@ -511,6 +588,7 @@ printf '\nRepository:\n  %s\n' "${REPO_ROOT}"
 printf '\nBuild directory:\n  %s/%s\n' "${REPO_ROOT}" "${BUILD_DIR}"
 printf '\nVirtual environment:\n  %s\n' "${VENV_PATH}"
 printf '\nJupyter kernel:\n  DPsim Python\n'
+printf '\nOpenMP:\n  %s\n' "${OPENMP_PREFIX}"
 printf '\nExample executables are located below:\n  %s/%s/dpsim/examples/cxx\n' "${REPO_ROOT}" "${BUILD_DIR}"
 
 cat <<EOF
@@ -527,7 +605,9 @@ Reinstall the Python package after binding/package changes with:
 
   CMAKE_GENERATOR=Ninja \\
   ARCHFLAGS="-arch ${ARCH}" \\
-  CMAKE_ARGS="-DCMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH_VALUE} -DEigen3_DIR=${EIGEN3_DIR} -DGraphviz_ROOT=${GRAPHVIZ_PREFIX}" \\
+  CPPFLAGS="-I${OPENMP_INCLUDE_DIR}" \\
+  LDFLAGS="-L${OPENMP_PREFIX}/lib" \\
+  CMAKE_ARGS="-DCMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH_VALUE} -DEigen3_DIR=${EIGEN3_DIR} -DGraphviz_ROOT=${GRAPHVIZ_PREFIX} -DOpenMP_ROOT=${OPENMP_PREFIX} -DOpenMP_CXX_FLAGS=-Xpreprocessor\\ -fopenmp -DOpenMP_CXX_INCLUDE_DIR=${OPENMP_INCLUDE_DIR} -DOpenMP_CXX_LIB_NAMES=omp -DOpenMP_omp_LIBRARY=${OPENMP_LIBRARY} -DOpenMP_libomp_LIBRARY=${OPENMP_LIBRARY} -DWITH_OPENMP=ON" \\
   DPSIM_PYTHON_WITH_VILLAS=0 \\
   python -m pip install . -v
 
