@@ -35,11 +35,12 @@ if(WITH_MNASOLVERPLUGIN)
 	list(APPEND DPSIM_SOURCES MNASolverPlugin.cpp)
 endif()
 
-if (WITH_RT)
-	list(APPEND DPSIM_SOURCES
-		RealTimeSimulation.cpp
-		RealTimeDataLogger.cpp
-	)
+if(NOT MSVC)
+	list(APPEND DPSIM_SOURCES RealTimeDataLogger.cpp)
+endif()
+
+if(WITH_RT)
+	list(APPEND DPSIM_SOURCES RealTimeSimulation.cpp)
 endif()
 
 if(WITH_RT AND HAVE_TIMERFD)

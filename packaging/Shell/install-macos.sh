@@ -388,10 +388,9 @@ cmake \
 	-DEigen3_DIR="${EIGEN3_DIR}" \
 	-DGraphviz_ROOT="${GRAPHVIZ_PREFIX}" \
 	-DOpenMP_ROOT="${OPENMP_PREFIX}" \
-	-DOpenMP_CXX_FLAGS="-Xpreprocessor -fopenmp" \
+	-DOpenMP_CXX_FLAG="-Xclang -fopenmp" \
 	-DOpenMP_CXX_INCLUDE_DIR="${OPENMP_INCLUDE_DIR}" \
-	-DOpenMP_CXX_LIB_NAMES="omp" \
-	-DOpenMP_omp_LIBRARY="${OPENMP_LIBRARY}" \
+	-DOpenMP_CXX_LIB_NAMES="libomp" \
 	-DOpenMP_libomp_LIBRARY="${OPENMP_LIBRARY}" \
 	-DPython3_EXECUTABLE="${PYTHON}" \
 	-Dpybind11_DIR="${PYBIND11_DIR}" \
@@ -429,10 +428,17 @@ if [[ -f "${BUILD_DIR}/CMakeCache.txt" ]]; then
 		die "WITH_OPENMP is not enabled in ${BUILD_DIR}/CMakeCache.txt."
 	fi
 
-	if ! grep -q '^OpenMP_CXX_FOUND:BOOL=TRUE$' "${BUILD_DIR}/CMakeCache.txt" \
-		&& ! grep -q '^OpenMP_CXX_FOUND:INTERNAL=TRUE$' "${BUILD_DIR}/CMakeCache.txt"; then
-		die "CMake did not detect OpenMP CXX support using Homebrew libomp at ${OPENMP_PREFIX}."
+	CONFIG_HEADER="${BUILD_DIR}/dpsim/include/dpsim/Config.h"
+
+	if [[ ! -f "${CONFIG_HEADER}" ]]; then
+		die "Generated DPsim configuration header not found: ${CONFIG_HEADER}"
 	fi
+
+	if ! grep -q '^#define WITH_OPENMP' "${CONFIG_HEADER}"; then
+		die "DPsim was configured without OpenMP support."
+	fi
+
+	log "OpenMP support detected successfully"
 fi
 
 # ---------------------------------------------------------------------------
@@ -463,7 +469,7 @@ rm -rf \
 	"${BUILD_DIR}"/lib.macosx-* \
 	"${BUILD_DIR}"/bdist.macosx-*
 
-PIP_CMAKE_ARGS="-DCMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH_VALUE} -DEigen3_DIR=${EIGEN3_DIR} -DGraphviz_ROOT=${GRAPHVIZ_PREFIX} -DOpenMP_ROOT=${OPENMP_PREFIX} -DOpenMP_CXX_FLAGS=-Xpreprocessor\\ -fopenmp -DOpenMP_CXX_INCLUDE_DIR=${OPENMP_INCLUDE_DIR} -DOpenMP_CXX_LIB_NAMES=omp -DOpenMP_omp_LIBRARY=${OPENMP_LIBRARY} -DOpenMP_libomp_LIBRARY=${OPENMP_LIBRARY} -DWITH_OPENMP=ON"
+PIP_CMAKE_ARGS="-DCMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH_VALUE} -DEigen3_DIR=${EIGEN3_DIR} -DGraphviz_ROOT=${GRAPHVIZ_PREFIX} -DOpenMP_ROOT=${OPENMP_PREFIX} -DOpenMP_CXX_FLAG=-Xclang\\ -fopenmp -DOpenMP_CXX_INCLUDE_DIR=${OPENMP_INCLUDE_DIR} -DOpenMP_CXX_LIB_NAMES=libomp -DOpenMP_libomp_LIBRARY=${OPENMP_LIBRARY} -DWITH_OPENMP=ON"
 
 log "Installing DPsim into ${VENV_PATH} with pip"
 
@@ -607,7 +613,7 @@ Reinstall the Python package after binding/package changes with:
   ARCHFLAGS="-arch ${ARCH}" \\
   CPPFLAGS="-I${OPENMP_INCLUDE_DIR}" \\
   LDFLAGS="-L${OPENMP_PREFIX}/lib" \\
-  CMAKE_ARGS="-DCMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH_VALUE} -DEigen3_DIR=${EIGEN3_DIR} -DGraphviz_ROOT=${GRAPHVIZ_PREFIX} -DOpenMP_ROOT=${OPENMP_PREFIX} -DOpenMP_CXX_FLAGS=-Xpreprocessor\\ -fopenmp -DOpenMP_CXX_INCLUDE_DIR=${OPENMP_INCLUDE_DIR} -DOpenMP_CXX_LIB_NAMES=omp -DOpenMP_omp_LIBRARY=${OPENMP_LIBRARY} -DOpenMP_libomp_LIBRARY=${OPENMP_LIBRARY} -DWITH_OPENMP=ON" \\
+  CMAKE_ARGS="-DCMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH_VALUE} -DEigen3_DIR=${EIGEN3_DIR} -DGraphviz_ROOT=${GRAPHVIZ_PREFIX} -DOpenMP_ROOT=${OPENMP_PREFIX} -DOpenMP_CXX_FLAGS=-Xpreprocessor\\ -fopenmp -DOpenMP_CXX_INCLUDE_DIR=${OPENMP_INCLUDE_DIR} -DOpenMP_CXX_LIB_NAMES=omp -DOpenMP_omp_LIBRARY=${OPENMP_LIBRARY} -DWITH_OPENMP=ON" \\
   DPSIM_PYTHON_WITH_VILLAS=0 \\
   python -m pip install . -v
 
