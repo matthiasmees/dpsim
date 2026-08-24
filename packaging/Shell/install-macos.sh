@@ -569,8 +569,34 @@ log "Installing pre-commit hooks"
 "${VENV_PATH}/bin/pre-commit" install --install-hooks
 
 # Smoke-test commitlint without creating a real Git commit.
-COMMITLINT_TEST_FILE="$(mktemp)"
-trap 'rm -f "${COMMITLINT_TEST_FILE}"' EXIT
+# Smoke-test commitlint without creating a real Git commit.
+#
+# The commitlint pre-commit hook uses `commitlint --edit` with
+# `pass_filenames: false`, so it expects the commit message specifically at
+# Git's COMMIT_EDITMSG path.
+# Smoke-test commitlint without creating a real Git commit.
+#
+# commitlint itself uses `commitlint --edit` and therefore reads
+# .git/COMMIT_EDITMSG. pre-commit additionally requires
+# --commit-msg-filename when running the commit-msg stage manually.
+GIT_DIR="$(git rev-parse --absolute-git-dir)"
+COMMITLINT_TEST_FILE="${GIT_DIR}/COMMIT_EDITMSG"
+COMMITLINT_BACKUP=""
+
+if [[ -f "${COMMITLINT_TEST_FILE}" ]]; then
+	COMMITLINT_BACKUP="$(mktemp)"
+	cp "${COMMITLINT_TEST_FILE}" "${COMMITLINT_BACKUP}"
+fi
+
+restore_commitlint_test_file() {
+	if [[ -n "${COMMITLINT_BACKUP}" ]]; then
+		mv "${COMMITLINT_BACKUP}" "${COMMITLINT_TEST_FILE}"
+	else
+		rm -f "${COMMITLINT_TEST_FILE}"
+	fi
+}
+
+trap restore_commitlint_test_file EXIT
 
 printf 'build: test macOS development setup\n' > "${COMMITLINT_TEST_FILE}"
 
@@ -578,7 +604,7 @@ printf 'build: test macOS development setup\n' > "${COMMITLINT_TEST_FILE}"
 	--hook-stage commit-msg \
 	--commit-msg-filename "${COMMITLINT_TEST_FILE}"
 
-rm -f "${COMMITLINT_TEST_FILE}"
+restore_commitlint_test_file
 trap - EXIT
 
 # Do not run all source-file hooks automatically because formatter hooks may
