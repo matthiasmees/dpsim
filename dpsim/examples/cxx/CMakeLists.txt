@@ -177,6 +177,7 @@ set(SSN_SOURCES
 	Components/EMT_SSN_MMC_Harmony_P2P_HotStart.cpp
 	Components/EMT_SSN_MMC_Matlab_P2P_HotStart.cpp
 	Components/EMT_SSN_MMC_Matlab_P2P_Results.cpp
+	Components/EMT_MMC_MNA_Matlab_P2P_Results.cpp
 	Components/EMT_SSN_MMC_Modular_Matlab_P2P_Results.cpp
 	Components/EMT_Ph3_SSN_GFL_Comparison.cpp
 	Circuits/EMT_Ph3_IEEE9_SSN_GFM_GFL_Diagnostics.cpp
