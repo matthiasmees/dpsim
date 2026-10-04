@@ -8,6 +8,8 @@
 
 #pragma once
 
+#include <vector>
+
 #include <dpsim-models/AttributeList.h>
 #include <dpsim-models/Config.h>
 #include <dpsim-models/Definitions.h>
@@ -68,5 +70,13 @@ public:
   virtual const Task::List &mnaTasks() const = 0;
   // Return right vector attribute
   virtual Attribute<Matrix>::Ptr getRightVector() const = 0;
+
+  /// Return the row indices touched by this component's RHS stamp when known.
+  /// Components with a structurally sparse RHS can opt in so the solver avoids
+  /// summing their full, network-sized dense vector on every step.
+  virtual Bool getRightVectorStampIndices(std::vector<UInt> &indices) {
+    indices.clear();
+    return false;
+  }
 };
 } // namespace CPS

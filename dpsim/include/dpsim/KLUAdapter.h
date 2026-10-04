@@ -81,6 +81,7 @@ public:
 
   /// solution function for a right hand side
   Matrix solve(Matrix &rightSideVector) override;
+  void solveInPlace(Matrix &rightSideVector) override;
 
 protected:
   /// Function to print matrix in MatrixMarket's coo format

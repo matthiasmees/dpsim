@@ -64,6 +64,12 @@ public:
   /// solution function for a right hand side
   virtual Matrix solve(Matrix &rightSideVector) = 0;
 
+  /// Solve in caller-owned storage when the caller no longer needs the RHS.
+  /// The default preserves the traditional solve() behavior.
+  virtual void solveInPlace(Matrix &rightSideVector) {
+    rightSideVector = solve(rightSideVector);
+  }
+
   virtual void
   setConfiguration(DirectLinearSolverConfiguration &configuration) {
     mConfiguration = configuration;
