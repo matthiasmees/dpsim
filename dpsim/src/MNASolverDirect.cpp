@@ -129,6 +129,38 @@ void MnaSolverDirect<VarType>::solveWithSystemMatrixRecomputation(
   std::chrono::duration<Real> diff = end - start;
   mSolveTimes.push_back(diff.count());
 
+  // The linear solve above uses the tangent prepared by component pre-steps.
+  // Repeat only for opt-in nonlinear components; existing variable SSN models
+  // keep their previous single-linearization behavior.
+  if (!mNonlinearComps.empty()) {
+    constexpr Int maxNewtonIterations = 40;
+    bool converged = false;
+    for (Int iteration = 0; iteration < maxNewtonIterations; ++iteration) {
+      bool allConverged = true;
+      for (auto &component : mNonlinearComps)
+        allConverged =
+            component->mnaCheckNonlinearConvergence(**mLeftSideVector) &&
+            allConverged;
+      if (allConverged) {
+        converged = true;
+        break;
+      }
+      for (auto &component : mNonlinearComps)
+        component->mnaPrepareNonlinearIteration();
+      recomputeSystemMatrix(time);
+      mVariableComponentChanged = true;
+      mRightSideVector.setZero();
+      for (auto stamp : mRightVectorStamps)
+        mRightSideVector += *stamp;
+      **mLeftSideVector =
+          mDirectLinearSolverVariableSystemMatrix->solve(mRightSideVector);
+    }
+    if (!converged)
+      throw CPS::SystemError(
+          "Nonlinear MNA Newton iteration failed to converge at time " +
+          std::to_string(time));
+  }
+
   // TODO split into separate task? (dependent on x, updating all v attributes)
   for (UInt nodeIdx = 0; nodeIdx < mNumNetNodes; ++nodeIdx)
     mNodes[nodeIdx]->mnaUpdateVoltage(**mLeftSideVector);

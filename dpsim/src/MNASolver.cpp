@@ -457,6 +457,9 @@ void MnaSolver<VarType>::resolveSystemMatrixRecomputationMode() {
     break;
 
   case Mode::Disabled:
+    if (!mNonlinearComps.empty())
+      throw CPS::SystemError("Cannot disable matrix recomputation with "
+                             "nonlinear Newton components.");
     mSystemMatrixRecomputationEnabled = false;
 
     if (hasRecomputationComp) {
@@ -502,6 +505,14 @@ template <typename VarType> void MnaSolver<VarType>::identifyTopologyObjects() {
 
     auto varComp =
         std::dynamic_pointer_cast<CPS::MNAVariableCompInterface>(comp);
+    auto nonlinear =
+        std::dynamic_pointer_cast<CPS::MNANonlinearCompInterface>(comp);
+    if (nonlinear) {
+      if (!varComp || mDomain != CPS::Domain::EMT)
+        throw CPS::SystemError(
+            "Nonlinear Newton components require variable-matrix EMT MNA.");
+      mNonlinearComps.push_back(nonlinear);
+    }
     if (varComp) {
       mVariableComps.push_back(varComp);
       auto mnaComp = std::dynamic_pointer_cast<CPS::MNAInterface>(varComp);
