@@ -1,0 +1,33 @@
+{
+  "continuous_states": 10,
+  "event_indicators": 0,
+  "outputs_checked": 23,
+  "max_initial_output_abs_error": 4.547473508864641e-12,
+  "initialized_periodic_orbit": true,
+  "host_binary": "aarch64-darwin",
+  "initial_output_errors": {
+    "i_a": 3.552713678800501e-15,
+    "i_b": 1.7763568394002505e-15,
+    "i_c": 2.3092638912203256e-14,
+    "speed_pu": 0.0,
+    "theta_e_rad": 1.1102230246251565e-16,
+    "field_current_A": 3.552713678800501e-15,
+    "p_gap_W": 0.0,
+    "p_gen_W": 4.547473508864641e-12,
+    "v_measured_pu": 0.0,
+    "avr_raw_pu": 2.6645352591003757e-15,
+    "avr_limited_pu": 2.6645352591003757e-15,
+    "pm_pu": 2.220446049250313e-16,
+    "governor_raw_pu": 2.220446049250313e-16,
+    "governor_limited_pu": 2.220446049250313e-16,
+    "v2_filter_pu": 0.0,
+    "avr_integral_pu": 2.6645352591003757e-15,
+    "efd_pu": 2.6645352591003757e-15,
+    "psi_d_Wb": 2.220446049250313e-16,
+    "psi_q_Wb": 3.3306690738754696e-16,
+    "psi_0_Wb": 0.0,
+    "psi_f_Wb": 8.881784197001252e-16,
+    "theta_state_rad": 1.1102230246251565e-16,
+    "speed_state_pu": 0.0
+  }
+}

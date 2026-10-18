@@ -47,6 +47,7 @@ target_include_directories(dpsim-fmi
 		$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
 		$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 	PRIVATE
+		third_party/fmi2
 		third_party/fmi3
 		${dpsim_miniz_SOURCE_DIR}
 		${CMAKE_CURRENT_BINARY_DIR}
@@ -78,29 +79,42 @@ install(FILES third_party/fmi3/LICENSE.txt
 	RENAME FMI-LICENSE.txt
 )
 
+install(FILES third_party/fmi2/LICENSE.txt
+	DESTINATION ${CMAKE_INSTALL_DATADIR}/dpsim-fmi/licenses
+	RENAME FMI2-LICENSE.txt
+)
+
 install(FILES ${dpsim_miniz_SOURCE_DIR}/LICENSE
 	DESTINATION ${CMAKE_INSTALL_DATADIR}/dpsim-fmi/licenses
 	RENAME miniz-LICENSE.txt
 )
 
 if(DPSIM_BUILD_EXAMPLES)
-	add_executable(FMI_DiscreteProbe examples/FMI_DiscreteProbe.cpp)
-	target_link_libraries(FMI_DiscreteProbe PRIVATE dpsim-fmi)
+	add_executable(FMI_Capabilities examples/FMI_Capabilities.cpp)
+	target_link_libraries(FMI_Capabilities PRIVATE dpsim-fmi)
+	add_executable(FMI_EMT_Ph3_TwoGenerators examples/two_generators/FMI_EMT_Ph3_TwoGenerators.cpp)
+	target_link_libraries(FMI_EMT_Ph3_TwoGenerators PRIVATE dpsim-fmi)
+	add_executable(FMI_EMT_Ph3_Mixed examples/inverter/FMI_EMT_Ph3_Mixed.cpp)
+	target_link_libraries(FMI_EMT_Ph3_Mixed PRIVATE dpsim-fmi)
+	add_executable(FMI_EMT_Ph3_TwoConverters examples/inverter/FMI_EMT_Ph3_TwoConverters.cpp)
+	target_link_libraries(FMI_EMT_Ph3_TwoConverters PRIVATE dpsim-fmi)
+	add_executable(FMI_MicrogridNetwork_Candidate examples/microgrid_network/FMI_MicrogridNetwork_Candidate.cpp)
+	target_link_libraries(FMI_MicrogridNetwork_Candidate PRIVATE dpsim-fmi)
+	add_executable(FMI_PowerFactoryGenerator_Candidate examples/powerfactory_generator/FMI_PowerFactoryGenerator_Candidate.cpp)
+	target_link_libraries(FMI_PowerFactoryGenerator_Candidate PRIVATE dpsim-fmi)
 
-	add_executable(FMI_Inspect examples/FMI_Inspect.cpp)
-	target_link_libraries(FMI_Inspect PRIVATE dpsim-fmi)
-
-	add_executable(FMI_EMT_Ph3_Prescribed examples/FMI_EMT_Ph3_Prescribed.cpp)
-	target_link_libraries(FMI_EMT_Ph3_Prescribed PRIVATE dpsim-fmi)
-
-	add_executable(FMI_EMT_Ph3_Nonlinear examples/FMI_EMT_Ph3_Nonlinear.cpp)
+	add_executable(FMI_EMT_Ph3_Nonlinear examples/synchronous_generator/FMI_EMT_Ph3_Nonlinear.cpp)
 	target_link_libraries(FMI_EMT_Ph3_Nonlinear PRIVATE dpsim-fmi)
 
-	add_executable(FMI_EMT_Ph3_LinearSSN examples/FMI_EMT_Ph3_LinearSSN.cpp)
+	add_executable(FMI_EMT_Ph3_LinearSSN examples/linear_three_phase/FMI_EMT_Ph3_LinearSSN.cpp)
 	target_link_libraries(FMI_EMT_Ph3_LinearSSN PRIVATE dpsim-fmi)
 
-	add_executable(FMI_EMT_LinearSSN examples/FMI_EMT_LinearSSN.cpp)
+	add_executable(FMI_EMT_LinearSSN examples/linear_scalar/FMI_EMT_LinearSSN.cpp)
 	target_link_libraries(FMI_EMT_LinearSSN PRIVATE dpsim-fmi)
+	foreach(example IN ITEMS FMI_EMT_Ph3_TwoGenerators FMI_EMT_Ph3_Mixed FMI_EMT_Ph3_TwoConverters FMI_MicrogridNetwork_Candidate FMI_PowerFactoryGenerator_Candidate FMI_EMT_Ph3_Nonlinear FMI_EMT_Ph3_LinearSSN FMI_EMT_LinearSSN)
+		target_include_directories(${example} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/examples/common")
+	endforeach()
+
 endif()
 
 option(DPSIM_FMI_BUILD_TESTS "Build self-contained FMI importer tests" OFF)

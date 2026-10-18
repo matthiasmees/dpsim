@@ -1,0 +1,53 @@
+{
+  "fmi_version": "3.0",
+  "interface": "ModelExchange",
+  "domain": "EMT",
+  "frame": "abc",
+  "connection": "grounded_wye",
+  "voltage_inputs": [
+    "u_a",
+    "u_b",
+    "u_c"
+  ],
+  "current_outputs": [
+    "i_a",
+    "i_b",
+    "i_c"
+  ],
+  "diagnostic_outputs": [
+    "v_C_a",
+    "v_C_b",
+    "v_C_c"
+  ],
+  "terminal_order": [
+    "negative_abc",
+    "positive_abc"
+  ],
+  "initial_voltage_V": [
+    0,
+    -281.6913204200655,
+    281.6913204200655
+  ],
+  "initial_current_A": [
+    0,
+    0,
+    0
+  ],
+  "matlab_state_order": [
+    "i_a",
+    "i_b",
+    "i_c",
+    "v_C_a",
+    "v_C_b",
+    "v_C_c"
+  ],
+  "step_s": 1e-05,
+  "stop_time_s": 0.1,
+  "phase_to_neutral_rms_V": 230,
+  "frequency_Hz": 50,
+  "phase_angles_rad": [
+    0,
+    -2.0943951023931953,
+    2.0943951023931953
+  ]
+}

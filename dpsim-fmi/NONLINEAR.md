@@ -1,12 +1,14 @@
 # Nonlinear FMI Model Exchange in EMT three-phase MNA
 
-`NonlinearSSN` keeps an FMI 3.0 Model Exchange instance alive and solves its
+`NonlinearSSN` keeps an FMI 2.0 or FMI 3.0 Model Exchange instance alive and solves its
 nonlinear continuous states together with the surrounding DPsim network.
 The FMU is evaluated through its native functions; no fixed A/B/C/D fit or
 exporter-specific generator equations are substituted. This implementation
 uses one abc electrical port at each terminal and scalar Float64 variables.
 
-The previous `LinearModel` / `LinearSSN` API remains available. Both import paths
+The importer selects the FMI backend from `modelDescription.xml`; the FMU binary
+and lifecycle remain native to that FMI version. The previous `LinearModel` /
+`LinearSSN` API remains available. Both import paths
 share ZIP/XML/native-library handling through `ModelExchange`.
 
 ## Coupled numerical step
@@ -50,26 +52,51 @@ Accepted outputs/derivatives are read once and cached. When a hybrid FMU provide
 FMI state snapshots, provisional evaluations save and restore the instance.
 Snapshot support must still be validated for the particular exporter/model.
 Completed-step and internal scheduled time events are handled at accepted
-endpoints. Internal events must coincide with the fixed time grid; crossing one
-is rejected. External reference changes coinciding with a controller tick are
+endpoints. If an internal time event falls inside a network step and the FMU
+supports rollback, `NonlinearSSN` automatically replays the interval with
+implicit substeps that land on every reported event. Network-endpoint voltage is
+linearly interpolated across those substeps. Each outer Newton trial restores
+the complete FMI checkpoint; only the converged replay is retained. FMUs without
+rollback reject a crossed internal event by default. Such an FMU can instead
+use the explicitly selected `MultirateMode::SinglePassExplicit` policy. That
+policy solves the network with the previously accepted terminal current, then
+advances the FMU exactly once through every internal event using the solved
+endpoint-voltage trajectory. It reports the terminal-current discrepancy and
+does not claim converged implicit coupling. External reference changes
+coinciding with a controller tick are
 applied in the same event iteration, so the controller sees the right-side
 reference. Discrete updates never run during Newton probes.
 
 ## Public mapping and attributes
 
-Create a persistent `ModelExchange` with all input names and initial values,
-then create `NonlinearSSN` with three voltage names, three current names and an
-explicit current sign. Terminal order is `{negativeABC, positiveABC}` and
+`ModelExchange(path)` discovers continuous scalar Float64 inputs and uses their
+declared start values. `NonlinearSSN(name, model)` recognizes the conventional
+`v_a/v_b/v_c` and `i_a/i_b/i_c` electrical interface with passive-positive
+current. Nonstandard names or polarity use the explicit mapping overload.
+Terminal order is `{negativeABC, positiveABC}` and
 voltage is positive minus negative. Sign +1 means the FMU reports passive
 current into the positive terminal; -1 means it reports injection into the bus.
 Raw FMI output attributes preserve their original sign.
 
 The model provides `x`, `v_intf`, `i_intf`, `fmi.inputs`, `fmi.outputs`,
 `fmi.input.<name>`, `fmi.output.<name>`, `fmi.state.<name>`,
-`newton_iterations`, and `newton_residual` Attributes. Non-voltage inputs also
-have `control.<name>` Attributes. A control may be driven with
+`newton_iterations`, `newton_residual`, `fmi_internal_steps`, and
+`fmi_coupling_error_A` Attributes. The last value is zero for converged
+single-rate steps and records the largest phase-current discrepancy of an
+explicit multirate step. Non-voltage inputs also have `control.<name>`
+Attributes. A control may be driven with
 `setInputFunction(name,function,discontinuityTimes)`; explicit event times must
 align to the timestep. Input functions must match initial FMI input values.
+
+During DPsim initialization, `NonlinearSSN` first validates its connected
+terminals and then uses their initial voltage difference as the FMU's initial
+electrical input whenever it is a finite three-phase value. This automatically
+aligns the imported FMU with a native network initial condition instead of
+always forcing the voltage declared in `modelDescription.xml`. The FMI initial
+continuous state is still retained; this is therefore a PF-like terminal
+initialization, not a general hidden-controller steady-state solve. FMUs whose
+controller, PLL, or integrator states cannot be set through FMI may still need
+a short settling interval or an exporter-specific operating point.
 
 Each component owns an independent runtime. Sharing one FMU instance between
 clones is not supported. The exporter's singleton capability is respected;
@@ -77,168 +104,90 @@ load a separate instance only if that capability allows it. The SG MATLAB FMU
 permits one instance per process, so run different scenarios in separate
 processes.
 
-## Reproduce the generator benchmark on this SSD
+## Build and reproduce
 
-All newly generated results belong under `/Volumes/SSDMatthias/development`.
-The original exported generator and references were copied to
-`outputs/fmi-nonlinear/sg/matlab-origin`. The C++ example takes external-grid
-parameters from `benchmark.json`, not from hard-coded machine equations.
-
-Build from the repository root:
+Work from the repository root on the SSD. Example sources and retained inputs are under `dpsim-fmi/examples/`; generated outputs belong under build.
 
 ```sh
 env DEVELOPER_DIR=/Library/Developer/CommandLineTools \
   cmake --build build-macos-check --parallel 3 --target \
-  FMI_EMT_Ph3_Nonlinear FMI_NonlinearTest FMI_ImportTest FMI_ImportTest3Ph
+  FMI_EMT_LinearSSN FMI_EMT_Ph3_LinearSSN FMI_EMT_Ph3_Nonlinear \
+  FMI_EMT_Ph3_Mixed FMI_EMT_Ph3_TwoGenerators
+ctest --test-dir build-macos-check -R fmi_ --output-on-failure
 ```
 
-In MATLAB, generate the independently implemented full-state trapezoidal
-references and configuration:
+Execute each case's comparison notebook with the DPsim Python kernel. Each notebook contains its comparison logic and runs the C++ example against retained MATLAB references. The inverter notebook also reproduces direct 50/25 µs capability checks. Open the retained physical reference models in MATLAB to regenerate converter results; they do not invoke the FMU. The generator reference functions independently solve the full model equations with implicit trapezoid and segmented ode15s.
 
-```matlab
-addpath('/Volumes/SSDMatthias/development/dpsim/dpsim-fmi/examples/matlab')
-create_sg_trapezoidal_reference( ...
-  '/Volumes/SSDMatthias/development/dpsim/outputs/fmi-nonlinear/sg/matlab', ...
-  [50e-6,25e-6]);
-```
-
-From the repository root, a single run is:
-
-```sh
-mkdir -p outputs/fmi-nonlinear/sg/dpsim-50us
-cd outputs/fmi-nonlinear/sg/dpsim-50us
-env TMPDIR=/Volumes/SSDMatthias/development/dpsim/outputs/fmi-nonlinear/tmp \
-  /Volumes/SSDMatthias/development/dpsim/build-macos-check/dpsim-fmi/FMI_EMT_Ph3_Nonlinear \
-  ../matlab-origin/dpsim_sg_3ph_me.fmu ../matlab/benchmark.json 5e-5
-```
-
-Open `examples/FMI_EMT_Ph3_Nonlinear_MATLAB_Comparison.ipynb` with the DPsim
-Python kernel and run all cells. It runs 50 us, 25 us, and 50 us with ten-times
-tighter tolerances; validates all 34 saved physical/control signals; and plots
-the matched waveforms, errors, controls and timestep refinement. Executed copies,
-a standalone HTML and figures are in `outputs/fmi-nonlinear/sg/comparison`.
-The notebook reuses the saved MATLAB references; it does not rerun MATLAB.
-
-The comparison can also be invoked directly after all three runs:
-
-```sh
-dpsim-python/bin/python dpsim-fmi/tests/compare_nonlinear_sg.py \
-  outputs/fmi-nonlinear/sg
-```
-
-Results from the initial validated run:
-
-| Comparison | Maximum absolute discrepancy |
+| Case directory | Validated scope |
 | --- | --- |
-| DPsim vs MATLAB trapezoidal, 50 us, phase current | about 1.4 microampere |
-| DPsim vs MATLAB trapezoidal, 50 us, bus voltage | about 2 microvolt |
-| MATLAB trapezoidal vs ode15s, phase-A bus voltage, 50 us | 0.17054 V |
-| MATLAB trapezoidal vs ode15s, phase-A bus voltage, 25 us | 0.04264 V |
+| `linear_scalar` | Existing scalar linear FMI import |
+| `linear_three_phase` | Existing ABC linear FMI import |
+| `synchronous_generator` | Nonlinear coupled generator, matched full-state MATLAB reference, 50/25 µs refinement and ode15s cross-check |
+| `inverter` | Switched converter with native voltage source, R/L, base and switched loads; balanced/unbalanced load, sag, phase and frequency disturbances at supported 1 µs step |
+| `two_generators` | Two separately exported generators on one shared bus, independent control changes, model-order isolation, singleton rejection and meaningful nonzero operating point, 50/25 µs refinement |
 
-All 34 signals pass peak/RMS normalized errors below 0.1% of their declared
-engineering bases. The largest normalized error versus ode15s is the load-power
-peak: 0.0671% at 50 us and 0.0168% at 25 us. Halving the step reduces the voltage
-error by approximately four. At 50 us the importer uses two Newton iterations
-per accepted step. Tighter Newton settings leave six-decimal CSV traces
-unchanged. The logger's quantization limits interpretation of tiny differences.
-Full absolute/normalized metrics and solver residuals are in `comparison.json`.
+Each directory keeps one C++ example and one executed comparison notebook, final FMU/XML/source models in `sources/`, and meaningful MATLAB reference results/model definitions in `matlab/`. All work remains local, uncommitted and unpushed on `feature/FMU_import`. MATLAB/Simulink is the benchmark scope.
 
-## Reference independence and disturbance convention
+## Numerical evidence and interpretation
 
-The MATLAB reference independently wires the sixteen-state equations and
-solves one full trapezoidal residual, using complex-step Jacobians. DPsim uses
-FMI evaluations and local state elimination with central finite differences.
-Both share physical parameter values and initial conditions; the tighter
-ode15s trajectory is an additional integration check. This validates numerical
-implementation and wiring, not the manufacturer fidelity of the teaching model.
+The generator comparison checks all 34 saved signals. The original 0.1% maximum/RMS engineering-base criterion passes; the largest normalized discrepancy against ode15s is approximately 0.0671% at 50 µs and 0.0168% at 25 µs. The two-generator comparison checks 52 physical/control signals; its largest matched normalized discrepancy is approximately 5.23e-7, and the ode15s cross-check approximately 3.44e-6 (fractions of declared bases). Refinement reduces representative RMS errors by about four. Model-supplied initial conditions have nonzero power and network currents, with stationary machine/controller residual about 1.14e-13. This is not arbitrary-FMU automatic load-flow initialization.
 
-A step ending exactly on a known discontinuity uses the input from the prior
-interval. At the boundary the new input is applied and the old derivative for
-the next interval is recomputed. No half-step anticipation or trace shifting is
-used. The external grid helper recomputes its state-space history for the load
-conductance applicable to each interval; capacitor current history is not
-silently carried across a changed algebraic load.
+The switched converter preserves the IGBT/diode plant, transformer/filter, original loads, PLL, PI controllers, PWM and internal breaker. The independent physical Simscape reference preserves the original grid source and its initial state. A stateless series correction applies grid disturbances; additional reference resistors match the native switch resistances. Both controller subsystem XMLs are byte-identical to the original reference. Metrics include every coincident sample and retain startup/event peaks, raw angle maxima and wrapped angle errors. No trace shifts are applied.
 
-## Tests and current limits
+For the five matched 1 µs disturbance runs, the worst converter phase-current peaks are approximately 0.182%, 0.163%, 0.139%, 0.121% and 0.106% of the declared 16.32993 A engineering base. The largest PI/control peaks are approximately 0.834% of their declared pu base. These exceed the original provisional 0.1% threshold; the notebook shows the individual failures explicitly. The user accepted a wider margin, without a new universal numerical guarantee. All five runs satisfy network KCL to logged precision, converged Newton residuals and unchanged physical/control CSV outputs under tenfold tighter Newton tolerances.
 
-`FMI_NonlinearTest` checks a nonlinear cubic/cross-phase fixture with shuffled
-variable declarations, explicit injection polarity, two independent instances,
-100 implicit steps against an analytical-Jacobian reference and MNA KCL. A
-separate case forces non-convergence and checks that no state was committed.
-The existing scalar/abc linear import and malformed-FMU tests continue to pass.
-Native GFM Jacobian and induction-motor load-switch examples have also been run.
+The requested practical network step is 50 µs. The switched converter now
+runs through 0.2 s at 50 and 25 µs while retaining all 1 µs scheduled events.
+Its MathWorks R2025a Model Exchange export advertises state rollback, but an
+identical replay changes the continuous state norm by about 0.394 and output
+norm by about 9.38e-4. The importer detects and rejects that rollback path.
+These two runs therefore use the generic single-pass policy. After the first
+10 ms, the 50 µs run has maximum converter-current and PCC-voltage errors of
+about 0.095% and 0.028% of their declared bases against the 1 µs import. The
+largest controller difference is 0.556% (`pi_q`). At 25 µs these become about
+0.086%, 0.020%, and 0.295%. Full-window results retain a very large initial PCC
+voltage difference caused by the zero-current line initialization at the coarse
+network step. The direct coupling discrepancy peaks at 1.268 A at 50 µs and
+0.683 A at 25 µs during startup; after 10 ms the maxima are 0.0523 A and
+0.0258 A. These are measured explicit-coupling results, not converged implicit
+coupling claims.
 
-Current supported subset: continuous scalar Float64 boundary variables and
-continuous states, internal discrete variables, scheduled external control changes,
-and time/completed-step events that preserve continuous states and terminal
-current. Internal event times must be strictly advancing and align with the fixed
-DPsim timestep. An event that changes terminal current is rejected because it
-requires an instantaneous algebraic network iteration. State events,
-continuous-state reinitialization, clocks, FMI arrays, structural parameters
-and unsupported execution-tool dependencies are rejected explicitly. Parameters
-marked tunable retain their exported defaults and cannot be changed by this API.
-Parameter values and initial conditions are the exported defaults. Runtime
-parameter editing and nonlinear steady-state/load-flow initialization are not
-implemented. No dynamic-phasor conversion or native circuit reconstruction is
-performed. VILLAS remains separate.
+The new multirate path implements that rollback/replay interval map. Its Norton
+tangent linearizes terminal output current at the converged substep state; the
+outer residual is checked against a fresh complete replay. This is a partitioned
+multirate approximation rather than a monolithic solve of every internal state
+and every network node. Its accuracy must therefore be measured for each model,
+especially around ideal switching and network discontinuities.
 
-FMI lifecycle/function semantics follow the
-[FMI 3 specification](https://fmi-standard.org/docs/3.0.2/). The condensed Newton
-method above is implemented in `NonlinearSSN.cpp` and the optional solver hook
-in `MNASolverDirect.cpp`; it is not a claim that all FMI 3 FMUs are supported.
+## Regression coverage and supported subset
 
-## Modelica exporter check
+The current FMI CTest suite has 27 passing checks, including FMI 2.0 and FMI
+3.0 scalar Model Exchange, linear scalar/ABC, nonlinear coupled solves, sampled
+controls, rollback multirate scheduling, explicit single-pass scheduling without
+rollback, singleton handling, malformed imports, explicit nonconvergence and
+unsupported event-current changes. Legacy example notebooks also execute
+successfully. Native SSN solver changes are opt-in through
+`MNANonlinearCompInterface`; existing native components retain their previous
+path.
 
-The same importer also runs a six-state nonlinear magnetic circuit exported by
-OpenModelica as FMI 3.0 Model Exchange. It adapts three phase-shifted copies of
-MSL 4.0.0 `ShowSaturatingInductor`; the native reference uses the original MSL
-example instances. No exporter-specific equations are added to C++.
-Peak current error falls from 58.1 µA at 10 ms to 14.9 µA at 5 ms, with RMS
-refinement ratio 3.99. At 200 µs it reaches about 0.52 µA, near CSV rounding.
-See [provenance and reproduction](examples/modelica/README.md) and
-`examples/FMI_EMT_Ph3_Modelica_Comparison.ipynb`. Saved outputs and standalone
-HTML are in `outputs/fmi-nonlinear/modelica`.
+Supported FMI 2.0/3.0 boundary/state variables are scalar Real/Float64. Scheduled events must
+advance time. Crossed events use automatic substeps with either reproducible
+FMI rollback or the explicitly selected single-pass policy. Explicit external input discontinuities must still align with the
+network grid. State-indicator endpoint handling and continuous-state resets
+require explicit opt-in; root localization between reported internal substeps is
+not implemented. In the single-rate path, an event changing terminal current
+beyond tolerance is rejected because instantaneous algebraic network re-solving
+is unsupported. Clocks, FMI arrays, structural parameters and unsupported
+execution-tool dependencies are rejected. Runtime parameter editing, generic
+automatic steady-state initialization and dynamic-phasor conversion are not
+implemented. A model's singleton declaration is enforced; two-generator
+validation uses two genuine exports with distinct identities rather than editing
+capability metadata.
 
-## Sampled-control tests and inspection
+## Official PV example limitation
 
-`FMI_SampledTest` compares a nonlinear continuous plant with a 1 ms sampled
-controller against an independent trapezoidal recurrence. It checks a coincident
-external command step at 2 ms, per-phase KCL and all accepted states. Separate
-tests reject a timestep that crosses a controller tick and prevent the LTI
-extractor from treating sampled dynamics as a frozen linear model.
-`FMI_EventCurrentTest` rejects a completed-step event that changes terminal current
-without a coupled algebraic network iteration.
+The official MathWorks `PVArrayGridAverageModelExample` was investigated separately. Its original Model Exchange export has zero continuous states and 50 µs internal ticks: successful lifecycle replay does not establish continuous, tightly coupled EMT MNA import. Provisional getter calls altered its later history in the isolated protocol check, even across advertised state restore. A continuous-powergui variant failed MATLAB ME export on the non-inlined `sfun_spid_contc` S-function, and generated network code overwrote an attempted ordinary State-Space replacement. The network also contains switching; one frozen network matrix would remove meaningful behavior. Consequently this PV/MPPT model is not claimed as validated. Development evidence remains outside the examples under the SSD benchmark/build directories.
 
-`FMI_Inspect model.fmu [input_values.json]` initializes a model and reports state,
-input and output names and the next internal time event. Every input must be
-provided in the optional JSON object. This instantiates native FMU code.
-`FMI_DiscreteProbe model.fmu stop_s step_s` is a standalone lifecycle diagnostic
-for closed, zero-continuous-state models. It does not demonstrate DPsim MNA
-coupling or continuous-state integration; its purpose is checking sampled event
-semantics against an exporter's original simulation.
+The successful switched inverter example is a different official MathWorks model and does not contain an MPPT loop. Neither example demonstrates universal FMI support. The implemented lifecycle follows the [FMI 3 specification](https://fmi-standard.org/docs/3.0.2/); MATLAB documents the [non-inlined S-function export restriction](https://www.mathworks.com/help/fmuexport/ug/generate-model-exchange-FMU.html).
 
-## Larger Simulink PV compatibility result
-
-The official MathWorks `PVArrayGridAverageModelExample` was downloaded to the SSD
-and exported as FMI 3.0 Model Exchange with its MPPT, boost converter, PLL,
-DC-link and current-control loops retained. The original is a **fully discrete**
-model: its FMU has zero continuous states and schedules internal events every
-50 µs. `FMI_DiscreteProbe` replays all 120001 samples over six seconds, matching
-native Simulink to about 2.2e-12 A and independent FMPy 0.3.32 to about 1.2e-12 A.
-Those are event-lifecycle results, **not coupled DPsim MNA or trapezoidal plant
-integration results**.
-
-A provisional output getter before a tick changes this PV export's subsequent
-history; even its advertised FMI state restore does not undo that effect in the
-isolated protocol test. It is therefore not validated for Newton probing.
-A separate continuous-powergui copy retains sampled controls but fails MATLAB's
-ME export because `sfun_spid_contc` is a non-inlined S-function. An attempted
-replacement with ordinary State-Space blocks is regenerated back to the native
-S-function during model update. Also, the network contains a physical switch;
-one fixed `power_analyze` matrix must not be substituted for all switch states.
-The original model files remain unchanged.
-
-The coupled larger-converter benchmark remains unfinished. Results and diagnostic
-scripts are under `outputs/fmi-nonlinear/pv` and related `pv-*.log` files. These
-limitations must not be described as a successful general PV/GFL import.
-MathWorks documents the [non-inlined S-function restriction](https://www.mathworks.com/help/fmuexport/ug/generate-model-exchange-FMU.html).
+`NewtonSettings::maxJacobianReuseSteps` optionally reuses a local Jacobian as a chord predictor. It defaults to zero. Actual state and current residuals still govern convergence; failure refreshes the Jacobian before the next iteration.

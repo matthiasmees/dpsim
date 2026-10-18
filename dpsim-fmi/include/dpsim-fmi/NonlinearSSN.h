@@ -8,6 +8,13 @@
 #include <functional>
 
 namespace DPsim::FMI {
+enum class MultirateMode {
+  /// Restore and replay the complete interval for converged network Newton.
+  RollbackNewton,
+  /// Advance the FMU once after the network solve. Terminal current is lagged
+  /// by one macro step and the coupling discrepancy is reported, not iterated.
+  SinglePassExplicit
+};
 struct ElectricalPort3Ph {
   std::array<std::string, 3> voltageInputs;
   std::array<std::string, 3> currentOutputs;
@@ -19,8 +26,25 @@ struct NewtonSettings {
   double relativeStateTolerance = 1e-10;
   double absoluteCurrentTolerance = 1e-9;
   double relativeCurrentTolerance = 1e-10;
+  /// Replay and finite-difference noise make the interval-map current less
+  /// exact than the single-rate local residual.
+  double multirateAbsoluteCurrentTolerance = 1e-6;
+  double multirateRelativeCurrentTolerance = 1e-6;
+  /// Permit a single-pass run to accept a discontinuous terminal current at an
+  /// FMU event. This is useful for explicit co-simulation, but does not imply
+  /// implicit network convergence at the event.
+  bool allowInstantaneousCurrentEvents = false;
   double relativeJacobianPerturbation = 6e-6;
   int maxIterations = 20;
+  /// Optional chord predictor across accepted steps. Any failed true residual
+  /// check refreshes the Jacobian before the next iteration. Zero disables it.
+  int maxJacobianReuseSteps = 0;
+  /// Automatically replay an FMI interval when internal time events are
+  /// faster than the network step. The FMU must support state rollback.
+  bool automaticEventSubstepping = true;
+  MultirateMode multirateMode = MultirateMode::RollbackNewton;
+  /// Guard against an invalid or impractically dense event schedule.
+  int maxInternalSteps = 10000;
 };
 
 /// Implicit trapezoidal FMI state residual condensed into an MNA Norton
@@ -39,13 +63,26 @@ class NonlinearSSN final : public CPS::MNASimPowerComp<CPS::Real>,
   CPS::Matrix mLinearizationState, mLinearizationVoltage, mCorrection,
       mSensitivity;
   CPS::Matrix mNewInputs, mW, mHistory;
+  CPS::Matrix mMacroOldVoltage;
   CPS::Attribute<CPS::Matrix>::Ptr mState, mInputs, mOutputs;
-  CPS::Attribute<CPS::Real>::Ptr mIterationAttribute, mResidualAttribute;
+  CPS::Attribute<CPS::Real>::Ptr mIterationAttribute, mResidualAttribute,
+      mInternalStepAttribute, mCouplingErrorAttribute;
   std::vector<CPS::Attribute<CPS::Real>::Ptr> mControls;
   std::vector<std::function<double(double)>> mInputFunctions;
   std::vector<std::vector<double>> mInputEvents;
   double mStateResidual = 0, mCurrentResidual = 0;
+  double mCouplingError = 0;
   int mIterations = 0;
+  int mInternalSteps = 0;
+  bool mMultirateStep = false;
+  bool mSinglePassStep = false;
+  bool mRollbackVerified = false;
+  CPS::Matrix mCachedA, mCachedB, mCachedC, mCachedD;
+  int mJacobianAge = 0;
+  bool mHasJacobian = false;
+  CPS::Matrix mInternalCachedA;
+  int mInternalJacobianAge = 0;
+  bool mHasInternalJacobian = false;
   void validateTerminals();
   CPS::Matrix inputsAt(const CPS::Matrix &voltage, double time,
                        bool left) const;
@@ -53,8 +90,31 @@ class NonlinearSSN final : public CPS::MNASimPowerComp<CPS::Real>,
   CPS::Matrix voltageFromSolution(const CPS::Matrix &solution);
   bool eventAt(double time) const;
   void initializeValues();
+  struct IntervalResult {
+    CPS::Matrix state, inputs, outputs, current;
+    double residual = 0;
+    double nextEvent = 0;
+    int steps = 0;
+  };
+  IntervalResult integrateInterval(const CPS::Matrix &endVoltage,
+                                   bool restoreCheckpoint = true);
+  void prepareMultirateIteration();
 
 public:
+  /// One-call import for the conventional three-phase electrical interface.
+  /// Inputs and start values are read from modelDescription.xml.
+  static std::shared_ptr<NonlinearSSN>
+  importFMU(CPS::String name, const std::string &path,
+            ModelExchangeOptions modelOptions = {},
+            NewtonSettings settings = {});
+  const ModelDescription &modelDescription() const {
+    return mModel->description();
+  }
+  /// Conventional abc names (v_a/v_b/v_c or u_a/u_b/u_c with i_a/i_b/i_c)
+  /// are inferred for the common case. Use the explicit overload for
+  /// nonstandard port names or current polarity.
+  NonlinearSSN(CPS::String name, ModelExchange::Ptr model,
+               NewtonSettings settings = {});
   NonlinearSSN(CPS::String name, ModelExchange::Ptr model,
                const ElectricalPort3Ph &port, NewtonSettings settings = {});
   CPS::SimPowerComp<CPS::Real>::Ptr clone(CPS::String) override;

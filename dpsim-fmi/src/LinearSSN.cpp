@@ -105,7 +105,16 @@ void LinearSSN::validateTerminals() const {
 MatrixComp LinearSSN::buildInitialInputFromNodes(Real) {
   validateTerminals();
   // FMI initialization and the SSN history must use the same instantaneous
-  // voltage. A phasor-based steady-state guess must not replace this value.
+  // voltage. Prefer the connected DPsim initial condition over the FMU/XML
+  // start value; the latter remains the constructor-time fallback.
+  MatrixComp voltage = MatrixComp::Zero(mModel->initialVoltage.rows(), 1);
+  if (!node(1)->isGround())
+    voltage += initialVoltage(1);
+  if (!node(0)->isGround())
+    voltage -= initialVoltage(0);
+  if (voltage.rows() == mModel->initialVoltage.rows() && voltage.cols() == 1 &&
+      voltage.allFinite())
+    return voltage;
   return mModel->initialVoltage.cast<Complex>();
 }
 void LinearSSN::initialize(Matrix frequencies) {

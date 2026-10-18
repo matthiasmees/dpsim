@@ -1,0 +1,18 @@
+{
+  "frequency_Hz": 60,
+  "voltage_peak_V": 20412.41452319315,
+  "phase_rad": -1.5707963267948966,
+  "step_s": 1e-06,
+  "stop_time_s": 0.2,
+  "series_R_ohm": 0.8838834764831844,
+  "series_L_H": 0.01641201617994725,
+  "load_R_ohm": 12500,
+  "initial_voltage_scale": 0,
+  "endpoint_state_events": true,
+  "allow_continuous_state_resets": true,
+  "allow_instantaneous_current_events": true,
+  "multirate_mode": "single_pass_explicit",
+  "log_downsampling": 100,
+  "jacobian_reuse_steps": 64,
+  "fmu_variant": "V3"
+}

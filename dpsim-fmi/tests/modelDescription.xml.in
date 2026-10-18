@@ -20,5 +20,6 @@
     <InitialUnknown valueReference="2"/>
     <InitialUnknown valueReference="6"/>
     <InitialUnknown valueReference="7"/>
+    @EVENT_INDICATOR@
   </ModelStructure>
 </fmiModelDescription>

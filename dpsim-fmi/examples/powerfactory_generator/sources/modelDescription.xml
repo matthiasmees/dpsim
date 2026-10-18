@@ -1,0 +1,2007 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<fmiModelDescription
+  fmiVersion="2.0"
+  modelName="TestSCRX.Experiments.genInterfacePQ"
+  guid="{baacf815-6578-4b7a-9204-e17d510acfd7}"
+  description=""
+  version=""
+  generationTool="OpenModelica Compiler OpenModelica v1.25.4 (64-bit)"
+  generationDateAndTime="2026-04-24T00:30:29Z"
+  variableNamingConvention="structured"
+  numberOfEventIndicators="0">
+  <ModelExchange
+    modelIdentifier="genInterfacePQ"
+    needsExecutionTool="false"
+    completedIntegratorStepNotNeeded="false"
+    canBeInstantiatedOnlyOncePerProcess="false"
+    canNotUseMemoryManagementFunctions="false"
+    canGetAndSetFMUstate="false"
+    canSerializeFMUstate="false"
+    providesDirectionalDerivative="false">
+    <SourceFiles>
+      <File name="genInterfacePQ.c" />
+      <File name="genInterfacePQ_functions.c" />
+      <File name="genInterfacePQ_records.c" />
+      <File name="genInterfacePQ_01exo.c" />
+      <File name="genInterfacePQ_02nls.c" />
+      <File name="genInterfacePQ_03lsy.c" />
+      <File name="genInterfacePQ_04set.c" />
+      <File name="genInterfacePQ_05evt.c" />
+      <File name="genInterfacePQ_06inz.c" />
+      <File name="genInterfacePQ_07dly.c" />
+      <File name="genInterfacePQ_08bnd.c" />
+      <File name="genInterfacePQ_09alg.c" />
+      <File name="genInterfacePQ_10asr.c" />
+      <File name="genInterfacePQ_11mix.c" />
+      <File name="genInterfacePQ_12jac.c" />
+      <File name="genInterfacePQ_13opt.c" />
+      <File name="genInterfacePQ_14lnz.c" />
+      <File name="genInterfacePQ_15syn.c" />
+      <File name="genInterfacePQ_16dae.c" />
+      <File name="genInterfacePQ_17inl.c" />
+      <File name="genInterfacePQ_18spd.c" />
+      <File name="genInterfacePQ_init_fmu.c" />
+      <File name="genInterfacePQ_FMU.c" />
+      <File name="./gc/memory_pool.c" />
+      <File name="./gc/omc_gc.c" />
+      <File name="./util/base_array.c" />
+      <File name="./util/boolean_array.c" />
+      <File name="./util/context.c" />
+      <File name="./util/division.c" />
+      <File name="./util/doubleEndedList.c" />
+      <File name="./util/generic_array.c" />
+      <File name="./util/index_spec.c" />
+      <File name="./util/integer_array.c" />
+      <File name="./util/list.c" />
+      <File name="./util/modelica_string_lit.c" />
+      <File name="./util/modelica_string.c" />
+      <File name="./util/ModelicaUtilities.c" />
+      <File name="./util/omc_error.c" />
+      <File name="./util/omc_file.c" />
+      <File name="./util/omc_init.c" />
+      <File name="./util/omc_mmap.c" />
+      <File name="./util/omc_msvc.c" />
+      <File name="./util/omc_numbers.c" />
+      <File name="./util/parallel_helper.c" />
+      <File name="./util/rational.c" />
+      <File name="./util/real_array.c" />
+      <File name="./util/ringbuffer.c" />
+      <File name="./util/simulation_options.c" />
+      <File name="./util/string_array.c" />
+      <File name="./util/utility.c" />
+      <File name="./util/varinfo.c" />
+      <File name="./math-support/pivot.c" />
+      <File name="./simulation/jacobian_util.c" />
+      <File name="./simulation/omc_simulation_util.c" />
+      <File name="./simulation/options.c" />
+      <File name="./simulation/simulation_info_json.c" />
+      <File name="./simulation/simulation_omc_assert.c" />
+      <File name="./simulation/solver/delay.c" />
+      <File name="./simulation/solver/fmi_events.c" />
+      <File name="./simulation/solver/model_help.c" />
+      <File name="./simulation/solver/omc_math.c" />
+      <File name="./simulation/solver/spatialDistribution.c" />
+      <File name="./simulation/solver/stateset.c" />
+      <File name="./simulation/solver/synchronous.c" />
+      <File name="./simulation/solver/initialization/initialization.c" />
+      <File name="./meta/meta_modelica_catch.c" />
+      <File name="./simulation/solver/linearSystem.c" />
+      <File name="./simulation/solver/linearSolverLapack.c" />
+      <File name="./simulation/solver/linearSolverTotalPivot.c" />
+      <File name="./simulation/solver/nonlinearSolverHomotopy.c" />
+      <File name="./simulation/solver/nonlinearSolverHybrd.c" />
+      <File name="./simulation/solver/nonlinearValuesList.c" />
+      <File name="./simulation/solver/nonlinearSystem.c" />
+      <File name="./external_solvers/dgesv.c" />
+      <File name="./external_solvers/dgetrf.c" />
+      <File name="./external_solvers/dgetri.c" />
+      <File name="./external_solvers/dtrtri.c" />
+      <File name="./external_solvers/dtrti2.c" />
+      <File name="./external_solvers/dlamch.c" />
+      <File name="./external_solvers/ilaenv.c" />
+      <File name="./external_solvers/xerbla.c" />
+      <File name="./external_solvers/dgetf2.c" />
+      <File name="./external_solvers/dgetrs.c" />
+      <File name="./external_solvers/dlaswp.c" />
+      <File name="./external_solvers/ieeeck.c" />
+      <File name="./external_solvers/iparmq.c" />
+      <File name="./external_solvers/dgemm.c" />
+      <File name="./external_solvers/dger.c" />
+      <File name="./external_solvers/dgemv.c" />
+      <File name="./external_solvers/dscal.c" />
+      <File name="./external_solvers/dswap.c" />
+      <File name="./external_solvers/dtrsm.c" />
+      <File name="./external_solvers/dtrmm.c" />
+      <File name="./external_solvers/dtrmv.c" />
+      <File name="./external_solvers/idamax.c" />
+      <File name="./external_solvers/lsame.c" />
+      <File name="./external_solvers/i_nint.c" />
+      <File name="./external_solvers/pow_di.c" />
+      <File name="./external_solvers/s_cmp.c" />
+      <File name="./external_solvers/s_copy.c" />
+      <File name="./external_solvers/s_cat.c" />
+      <File name="./external_solvers/F77_aloc.c" />
+      <File name="./external_solvers/exit_.c" />
+      <File name="./external_solvers/enorm_.c" />
+      <File name="./external_solvers/hybrj_.c" />
+      <File name="./external_solvers/dpmpar_.c" />
+      <File name="./external_solvers/qrfac_.c" />
+      <File name="./external_solvers/qform_.c" />
+      <File name="./external_solvers/dogleg_.c" />
+      <File name="./external_solvers/r1updt_.c" />
+      <File name="./external_solvers/r1mpyq_.c" />
+      <File name="ModelicaExternalC/ModelicaStandardTables.c" />
+      <File name="ModelicaExternalC/ModelicaMatIO.c" />
+      <File name="ModelicaExternalC/ModelicaIO.c" />
+      <File name="ModelicaExternalC/ModelicaStandardTablesDummyUsertab.c" />
+      <File name="ModelicaExternalC/snprintf.c" />
+    </SourceFiles>
+  </ModelExchange>
+  <UnitDefinitions>
+    <Unit name="V">
+      <BaseUnit m="2" s="-3" A="-1" kg="1" />
+    </Unit>
+    <Unit name="var">
+    </Unit>
+    <Unit name="W">
+      <BaseUnit m="2" s="-3" kg="1" />
+    </Unit>
+    <Unit name="s">
+      <BaseUnit s="1" />
+    </Unit>
+    <Unit name="V.A">
+      <BaseUnit m="2" s="-3" kg="1" />
+    </Unit>
+    <Unit name="Hz">
+      <BaseUnit s="-1" />
+    </Unit>
+    <Unit name="rad">
+      <BaseUnit />
+    </Unit>
+    <Unit name="1">
+      <BaseUnit />
+    </Unit>
+  </UnitDefinitions>
+  <TypeDefinitions>
+    <SimpleType name="Modelica.Blocks.Types.Init">
+      <Enumeration>
+        <Item name="NoInit" value="1"/>
+        <Item name="SteadyState" value="2"/>
+        <Item name="InitialState" value="3"/>
+        <Item name="InitialOutput" value="4"/>
+      </Enumeration>
+    </SimpleType>
+    <SimpleType name="Modelica.Blocks.Types.LimiterHomotopy">
+      <Enumeration>
+        <Item name="NoHomotopy" value="1"/>
+        <Item name="Linear" value="2"/>
+        <Item name="UpperLimit" value="3"/>
+        <Item name="LowerLimit" value="4"/>
+      </Enumeration>
+    </SimpleType>
+  </TypeDefinitions>
+  <LogCategories>
+    <Category name="logEvents" />
+    <Category name="logSingularLinearSystems" />
+    <Category name="logNonlinearSystems" />
+    <Category name="logDynamicStateSelection" />
+    <Category name="logStatusWarning" />
+    <Category name="logStatusDiscard" />
+    <Category name="logStatusError" />
+    <Category name="logStatusFatal" />
+    <Category name="logStatusPending" />
+    <Category name="logAll" />
+    <Category name="logFmi2Call" />
+  </LogCategories>
+  <DefaultExperiment startTime="0.0" stopTime="10.0" tolerance="1e-6" stepSize="0.02"/>
+  <ModelVariables>
+  <!-- Index of variable = "1" -->
+  <ScalarVariable
+    name="firstOrder.y"
+    valueReference="0"
+    description="Connector of Real output signal"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "2" -->
+  <ScalarVariable
+    name="firstOrder1.y"
+    valueReference="1"
+    description="Connector of Real output signal"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "3" -->
+  <ScalarVariable
+    name="gENROU.Epd"
+    valueReference="2"
+    description="d-axis voltage behind transient reactance "
+    >
+    <Real unit="1"/>
+  </ScalarVariable>
+  <!-- Index of variable = "4" -->
+  <ScalarVariable
+    name="gENROU.Epq"
+    valueReference="3"
+    description="q-axis voltage behind transient reactance "
+    >
+    <Real unit="1"/>
+  </ScalarVariable>
+  <!-- Index of variable = "5" -->
+  <ScalarVariable
+    name="gENROU.PSIkd"
+    valueReference="4"
+    description="d-axis rotor flux linkage "
+    >
+    <Real unit="1"/>
+  </ScalarVariable>
+  <!-- Index of variable = "6" -->
+  <ScalarVariable
+    name="gENROU.PSIkq"
+    valueReference="5"
+    description="q-axis rotor flux linkage "
+    >
+    <Real unit="1"/>
+  </ScalarVariable>
+  <!-- Index of variable = "7" -->
+  <ScalarVariable
+    name="gENROU.delta"
+    valueReference="6"
+    description="Rotor angle"
+    >
+    <Real unit="rad"/>
+  </ScalarVariable>
+  <!-- Index of variable = "8" -->
+  <ScalarVariable
+    name="gENROU.w"
+    valueReference="7"
+    description="Machine speed deviation"
+    >
+    <Real unit="1"/>
+  </ScalarVariable>
+  <!-- Index of variable = "9" -->
+  <ScalarVariable
+    name="sCRXwInitAsInput.integrator.y"
+    valueReference="8"
+    description="Connector of Real output signal"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "10" -->
+  <ScalarVariable
+    name="sCRXwInitAsInput.integrator1.y"
+    valueReference="9"
+    description="Connector of Real output signal"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "11" -->
+  <ScalarVariable
+    name="der(firstOrder.y)"
+    valueReference="10"
+    description="der(Connector of Real output signal)"
+    >
+    <Real derivative="1"/>
+  </ScalarVariable>
+  <!-- Index of variable = "12" -->
+  <ScalarVariable
+    name="der(firstOrder1.y)"
+    valueReference="11"
+    description="der(Connector of Real output signal)"
+    >
+    <Real derivative="2"/>
+  </ScalarVariable>
+  <!-- Index of variable = "13" -->
+  <ScalarVariable
+    name="der(gENROU.Epd)"
+    valueReference="12"
+    description="der(d-axis voltage behind transient reactance )"
+    >
+    <Real derivative="3" unit="Hz"/>
+  </ScalarVariable>
+  <!-- Index of variable = "14" -->
+  <ScalarVariable
+    name="der(gENROU.Epq)"
+    valueReference="13"
+    description="der(q-axis voltage behind transient reactance )"
+    >
+    <Real derivative="4" unit="Hz"/>
+  </ScalarVariable>
+  <!-- Index of variable = "15" -->
+  <ScalarVariable
+    name="der(gENROU.PSIkd)"
+    valueReference="14"
+    description="der(d-axis rotor flux linkage )"
+    >
+    <Real derivative="5" unit="Hz"/>
+  </ScalarVariable>
+  <!-- Index of variable = "16" -->
+  <ScalarVariable
+    name="der(gENROU.PSIkq)"
+    valueReference="15"
+    description="der(q-axis rotor flux linkage )"
+    >
+    <Real derivative="6" unit="Hz"/>
+  </ScalarVariable>
+  <!-- Index of variable = "17" -->
+  <ScalarVariable
+    name="der(gENROU.delta)"
+    valueReference="16"
+    description="der(Rotor angle)"
+    >
+    <Real derivative="7" unit="Hz"/>
+  </ScalarVariable>
+  <!-- Index of variable = "18" -->
+  <ScalarVariable
+    name="der(gENROU.w)"
+    valueReference="17"
+    description="der(Machine speed deviation)"
+    >
+    <Real derivative="8" unit="Hz"/>
+  </ScalarVariable>
+  <!-- Index of variable = "19" -->
+  <ScalarVariable
+    name="der(sCRXwInitAsInput.integrator.y)"
+    valueReference="18"
+    description="der(Connector of Real output signal)"
+    >
+    <Real derivative="9"/>
+  </ScalarVariable>
+  <!-- Index of variable = "20" -->
+  <ScalarVariable
+    name="der(sCRXwInitAsInput.integrator1.y)"
+    valueReference="19"
+    description="der(Connector of Real output signal)"
+    >
+    <Real derivative="10"/>
+  </ScalarVariable>
+  <!-- Index of variable = "21" -->
+  <ScalarVariable
+    name="firstOrder.u"
+    valueReference="23"
+    description="Connector of Real input signal"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "22" -->
+  <ScalarVariable
+    name="firstOrder1.u"
+    valueReference="24"
+    description="Connector of Real input signal"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "23" -->
+  <ScalarVariable
+    name="gENROU.I"
+    valueReference="25"
+    description="Terminal current magnitude"
+    >
+    <Real unit="1"/>
+  </ScalarVariable>
+  <!-- Index of variable = "24" -->
+  <ScalarVariable
+    name="gENROU.P"
+    valueReference="26"
+    description="Active power (system base)"
+    >
+    <Real unit="1"/>
+  </ScalarVariable>
+  <!-- Index of variable = "25" -->
+  <ScalarVariable
+    name="gENROU.PELEC"
+    valueReference="27"
+    description="Machine electrical power (machine base)"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "26" -->
+  <ScalarVariable
+    name="gENROU.PSId"
+    valueReference="28"
+    description="d-axis flux linkage "
+    >
+    <Real unit="1"/>
+  </ScalarVariable>
+  <!-- Index of variable = "27" -->
+  <ScalarVariable
+    name="gENROU.PSIpp"
+    valueReference="29"
+    description="Air-gap flux "
+    >
+    <Real unit="1"/>
+  </ScalarVariable>
+  <!-- Index of variable = "28" -->
+  <ScalarVariable
+    name="gENROU.PSIppd"
+    valueReference="30"
+    description="d-axis subtransient flux linkage "
+    >
+    <Real unit="1"/>
+  </ScalarVariable>
+  <!-- Index of variable = "29" -->
+  <ScalarVariable
+    name="gENROU.PSIppq"
+    valueReference="31"
+    description="q-axis subtransient flux linkage "
+    >
+    <Real unit="1"/>
+  </ScalarVariable>
+  <!-- Index of variable = "30" -->
+  <ScalarVariable
+    name="gENROU.PSIq"
+    valueReference="32"
+    description="q-axis flux linkage "
+    >
+    <Real unit="1"/>
+  </ScalarVariable>
+  <!-- Index of variable = "31" -->
+  <ScalarVariable
+    name="gENROU.Q"
+    valueReference="33"
+    description="Reactive power (system base)"
+    >
+    <Real unit="1"/>
+  </ScalarVariable>
+  <!-- Index of variable = "32" -->
+  <ScalarVariable
+    name="gENROU.QELEC"
+    valueReference="34"
+    description="Machine electrical power (machine base)"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "33" -->
+  <ScalarVariable
+    name="gENROU.Te"
+    valueReference="35"
+    description="Electrical torque [pu]"
+    >
+    <Real unit="1"/>
+  </ScalarVariable>
+  <!-- Index of variable = "34" -->
+  <ScalarVariable
+    name="gENROU.XadIfd"
+    valueReference="36"
+    description="d-axis machine field current "
+    >
+    <Real unit="1"/>
+  </ScalarVariable>
+  <!-- Index of variable = "35" -->
+  <ScalarVariable
+    name="gENROU.XaqIlq"
+    valueReference="37"
+    description="q-axis Machine field current "
+    >
+    <Real unit="1"/>
+  </ScalarVariable>
+  <!-- Index of variable = "36" -->
+  <ScalarVariable
+    name="gENROU.anglei"
+    valueReference="38"
+    description="Terminal current angle"
+    >
+    <Real unit="rad"/>
+  </ScalarVariable>
+  <!-- Index of variable = "37" -->
+  <ScalarVariable
+    name="gENROU.anglev"
+    valueReference="39"
+    description="Bus voltage angle"
+    >
+    <Real unit="rad"/>
+  </ScalarVariable>
+  <!-- Index of variable = "38" -->
+  <ScalarVariable
+    name="gENROU.id"
+    valueReference="40"
+    description="d-axis armature current [pu]"
+    >
+    <Real unit="1"/>
+  </ScalarVariable>
+  <!-- Index of variable = "39" -->
+  <ScalarVariable
+    name="gENROU.iq"
+    valueReference="41"
+    description="q-axis armature current [pu]"
+    >
+    <Real unit="1"/>
+  </ScalarVariable>
+  <!-- Index of variable = "40" -->
+  <ScalarVariable
+    name="gENROU.ud"
+    valueReference="42"
+    description="d-axis terminal voltage [pu]"
+    >
+    <Real unit="1"/>
+  </ScalarVariable>
+  <!-- Index of variable = "41" -->
+  <ScalarVariable
+    name="gENROU.uq"
+    valueReference="43"
+    description="q-axis terminal voltage [pu]"
+    >
+    <Real unit="1"/>
+  </ScalarVariable>
+  <!-- Index of variable = "42" -->
+  <ScalarVariable
+    name="p"
+    valueReference="44"
+    causality="output"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "43" -->
+  <ScalarVariable
+    name="pwPin2PF.P_pu"
+    valueReference="45"
+    description="P injected, pu"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "44" -->
+  <ScalarVariable
+    name="pwPin2PF.Q_pu"
+    valueReference="46"
+    description="Q injected, pu"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "45" -->
+  <ScalarVariable
+    name="pwPin2PF.iang"
+    valueReference="47"
+    description="angle(I_inj), rad"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "46" -->
+  <ScalarVariable
+    name="pwPin2PF.ii"
+    valueReference="48"
+    description="Im{I_inj}, pu"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "47" -->
+  <ScalarVariable
+    name="pwPin2PF.imag"
+    valueReference="49"
+    description="|I_inj|, kA"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "48" -->
+  <ScalarVariable
+    name="pwPin2PF.imag_pu"
+    valueReference="50"
+    description="|I_inj|, pu"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "49" -->
+  <ScalarVariable
+    name="pwPin2PF.ir"
+    valueReference="51"
+    description="Re{I_inj}, pu"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "50" -->
+  <ScalarVariable
+    name="q"
+    valueReference="52"
+    causality="output"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "51" -->
+  <ScalarVariable
+    name="sCRXwInitAsInput.ECOMP0"
+    valueReference="53"
+    description="Initial value of the exciter input"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "52" -->
+  <ScalarVariable
+    name="sCRXwInitAsInput.EFD"
+    valueReference="54"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "53" -->
+  <ScalarVariable
+    name="sCRXwInitAsInput.EFD0"
+    valueReference="55"
+    description="Initial value of field voltage"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "54" -->
+  <ScalarVariable
+    name="sCRXwInitAsInput.add.u1"
+    valueReference="56"
+    description="Connector of Real input signal 1"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "55" -->
+  <ScalarVariable
+    name="sCRXwInitAsInput.add.y"
+    valueReference="57"
+    description="Connector of Real output signal"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "56" -->
+  <ScalarVariable
+    name="sCRXwInitAsInput.feedback1.u1"
+    valueReference="58"
+    description="Commanded input"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "57" -->
+  <ScalarVariable
+    name="sCRXwInitAsInput.feedback1.y"
+    valueReference="59"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "58" -->
+  <ScalarVariable
+    name="sCRXwInitAsInput.feedback2.u1"
+    valueReference="60"
+    description="Commanded input"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "59" -->
+  <ScalarVariable
+    name="sCRXwInitAsInput.feedback2.y"
+    valueReference="61"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "60" -->
+  <ScalarVariable
+    name="sCRXwInitAsInput.gain1.y"
+    valueReference="62"
+    description="Output signal connector"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "61" -->
+  <ScalarVariable
+    name="sCRXwInitAsInput.gain11.y"
+    valueReference="63"
+    description="Output signal connector"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "62" -->
+  <ScalarVariable
+    name="sCRXwInitAsInput.limiter.u"
+    valueReference="66"
+    description="Connector of Real input signal"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "63" -->
+  <ScalarVariable
+    name="sCRXwInitAsInput.limiter.y"
+    valueReference="67"
+    description="Connector of Real output signal"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "64" -->
+  <ScalarVariable
+    name="vi"
+    valueReference="68"
+    causality="input"
+    >
+    <Real start="0.0"/>
+  </ScalarVariable>
+  <!-- Index of variable = "65" -->
+  <ScalarVariable
+    name="vr"
+    valueReference="69"
+    causality="input"
+    >
+    <Real start="0.0"/>
+  </ScalarVariable>
+  <!-- Index of variable = "66" -->
+  <ScalarVariable
+    name="SysData.S_b"
+    valueReference="70"
+    description="System base"
+    variability="fixed"
+    causality="parameter"
+    >
+    <Real start="1e8" nominal="1e8" unit="V.A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "67" -->
+  <ScalarVariable
+    name="SysData.fn"
+    valueReference="71"
+    description="System frequency"
+    variability="fixed"
+    causality="parameter"
+    >
+    <Real start="50.0" unit="Hz"/>
+  </ScalarVariable>
+  <!-- Index of variable = "68" -->
+  <ScalarVariable
+    name="firstOrder.T"
+    valueReference="72"
+    description="Time Constant"
+    variability="fixed"
+    causality="parameter"
+    >
+    <Real start="0.02" unit="s"/>
+  </ScalarVariable>
+  <!-- Index of variable = "69" -->
+  <ScalarVariable
+    name="firstOrder.k"
+    valueReference="73"
+    description="Gain"
+    variability="fixed"
+    causality="parameter"
+    >
+    <Real start="1.0" unit="1"/>
+  </ScalarVariable>
+  <!-- Index of variable = "70" -->
+  <ScalarVariable
+    name="firstOrder.y_start"
+    valueReference="74"
+    description="Initial or guess value of output (= state)"
+    variability="fixed"
+    causality="parameter"
+    >
+    <Real start="0.0"/>
+  </ScalarVariable>
+  <!-- Index of variable = "71" -->
+  <ScalarVariable
+    name="firstOrder1.T"
+    valueReference="75"
+    description="Time Constant"
+    variability="fixed"
+    causality="parameter"
+    >
+    <Real start="0.02" unit="s"/>
+  </ScalarVariable>
+  <!-- Index of variable = "72" -->
+  <ScalarVariable
+    name="firstOrder1.k"
+    valueReference="76"
+    description="Gain"
+    variability="fixed"
+    causality="parameter"
+    >
+    <Real start="1.0" unit="1"/>
+  </ScalarVariable>
+  <!-- Index of variable = "73" -->
+  <ScalarVariable
+    name="firstOrder1.y_start"
+    valueReference="77"
+    description="Initial or guess value of output (= state)"
+    variability="fixed"
+    causality="parameter"
+    >
+    <Real start="0.0"/>
+  </ScalarVariable>
+  <!-- Index of variable = "74" -->
+  <ScalarVariable
+    name="gENROU.D"
+    valueReference="79"
+    description="Speed damping"
+    variability="fixed"
+    causality="parameter"
+    >
+    <Real start="0.0"/>
+  </ScalarVariable>
+  <!-- Index of variable = "75" -->
+  <ScalarVariable
+    name="gENROU.EFD0"
+    valueReference="82"
+    description="Initial generator main field voltage [pu]"
+    variability="fixed"
+    causality="calculatedParameter"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "76" -->
+  <ScalarVariable
+    name="gENROU.H"
+    valueReference="85"
+    description="Inertia constant"
+    variability="fixed"
+    causality="parameter"
+    >
+    <Real start="4.28" unit="s"/>
+  </ScalarVariable>
+  <!-- Index of variable = "77" -->
+  <ScalarVariable
+    name="gENROU.M_b"
+    valueReference="100"
+    description="Machine base power"
+    variability="fixed"
+    causality="parameter"
+    >
+    <Real start="1e8" nominal="1e8" unit="V.A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "78" -->
+  <ScalarVariable
+    name="gENROU.PMECH"
+    valueReference="101"
+    description="Turbine mechanical power (machine base)"
+    variability="fixed"
+    causality="calculatedParameter"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "79" -->
+  <ScalarVariable
+    name="gENROU.PMECH0"
+    valueReference="102"
+    description="Initial value of machine electrical power (machine base)"
+    variability="fixed"
+    causality="calculatedParameter"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "80" -->
+  <ScalarVariable
+    name="gENROU.P_0"
+    valueReference="113"
+    description="Initial active power"
+    variability="fixed"
+    causality="parameter"
+    >
+    <Real start="4e7" nominal="1e8" unit="W"/>
+  </ScalarVariable>
+  <!-- Index of variable = "81" -->
+  <ScalarVariable
+    name="gENROU.Q_0"
+    valueReference="114"
+    description="Initial reactive power"
+    variability="fixed"
+    causality="parameter"
+    >
+    <Real start="5.416582e6" nominal="1e8" unit="var"/>
+  </ScalarVariable>
+  <!-- Index of variable = "82" -->
+  <ScalarVariable
+    name="gENROU.R_a"
+    valueReference="115"
+    description="Armature resistance"
+    variability="fixed"
+    causality="parameter"
+    >
+    <Real start="0.0" unit="1"/>
+  </ScalarVariable>
+  <!-- Index of variable = "83" -->
+  <ScalarVariable
+    name="gENROU.S10"
+    valueReference="118"
+    description="Saturation factor at 1.0 pu"
+    variability="fixed"
+    causality="parameter"
+    >
+    <Real start="0.11" unit="1"/>
+  </ScalarVariable>
+  <!-- Index of variable = "84" -->
+  <ScalarVariable
+    name="gENROU.S12"
+    valueReference="119"
+    description="Saturation factor at 1.2 pu"
+    variability="fixed"
+    causality="parameter"
+    >
+    <Real start="0.39" unit="1"/>
+  </ScalarVariable>
+  <!-- Index of variable = "85" -->
+  <ScalarVariable
+    name="gENROU.S_b"
+    valueReference="120"
+    description="System base power"
+    variability="fixed"
+    causality="calculatedParameter"
+    >
+    <Real nominal="1e8" unit="V.A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "86" -->
+  <ScalarVariable
+    name="gENROU.Tpd0"
+    valueReference="121"
+    description="d-axis transient open-circuit time constant"
+    variability="fixed"
+    causality="parameter"
+    >
+    <Real start="5.0" unit="s"/>
+  </ScalarVariable>
+  <!-- Index of variable = "87" -->
+  <ScalarVariable
+    name="gENROU.Tppd0"
+    valueReference="122"
+    description="d-axis sub-transient open-circuit time constant"
+    variability="fixed"
+    causality="parameter"
+    >
+    <Real start="0.07" unit="s"/>
+  </ScalarVariable>
+  <!-- Index of variable = "88" -->
+  <ScalarVariable
+    name="gENROU.Tppq0"
+    valueReference="123"
+    description="q-axis sub-transient open-circuit time constant"
+    variability="fixed"
+    causality="parameter"
+    >
+    <Real start="0.09" unit="s"/>
+  </ScalarVariable>
+  <!-- Index of variable = "89" -->
+  <ScalarVariable
+    name="gENROU.Tpq0"
+    valueReference="124"
+    description="q-axis transient open-circuit time constant"
+    variability="fixed"
+    causality="parameter"
+    >
+    <Real start="0.9" unit="s"/>
+  </ScalarVariable>
+  <!-- Index of variable = "90" -->
+  <ScalarVariable
+    name="gENROU.V_b"
+    valueReference="127"
+    description="Base voltage of the bus"
+    variability="fixed"
+    causality="parameter"
+    >
+    <Real start="4e5" nominal="1e4" unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "91" -->
+  <ScalarVariable
+    name="gENROU.Xd"
+    valueReference="128"
+    description="d-axis reactance"
+    variability="fixed"
+    causality="parameter"
+    >
+    <Real start="1.84" unit="1"/>
+  </ScalarVariable>
+  <!-- Index of variable = "92" -->
+  <ScalarVariable
+    name="gENROU.Xl"
+    valueReference="129"
+    description="leakage reactance"
+    variability="fixed"
+    causality="parameter"
+    >
+    <Real start="0.12" unit="1"/>
+  </ScalarVariable>
+  <!-- Index of variable = "93" -->
+  <ScalarVariable
+    name="gENROU.Xpd"
+    valueReference="130"
+    description="d-axis transient reactance"
+    variability="fixed"
+    causality="parameter"
+    >
+    <Real start="0.41" unit="1"/>
+  </ScalarVariable>
+  <!-- Index of variable = "94" -->
+  <ScalarVariable
+    name="gENROU.Xpp"
+    valueReference="131"
+    description="Sub-transient reactance "
+    variability="fixed"
+    causality="parameter"
+    >
+    <Real start="0.2" unit="1"/>
+  </ScalarVariable>
+  <!-- Index of variable = "95" -->
+  <ScalarVariable
+    name="gENROU.Xppd"
+    valueReference="132"
+    description="d-axis sub-transient reactance"
+    variability="fixed"
+    causality="parameter"
+    >
+    <Real start="0.2" unit="1"/>
+  </ScalarVariable>
+  <!-- Index of variable = "96" -->
+  <ScalarVariable
+    name="gENROU.Xppq"
+    valueReference="133"
+    description="q-axis sub-transient reactance"
+    variability="fixed"
+    causality="parameter"
+    >
+    <Real start="0.2" unit="1"/>
+  </ScalarVariable>
+  <!-- Index of variable = "97" -->
+  <ScalarVariable
+    name="gENROU.Xpq"
+    valueReference="134"
+    description="q-axis transient reactance "
+    variability="fixed"
+    causality="parameter"
+    >
+    <Real start="0.6" unit="1"/>
+  </ScalarVariable>
+  <!-- Index of variable = "98" -->
+  <ScalarVariable
+    name="gENROU.Xq"
+    valueReference="135"
+    description="q-axis reactance"
+    variability="fixed"
+    causality="parameter"
+    >
+    <Real start="1.75" unit="1"/>
+  </ScalarVariable>
+  <!-- Index of variable = "99" -->
+  <ScalarVariable
+    name="gENROU.angle_0"
+    valueReference="143"
+    description="Initial voltage angle"
+    variability="fixed"
+    causality="parameter"
+    >
+    <Real start="0.070492225331847" unit="rad"/>
+  </ScalarVariable>
+  <!-- Index of variable = "100" -->
+  <ScalarVariable
+    name="gENROU.fn"
+    valueReference="148"
+    description="System frequency"
+    variability="fixed"
+    causality="calculatedParameter"
+    >
+    <Real unit="Hz"/>
+  </ScalarVariable>
+  <!-- Index of variable = "101" -->
+  <ScalarVariable
+    name="gENROU.v_0"
+    valueReference="158"
+    description="Initial voltage magnitude"
+    variability="fixed"
+    causality="parameter"
+    >
+    <Real start="1.0" unit="1"/>
+  </ScalarVariable>
+  <!-- Index of variable = "102" -->
+  <ScalarVariable
+    name="gENROU.w0"
+    valueReference="161"
+    description="Initial speed deviation from nominal"
+    variability="fixed"
+    causality="parameter"
+    >
+    <Real start="0.0" min="-0.999999999999999" unit="1"/>
+  </ScalarVariable>
+  <!-- Index of variable = "103" -->
+  <ScalarVariable
+    name="pwPin2PF.I_base"
+    valueReference="163"
+    description="Base current, kA"
+    variability="fixed"
+    causality="calculatedParameter"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "104" -->
+  <ScalarVariable
+    name="pwPin2PF.S_b"
+    valueReference="164"
+    description="System base power"
+    variability="fixed"
+    causality="calculatedParameter"
+    >
+    <Real nominal="1e8" unit="V.A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "105" -->
+  <ScalarVariable
+    name="pwPin2PF.V_b"
+    valueReference="165"
+    description="Base voltage of the bus"
+    variability="fixed"
+    causality="parameter"
+    >
+    <Real start="400.0" nominal="1e4" unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "106" -->
+  <ScalarVariable
+    name="pwPin2PF.fn"
+    valueReference="166"
+    description="System frequency"
+    variability="fixed"
+    causality="calculatedParameter"
+    >
+    <Real unit="Hz"/>
+  </ScalarVariable>
+  <!-- Index of variable = "107" -->
+  <ScalarVariable
+    name="sCRXwInitAsInput.E_MAX"
+    valueReference="167"
+    description="Maximum exciter output"
+    variability="fixed"
+    causality="parameter"
+    >
+    <Real start="10.0"/>
+  </ScalarVariable>
+  <!-- Index of variable = "108" -->
+  <ScalarVariable
+    name="sCRXwInitAsInput.E_MIN"
+    valueReference="168"
+    description="Minimum exciter output"
+    variability="fixed"
+    causality="parameter"
+    >
+    <Real start="-10.0"/>
+  </ScalarVariable>
+  <!-- Index of variable = "109" -->
+  <ScalarVariable
+    name="sCRXwInitAsInput.K"
+    valueReference="169"
+    description="Excitation power source output gain"
+    variability="fixed"
+    causality="parameter"
+    >
+    <Real start="100.0"/>
+  </ScalarVariable>
+  <!-- Index of variable = "110" -->
+  <ScalarVariable
+    name="sCRXwInitAsInput.T_AT_B"
+    valueReference="170"
+    description="Ratio between regulator numerator (lead) and denominator (lag) time constants"
+    variability="fixed"
+    causality="parameter"
+    >
+    <Real start="0.1"/>
+  </ScalarVariable>
+  <!-- Index of variable = "111" -->
+  <ScalarVariable
+    name="sCRXwInitAsInput.T_B"
+    valueReference="171"
+    description="Regulator denominator (lag) time constant"
+    variability="fixed"
+    causality="parameter"
+    >
+    <Real start="1.0"/>
+  </ScalarVariable>
+  <!-- Index of variable = "112" -->
+  <ScalarVariable
+    name="sCRXwInitAsInput.T_E"
+    valueReference="172"
+    description="Excitation power source output time constant"
+    variability="fixed"
+    causality="parameter"
+    >
+    <Real start="0.005"/>
+  </ScalarVariable>
+  <!-- Index of variable = "113" -->
+  <ScalarVariable
+    name="sCRXwInitAsInput.VoltageReference.k"
+    valueReference="175"
+    description="Constant output value"
+    variability="fixed"
+    causality="calculatedParameter"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "114" -->
+  <ScalarVariable
+    name="sCRXwInitAsInput.VoltageReference.y"
+    valueReference="176"
+    description="Connector of Real output signal"
+    variability="fixed"
+    causality="calculatedParameter"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "115" -->
+  <ScalarVariable
+    name="sCRXwInitAsInput.a0"
+    valueReference="177"
+    variability="fixed"
+    causality="calculatedParameter"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "116" -->
+  <ScalarVariable
+    name="sCRXwInitAsInput.a1"
+    valueReference="178"
+    variability="fixed"
+    causality="calculatedParameter"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "117" -->
+  <ScalarVariable
+    name="sCRXwInitAsInput.add.k1"
+    valueReference="179"
+    description="Gain of input signal 1"
+    variability="fixed"
+    causality="parameter"
+    >
+    <Real start="1.0"/>
+  </ScalarVariable>
+  <!-- Index of variable = "118" -->
+  <ScalarVariable
+    name="sCRXwInitAsInput.add.k2"
+    valueReference="180"
+    description="Gain of input signal 2"
+    variability="fixed"
+    causality="parameter"
+    >
+    <Real start="1.0"/>
+  </ScalarVariable>
+  <!-- Index of variable = "119" -->
+  <ScalarVariable
+    name="sCRXwInitAsInput.b0"
+    valueReference="181"
+    variability="fixed"
+    causality="calculatedParameter"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "120" -->
+  <ScalarVariable
+    name="sCRXwInitAsInput.b1"
+    valueReference="182"
+    variability="fixed"
+    causality="calculatedParameter"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "121" -->
+  <ScalarVariable
+    name="sCRXwInitAsInput.feedback.u1"
+    valueReference="183"
+    description="Commanded input"
+    variability="fixed"
+    causality="calculatedParameter"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "122" -->
+  <ScalarVariable
+    name="sCRXwInitAsInput.gain.k"
+    valueReference="184"
+    description="Gain value multiplied with input signal"
+    variability="fixed"
+    causality="calculatedParameter"
+    >
+    <Real unit="1"/>
+  </ScalarVariable>
+  <!-- Index of variable = "123" -->
+  <ScalarVariable
+    name="sCRXwInitAsInput.gain1.k"
+    valueReference="185"
+    description="Gain value multiplied with input signal"
+    variability="fixed"
+    causality="calculatedParameter"
+    >
+    <Real unit="1"/>
+  </ScalarVariable>
+  <!-- Index of variable = "124" -->
+  <ScalarVariable
+    name="sCRXwInitAsInput.gain11.k"
+    valueReference="186"
+    description="Gain value multiplied with input signal"
+    variability="fixed"
+    causality="calculatedParameter"
+    >
+    <Real unit="1"/>
+  </ScalarVariable>
+  <!-- Index of variable = "125" -->
+  <ScalarVariable
+    name="sCRXwInitAsInput.gain111.k"
+    valueReference="187"
+    description="Gain value multiplied with input signal"
+    variability="fixed"
+    causality="calculatedParameter"
+    >
+    <Real unit="1"/>
+  </ScalarVariable>
+  <!-- Index of variable = "126" -->
+  <ScalarVariable
+    name="sCRXwInitAsInput.gain2.k"
+    valueReference="188"
+    description="Gain value multiplied with input signal"
+    variability="fixed"
+    causality="calculatedParameter"
+    >
+    <Real unit="1"/>
+  </ScalarVariable>
+  <!-- Index of variable = "127" -->
+  <ScalarVariable
+    name="sCRXwInitAsInput.integrator.k"
+    valueReference="189"
+    description="Integrator gain"
+    variability="fixed"
+    causality="parameter"
+    >
+    <Real start="1.0" unit="1"/>
+  </ScalarVariable>
+  <!-- Index of variable = "128" -->
+  <ScalarVariable
+    name="sCRXwInitAsInput.integrator.y_start"
+    valueReference="190"
+    description="Initial or guess value of output (= state)"
+    variability="fixed"
+    causality="parameter"
+    >
+    <Real start="0.0"/>
+  </ScalarVariable>
+  <!-- Index of variable = "129" -->
+  <ScalarVariable
+    name="sCRXwInitAsInput.integrator1.k"
+    valueReference="191"
+    description="Integrator gain"
+    variability="fixed"
+    causality="parameter"
+    >
+    <Real start="1.0" unit="1"/>
+  </ScalarVariable>
+  <!-- Index of variable = "130" -->
+  <ScalarVariable
+    name="sCRXwInitAsInput.integrator1.y_start"
+    valueReference="192"
+    description="Initial or guess value of output (= state)"
+    variability="fixed"
+    causality="calculatedParameter"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "131" -->
+  <ScalarVariable
+    name="sCRXwInitAsInput.limiter.uMax"
+    valueReference="193"
+    description="Upper limits of input signals"
+    variability="fixed"
+    causality="calculatedParameter"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "132" -->
+  <ScalarVariable
+    name="sCRXwInitAsInput.limiter.uMin"
+    valueReference="194"
+    description="Lower limits of input signals"
+    variability="fixed"
+    causality="calculatedParameter"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "133" -->
+  <ScalarVariable
+    name="sCRXwInitAsInput.r_cr_fd"
+    valueReference="195"
+    description="Ratio between crowbar circuit resistance and field circuit resistance"
+    variability="fixed"
+    causality="parameter"
+    >
+    <Real start="0.0"/>
+  </ScalarVariable>
+  <!-- Index of variable = "134" -->
+  <ScalarVariable
+    name="gENROU.ANGLE"
+    valueReference="6"
+    description="Machine relative rotor angle"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "135" -->
+  <ScalarVariable
+    name="gENROU.EFD"
+    valueReference="54"
+    description="Generator main field voltage [pu]"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "136" -->
+  <ScalarVariable
+    name="gENROU.ETERM"
+    valueReference="53"
+    description="Machine terminal voltage [pu]"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "137" -->
+  <ScalarVariable
+    name="gENROU.ISORCE"
+    valueReference="36"
+    description="Machine source current [pu]"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "138" -->
+  <ScalarVariable
+    name="gENROU.SPEED"
+    valueReference="7"
+    description="Machine speed deviation from nominal [pu]"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "139" -->
+  <ScalarVariable
+    name="gENROU.Vt"
+    valueReference="53"
+    description="Bus voltage magnitude"
+    >
+    <Real unit="1"/>
+  </ScalarVariable>
+  <!-- Index of variable = "140" -->
+  <ScalarVariable
+    name="gENROU.XADIFD"
+    valueReference="36"
+    description="Machine field current [pu]"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "141" -->
+  <ScalarVariable
+    name="gENROU.p.ii"
+    valueReference="48"
+    description="Imaginary part of the current"
+    >
+    <Real unit="1"/>
+  </ScalarVariable>
+  <!-- Index of variable = "142" -->
+  <ScalarVariable
+    name="gENROU.p.ir"
+    valueReference="51"
+    description="Real part of the current"
+    >
+    <Real unit="1"/>
+  </ScalarVariable>
+  <!-- Index of variable = "143" -->
+  <ScalarVariable
+    name="gENROU.p.vi"
+    valueReference="68"
+    description="Imaginary part of the voltage"
+    >
+    <Real unit="1"/>
+  </ScalarVariable>
+  <!-- Index of variable = "144" -->
+  <ScalarVariable
+    name="gENROU.p.vr"
+    valueReference="69"
+    description="Real part of the voltage"
+    >
+    <Real unit="1"/>
+  </ScalarVariable>
+  <!-- Index of variable = "145" -->
+  <ScalarVariable
+    name="pwPin2PF.P"
+    valueReference="23"
+    description="P injected, MW"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "146" -->
+  <ScalarVariable
+    name="pwPin2PF.Q"
+    valueReference="24"
+    description="Q injected, Mvar"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "147" -->
+  <ScalarVariable
+    name="pwPin2PF.pwPin.ii"
+    valueReference="211"
+    description="Imaginary part of the current"
+    >
+    <Real unit="1"/>
+  </ScalarVariable>
+  <!-- Index of variable = "148" -->
+  <ScalarVariable
+    name="pwPin2PF.pwPin.ir"
+    valueReference="212"
+    description="Real part of the current"
+    >
+    <Real unit="1"/>
+  </ScalarVariable>
+  <!-- Index of variable = "149" -->
+  <ScalarVariable
+    name="pwPin2PF.pwPin.vi"
+    valueReference="68"
+    description="Imaginary part of the voltage"
+    >
+    <Real unit="1"/>
+  </ScalarVariable>
+  <!-- Index of variable = "150" -->
+  <ScalarVariable
+    name="pwPin2PF.pwPin.vr"
+    valueReference="69"
+    description="Real part of the voltage"
+    >
+    <Real unit="1"/>
+  </ScalarVariable>
+  <!-- Index of variable = "151" -->
+  <ScalarVariable
+    name="pwPin2PF.rectangularToPolar.u_im"
+    valueReference="48"
+    description="Imaginary part of rectangular representation"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "152" -->
+  <ScalarVariable
+    name="pwPin2PF.rectangularToPolar.u_re"
+    valueReference="51"
+    description="Real part of rectangular representation"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "153" -->
+  <ScalarVariable
+    name="pwPin2PF.rectangularToPolar.y_abs"
+    valueReference="50"
+    description="Length of polar representation"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "154" -->
+  <ScalarVariable
+    name="pwPin2PF.rectangularToPolar.y_arg"
+    valueReference="38"
+    description="Angle of polar representation"
+    >
+    <Real unit="rad"/>
+  </ScalarVariable>
+  <!-- Index of variable = "155" -->
+  <ScalarVariable
+    name="pwPin2PF.vi"
+    valueReference="68"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "156" -->
+  <ScalarVariable
+    name="pwPin2PF.vr"
+    valueReference="69"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "157" -->
+  <ScalarVariable
+    name="sCRXwInitAsInput.ECOMP"
+    valueReference="53"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "158" -->
+  <ScalarVariable
+    name="sCRXwInitAsInput.add.u2"
+    valueReference="62"
+    description="Connector of Real input signal 2"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "159" -->
+  <ScalarVariable
+    name="sCRXwInitAsInput.feedback.u2"
+    valueReference="53"
+    description="Feedback input"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "160" -->
+  <ScalarVariable
+    name="sCRXwInitAsInput.feedback.y"
+    valueReference="60"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "161" -->
+  <ScalarVariable
+    name="sCRXwInitAsInput.feedback1.u2"
+    valueReference="63"
+    description="Feedback input"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "162" -->
+  <ScalarVariable
+    name="sCRXwInitAsInput.feedback2.u2"
+    valueReference="57"
+    description="Feedback input"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "163" -->
+  <ScalarVariable
+    name="sCRXwInitAsInput.gain.u"
+    valueReference="59"
+    description="Input signal connector"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "164" -->
+  <ScalarVariable
+    name="sCRXwInitAsInput.gain.y"
+    valueReference="66"
+    description="Output signal connector"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "165" -->
+  <ScalarVariable
+    name="sCRXwInitAsInput.gain1.u"
+    valueReference="8"
+    description="Input signal connector"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "166" -->
+  <ScalarVariable
+    name="sCRXwInitAsInput.gain11.u"
+    valueReference="9"
+    description="Input signal connector"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "167" -->
+  <ScalarVariable
+    name="sCRXwInitAsInput.gain111.u"
+    valueReference="8"
+    description="Input signal connector"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "168" -->
+  <ScalarVariable
+    name="sCRXwInitAsInput.gain111.y"
+    valueReference="58"
+    description="Output signal connector"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "169" -->
+  <ScalarVariable
+    name="sCRXwInitAsInput.gain2.u"
+    valueReference="9"
+    description="Input signal connector"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "170" -->
+  <ScalarVariable
+    name="sCRXwInitAsInput.gain2.y"
+    valueReference="56"
+    description="Output signal connector"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "171" -->
+  <ScalarVariable
+    name="sCRXwInitAsInput.integrator.u"
+    valueReference="61"
+    description="Connector of Real input signal"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "172" -->
+  <ScalarVariable
+    name="sCRXwInitAsInput.integrator1.u"
+    valueReference="8"
+    description="Connector of Real input signal"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "173" -->
+  <ScalarVariable
+    name="sCRXwInitAsInput.product.u1"
+    valueReference="67"
+    description="Connector of Real input signal 1"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "174" -->
+  <ScalarVariable
+    name="sCRXwInitAsInput.product.u2"
+    valueReference="53"
+    description="Connector of Real input signal 2"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "175" -->
+  <ScalarVariable
+    name="sCRXwInitAsInput.product.y"
+    valueReference="54"
+    description="Connector of Real output signal"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "176" -->
+  <ScalarVariable
+    name="firstOrder.initType"
+    valueReference="0"
+    description="Type of initialization (1: no init, 2: steady state, 3/4: initial output)"
+    variability="fixed"
+    causality="calculatedParameter"
+    >
+    <Enumeration declaredType="Modelica.Blocks.Types.Init"/>
+  </ScalarVariable>
+  <!-- Index of variable = "177" -->
+  <ScalarVariable
+    name="firstOrder1.initType"
+    valueReference="1"
+    description="Type of initialization (1: no init, 2: steady state, 3/4: initial output)"
+    variability="fixed"
+    causality="calculatedParameter"
+    >
+    <Enumeration declaredType="Modelica.Blocks.Types.Init"/>
+  </ScalarVariable>
+  <!-- Index of variable = "178" -->
+  <ScalarVariable
+    name="sCRXwInitAsInput.integrator.initType"
+    valueReference="2"
+    description="Type of initialization (1: no init, 2: steady state, 3,4: initial output)"
+    variability="fixed"
+    causality="calculatedParameter"
+    >
+    <Enumeration declaredType="Modelica.Blocks.Types.Init"/>
+  </ScalarVariable>
+  <!-- Index of variable = "179" -->
+  <ScalarVariable
+    name="sCRXwInitAsInput.integrator1.initType"
+    valueReference="3"
+    description="Type of initialization (1: no init, 2: steady state, 3,4: initial output)"
+    variability="fixed"
+    causality="calculatedParameter"
+    >
+    <Enumeration declaredType="Modelica.Blocks.Types.Init"/>
+  </ScalarVariable>
+  <!-- Index of variable = "180" -->
+  <ScalarVariable
+    name="sCRXwInitAsInput.limiter.homotopyType"
+    valueReference="4"
+    description="Simplified model for homotopy-based initialization"
+    variability="fixed"
+    causality="calculatedParameter"
+    >
+    <Enumeration declaredType="Modelica.Blocks.Types.LimiterHomotopy"/>
+  </ScalarVariable>
+  <!-- Index of variable = "181" -->
+  <ScalarVariable
+    name="gENROU.displayPF"
+    valueReference="2"
+    description="Display power flow:"
+    variability="fixed"
+    causality="parameter"
+    >
+    <Boolean start="false"/>
+  </ScalarVariable>
+  <!-- Index of variable = "182" -->
+  <ScalarVariable
+    name="gENROU.enableP_0"
+    valueReference="3"
+    description="Enable P_0 in parameter list"
+    variability="fixed"
+    causality="calculatedParameter"
+    >
+    <Boolean/>
+  </ScalarVariable>
+  <!-- Index of variable = "183" -->
+  <ScalarVariable
+    name="gENROU.enableQ_0"
+    valueReference="4"
+    description="Enable Q_0 in parameter list"
+    variability="fixed"
+    causality="calculatedParameter"
+    >
+    <Boolean/>
+  </ScalarVariable>
+  <!-- Index of variable = "184" -->
+  <ScalarVariable
+    name="gENROU.enableS_b"
+    valueReference="5"
+    description="Enable S_b in parameter list"
+    variability="fixed"
+    causality="calculatedParameter"
+    >
+    <Boolean/>
+  </ScalarVariable>
+  <!-- Index of variable = "185" -->
+  <ScalarVariable
+    name="gENROU.enableV_b"
+    valueReference="6"
+    description="Enable V_b in parameter list"
+    variability="fixed"
+    causality="calculatedParameter"
+    >
+    <Boolean/>
+  </ScalarVariable>
+  <!-- Index of variable = "186" -->
+  <ScalarVariable
+    name="gENROU.enableangle_0"
+    valueReference="7"
+    description="Enable angle_0 in parameter list"
+    variability="fixed"
+    causality="calculatedParameter"
+    >
+    <Boolean/>
+  </ScalarVariable>
+  <!-- Index of variable = "187" -->
+  <ScalarVariable
+    name="gENROU.enabledisplayPF"
+    valueReference="8"
+    description="Enable displayPF in parameter list"
+    variability="fixed"
+    causality="calculatedParameter"
+    >
+    <Boolean/>
+  </ScalarVariable>
+  <!-- Index of variable = "188" -->
+  <ScalarVariable
+    name="gENROU.enablefn"
+    valueReference="9"
+    description="Enable fn in parameter list"
+    variability="fixed"
+    causality="calculatedParameter"
+    >
+    <Boolean/>
+  </ScalarVariable>
+  <!-- Index of variable = "189" -->
+  <ScalarVariable
+    name="gENROU.enablev_0"
+    valueReference="10"
+    description="Enable v_0 in parameter list"
+    variability="fixed"
+    causality="calculatedParameter"
+    >
+    <Boolean/>
+  </ScalarVariable>
+  <!-- Index of variable = "190" -->
+  <ScalarVariable
+    name="sCRXwInitAsInput.C_SWITCH"
+    valueReference="11"
+    description="Feeding selection. False for bus fed, and True for solid fed"
+    variability="fixed"
+    causality="parameter"
+    >
+    <Boolean start="false"/>
+  </ScalarVariable>
+  <!-- Index of variable = "191" -->
+  <ScalarVariable
+    name="sCRXwInitAsInput.integrator.use_reset"
+    valueReference="12"
+    description="= true, if reset port enabled"
+    variability="fixed"
+    causality="calculatedParameter"
+    >
+    <Boolean/>
+  </ScalarVariable>
+  <!-- Index of variable = "192" -->
+  <ScalarVariable
+    name="sCRXwInitAsInput.integrator.use_set"
+    valueReference="13"
+    description="= true, if set port enabled and used as reinitialization value when reset"
+    variability="fixed"
+    causality="calculatedParameter"
+    >
+    <Boolean/>
+  </ScalarVariable>
+  <!-- Index of variable = "193" -->
+  <ScalarVariable
+    name="sCRXwInitAsInput.integrator1.use_reset"
+    valueReference="14"
+    description="= true, if reset port enabled"
+    variability="fixed"
+    causality="calculatedParameter"
+    >
+    <Boolean/>
+  </ScalarVariable>
+  <!-- Index of variable = "194" -->
+  <ScalarVariable
+    name="sCRXwInitAsInput.integrator1.use_set"
+    valueReference="15"
+    description="= true, if set port enabled and used as reinitialization value when reset"
+    variability="fixed"
+    causality="calculatedParameter"
+    >
+    <Boolean/>
+  </ScalarVariable>
+  <!-- Index of variable = "195" -->
+  <ScalarVariable
+    name="sCRXwInitAsInput.limiter.strict"
+    valueReference="16"
+    description="= true, if strict limits with noEvent(..)"
+    variability="fixed"
+    causality="calculatedParameter"
+    >
+    <Boolean/>
+  </ScalarVariable>
+  </ModelVariables>
+  <ModelStructure>
+    <Outputs>
+      <Unknown index="42" dependencies="1" dependenciesKind="dependent" />
+      <Unknown index="50" dependencies="2" dependenciesKind="dependent" />
+    </Outputs>
+    <Derivatives>
+      <Unknown index="11" dependencies="1 3 4 5 6 7 64 65" dependenciesKind="dependent dependent dependent dependent dependent dependent dependent dependent" />
+      <Unknown index="12" dependencies="2 3 4 5 6 7 64 65" dependenciesKind="dependent dependent dependent dependent dependent dependent dependent dependent" />
+      <Unknown index="13" dependencies="3 4 5 6 7 64 65" dependenciesKind="dependent dependent dependent dependent dependent dependent dependent" />
+      <Unknown index="14" dependencies="3 4 5 6 7 9 10 64 65" dependenciesKind="dependent dependent dependent dependent dependent dependent dependent dependent dependent" />
+      <Unknown index="15" dependencies="3 4 5 6 7 64 65" dependenciesKind="dependent dependent dependent dependent dependent dependent dependent" />
+      <Unknown index="16" dependencies="3 4 5 6 7 64 65" dependenciesKind="dependent dependent dependent dependent dependent dependent dependent" />
+      <Unknown index="17" dependencies="8" dependenciesKind="dependent" />
+      <Unknown index="18" dependencies="3 4 5 6 7 8 64 65" dependenciesKind="dependent dependent dependent dependent dependent dependent dependent dependent" />
+      <Unknown index="19" dependencies="9 10 64 65" dependenciesKind="dependent dependent dependent dependent" />
+      <Unknown index="20" dependencies="9" dependenciesKind="dependent" />
+    </Derivatives>
+    <InitialUnknowns>
+      <Unknown index="1" dependencies="64 65 68 69 82 83 84 86 87 88 89 91 92 93 94 95 96 97 98 99 101 109 128" dependenciesKind="dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent" />
+      <Unknown index="2" dependencies="64 65 71 72 82 83 84 86 87 88 89 91 92 93 94 95 96 97 98 99 101 109 128" dependenciesKind="dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent" />
+      <Unknown index="3" dependencies="64 65 82 83 84 86 87 88 89 91 92 93 94 95 96 97 98 99 101 109 128" dependenciesKind="dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent" />
+      <Unknown index="4" dependencies="64 65 82 83 84 86 87 88 89 91 92 93 94 95 96 97 98 99 101 109 128" dependenciesKind="dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent" />
+      <Unknown index="5" dependencies="64 65 82 83 84 86 87 88 89 91 92 93 94 95 96 97 98 99 101 109 128" dependenciesKind="dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent" />
+      <Unknown index="6" dependencies="64 65 82 83 84 86 87 88 89 91 92 93 94 95 96 97 98 99 101 109 128" dependenciesKind="dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent" />
+      <Unknown index="7" dependencies="82 83 84 91 92 94 98 99 101" dependenciesKind="dependent dependent dependent dependent dependent dependent dependent dependent dependent" />
+      <Unknown index="8" dependencies="102" dependenciesKind="dependent" />
+      <Unknown index="9" dependencies="128" dependenciesKind="dependent" />
+      <Unknown index="10" dependencies="64 65 82 83 84 91 92 93 94 98 99 101 109" dependenciesKind="dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent" />
+      <Unknown index="11" dependencies="" dependenciesKind="" />
+      <Unknown index="12" dependencies="" dependenciesKind="" />
+      <Unknown index="13" dependencies="" dependenciesKind="" />
+      <Unknown index="14" dependencies="" dependenciesKind="" />
+      <Unknown index="15" dependencies="" dependenciesKind="" />
+      <Unknown index="16" dependencies="" dependenciesKind="" />
+      <Unknown index="17" dependencies="102" dependenciesKind="dependent" />
+      <Unknown index="18" dependencies="64 65 74 76 82 83 84 86 87 88 89 91 92 93 94 95 96 97 98 99 101 102 109 128" dependenciesKind="dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent" />
+      <Unknown index="19" dependencies="64 65 82 83 84 91 92 93 94 98 99 101 109 117 118 127 128" dependenciesKind="dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent" />
+      <Unknown index="20" dependencies="128 129" dependenciesKind="dependent dependent" />
+      <Unknown index="42" dependencies="64 65 68 69 82 83 84 86 87 88 89 91 92 93 94 95 96 97 98 99 101 109 128" dependenciesKind="dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent" />
+      <Unknown index="50" dependencies="64 65 71 72 82 83 84 86 87 88 89 91 92 93 94 95 96 97 98 99 101 109 128" dependenciesKind="dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent" />
+      <Unknown index="75" dependencies="82 83 84 91 92 93 94 98 99 101" dependenciesKind="dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent" />
+      <Unknown index="78" dependencies="82 83 84 91 92 94 98 99 101" dependenciesKind="dependent dependent dependent dependent dependent dependent dependent dependent dependent" />
+      <Unknown index="79" dependencies="82 83 84 91 92 94 98 99 101" dependenciesKind="dependent dependent dependent dependent dependent dependent dependent dependent dependent" />
+      <Unknown index="85" dependencies="66" dependenciesKind="dependent" />
+      <Unknown index="100" dependencies="67" dependenciesKind="dependent" />
+      <Unknown index="103" dependencies="105" dependenciesKind="dependent" />
+      <Unknown index="104" dependencies="66" dependenciesKind="dependent" />
+      <Unknown index="106" dependencies="67" dependenciesKind="dependent" />
+      <Unknown index="113" dependencies="64 65 82 83 84 91 92 93 94 98 99 101 109" dependenciesKind="dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent" />
+      <Unknown index="114" dependencies="64 65 82 83 84 91 92 93 94 98 99 101 109" dependenciesKind="dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent" />
+      <Unknown index="115" dependencies="111 112" dependenciesKind="dependent dependent" />
+      <Unknown index="116" dependencies="111 112" dependenciesKind="dependent dependent" />
+      <Unknown index="119" dependencies="111 112" dependenciesKind="dependent dependent" />
+      <Unknown index="120" dependencies="110 112" dependenciesKind="dependent dependent" />
+      <Unknown index="121" dependencies="64 65 82 83 84 91 92 93 94 98 99 101 109" dependenciesKind="dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent" />
+      <Unknown index="122" dependencies="109" dependenciesKind="dependent" />
+      <Unknown index="123" dependencies="" dependenciesKind="" />
+      <Unknown index="124" dependencies="" dependenciesKind="" />
+      <Unknown index="125" dependencies="" dependenciesKind="" />
+      <Unknown index="126" dependencies="" dependenciesKind="" />
+      <Unknown index="130" dependencies="64 65 82 83 84 91 92 93 94 98 99 101 109" dependenciesKind="dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent dependent" />
+      <Unknown index="131" dependencies="107" dependenciesKind="dependent" />
+      <Unknown index="132" dependencies="108" dependenciesKind="dependent" />
+      <Unknown index="176" dependencies="" dependenciesKind="" />
+      <Unknown index="177" dependencies="" dependenciesKind="" />
+      <Unknown index="178" dependencies="" dependenciesKind="" />
+      <Unknown index="179" dependencies="" dependenciesKind="" />
+      <Unknown index="180" dependencies="" dependenciesKind="" />
+      <Unknown index="182" dependencies="" dependenciesKind="" />
+      <Unknown index="183" dependencies="" dependenciesKind="" />
+      <Unknown index="184" dependencies="" dependenciesKind="" />
+      <Unknown index="185" dependencies="" dependenciesKind="" />
+      <Unknown index="186" dependencies="" dependenciesKind="" />
+      <Unknown index="187" dependencies="" dependenciesKind="" />
+      <Unknown index="188" dependencies="" dependenciesKind="" />
+      <Unknown index="189" dependencies="" dependenciesKind="" />
+      <Unknown index="191" dependencies="" dependenciesKind="" />
+      <Unknown index="192" dependencies="" dependenciesKind="" />
+      <Unknown index="193" dependencies="" dependenciesKind="" />
+      <Unknown index="194" dependencies="" dependenciesKind="" />
+      <Unknown index="195" dependencies="" dependenciesKind="" />
+    </InitialUnknowns>
+  </ModelStructure>
+</fmiModelDescription>

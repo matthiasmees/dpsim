@@ -41,10 +41,15 @@ int main(int argc, char **argv) {
   if (argc < 2 || argc > 3)
     return 2;
   try {
-    const bool failure = argc == 3;
+    const bool reuse = argc == 3 && std::string(argv[2]) == "reuse";
+    const bool failure = argc == 3 && !reuse;
     std::vector<FMI::ScalarInput> inputs{{"u_c", 13}, {"u_a", 7}, {"u_b", -11}};
     auto model = std::make_shared<FMI::ModelExchange>(argv[1], inputs);
+    auto autoBranch = FMI::NonlinearSSN::importFMU("auto", argv[1]);
+    require(autoBranch->modelDescription().inputNames.size() == 3,
+            "automatic abc input mapping failed");
     FMI::NewtonSettings settings;
+    settings.maxJacobianReuseSteps = reuse ? 16 : 0;
     if (failure)
       settings.maxIterations = 1;
     auto branch = FMI::NonlinearSSN::make(
@@ -59,11 +64,15 @@ int main(int argc, char **argv) {
         settings);
     auto voltage = [](double t) -> Matrix {
       Matrix u(3, 1);
-      u << 7 + 80 * std::sin(314 * t), -11 + 60 * std::sin(517 * t),
-          13 - 40 * std::sin(231 * t);
+      u << 17 + 80 * std::sin(314 * t), -23 + 60 * std::sin(517 * t),
+          9 - 40 * std::sin(231 * t);
       return u;
     };
-    auto node = SimNode<Real>::make("bus", PhaseType::ABC);
+    const Matrix initialNetworkVoltage = voltage(0);
+    std::vector<Complex> initialNodeVoltage(3);
+    for (int phase = 0; phase < 3; ++phase)
+      initialNodeVoltage[phase] = initialNetworkVoltage(phase, 0);
+    auto node = SimNode<Real>::make("bus", PhaseType::ABC, initialNodeVoltage);
     auto source = VoltageBoundary3Ph::make("source", voltage);
     for (auto comp : {std::static_pointer_cast<SimPowerComp<Real>>(branch),
                       std::static_pointer_cast<SimPowerComp<Real>>(second),
@@ -83,6 +92,15 @@ int main(int argc, char **argv) {
     logger->logAttribute("output", branch->attribute("fmi.output.i_a"));
     simulation.addLogger(logger);
     simulation.start();
+    require(std::abs(branch->attributeTyped<Real>("fmi.input.u_a")->get() -
+                     initialNetworkVoltage(0, 0)) < 1e-12,
+            "FMU did not adopt the connected initial terminal voltage");
+    require(std::abs(branch->attributeTyped<Real>("fmi.input.u_b")->get() -
+                     initialNetworkVoltage(1, 0)) < 1e-12,
+            "FMU did not adopt the connected initial terminal voltage");
+    require(std::abs(branch->attributeTyped<Real>("fmi.input.u_c")->get() -
+                     initialNetworkVoltage(2, 0)) < 1e-12,
+            "FMU did not adopt the connected initial terminal voltage");
     Matrix expected = model->description().initialState;
     if (failure) {
       bool rejected = false;

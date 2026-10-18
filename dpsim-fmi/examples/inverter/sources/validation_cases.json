@@ -1,0 +1,30 @@
+{
+  "balanced_load": {
+    "step_load_R_ohm_abc": [
+      25000,
+      25000,
+      25000
+    ],
+    "load_step_time_s": 0.17
+  },
+  "unbalanced_load": {
+    "step_load_R_ohm_abc": [
+      25000,
+      12500,
+      50000
+    ],
+    "load_step_time_s": 0.17
+  },
+  "voltage_sag": {
+    "grid_event_time_s": 0.17,
+    "grid_sag_scale": 0.8
+  },
+  "phase_jump": {
+    "grid_event_time_s": 0.17,
+    "grid_phase_jump_rad": 0.17453292519943295
+  },
+  "frequency_change": {
+    "grid_event_time_s": 0.17,
+    "grid_frequency_change_Hz": -1.0
+  }
+}

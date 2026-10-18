@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MPL-2.0
 """Validate nonlinear SG runs against MATLAB and timestep/tolerance checks.
 
-Usage: python compare_nonlinear_sg.py outputs/fmi-nonlinear/sg
+Usage: python compare_nonlinear_sg.py dpsim-fmi/examples/synchronous_generator/results
 Requires numpy/pandas. Engineering bases come from MATLAB's saved configuration;
 no generator equations or fit parameters are used here.
 """

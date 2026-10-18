@@ -20,6 +20,12 @@ struct ModelExchangeOptions {
 };
 struct ModelDescription {
   std::string modelName;
+  std::string modelIdentifier, instantiationToken;
+  bool needsCompletedIntegratorStep = false;
+  bool canGetAndSetFMUState = false;
+  bool canSerializeFMUState = false;
+  bool canBeInstantiatedOnlyOncePerProcess = false;
+  bool hasEventIndicators = false;
   bool hasDiscreteVariables = false;
   std::vector<std::string> stateNames, inputNames, outputNames;
   CPS::Matrix initialState, initialInputs, stateNominals;
@@ -29,13 +35,19 @@ struct ModelDescription {
 /// continuous states and inputs; accepted-step/event methods commit history.
 /// Each instance must be owned by one component (no concurrent evaluations).
 class ModelExchange final {
-  class Impl;
-  std::unique_ptr<Impl> mImpl;
+public:
+  class Backend;
+
+private:
+  std::unique_ptr<Backend> mImpl;
 
 public:
   using Ptr = std::shared_ptr<ModelExchange>;
   ModelExchange(const std::string &path, const std::vector<ScalarInput> &inputs,
                 ModelExchangeOptions options = {});
+  /// Import every continuous scalar Float64 input using its declared start.
+  explicit ModelExchange(const std::string &path,
+                         ModelExchangeOptions options = {});
   ~ModelExchange();
   ModelExchange(const ModelExchange &) = delete;
   ModelExchange &operator=(const ModelExchange &) = delete;
@@ -49,6 +61,15 @@ public:
   const std::pair<CPS::Matrix, CPS::Matrix> &acceptedValues() const;
   /// Actual continuous state after the last accepted FMI event iteration.
   const CPS::Matrix &acceptedState() const;
+  /// Whether the exporter supplies rollback snapshots. Multirate integration
+  /// needs this to replay a macro step for each network Newton trial.
+  bool supportsRollback() const;
+  /// Save, repeatedly restore, and finally discard one accepted FMI point.
+  /// Checkpoints include discrete history, continuous state, time-event state,
+  /// and the importer's accepted-value caches.
+  void saveCheckpoint();
+  void restoreCheckpoint();
+  void discardCheckpoint();
   /// Select an accepted endpoint without querying provisional outputs.
   void prepareStep(const CPS::Matrix &state, const CPS::Matrix &inputs,
                    double time);

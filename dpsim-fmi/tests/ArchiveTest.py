@@ -25,7 +25,7 @@ cases = [
     ("missing_xml", {"other.txt": b"no metadata"}, "invalid modelDescription.xml"),
     (
         "version",
-        xml_variant(lambda root: root.set("fmiVersion", "2.0")),
+        xml_variant(lambda root: root.set("fmiVersion", "1.0")),
         "requires an FMI 3.0",
     ),
     (

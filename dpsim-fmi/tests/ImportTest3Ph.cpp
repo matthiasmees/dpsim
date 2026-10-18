@@ -61,19 +61,30 @@ int main(int argc, char **argv) {
             "input-dependent FMI initialization is incorrect");
     const auto waveform = [](Real t) -> Matrix {
       Matrix u(3, 1);
-      u << 7 + 200 * std::sin(314 * t), -11 + 83 * std::sin(517 * t),
-          13 - 137 * std::sin(231 * t);
+      u << 17 + 200 * std::sin(314 * t), -23 + 83 * std::sin(517 * t),
+          9 - 137 * std::sin(231 * t);
       return u;
     };
-    auto node = SimNode<Real>::make("terminal", PhaseType::ABC);
-    auto negative = floating ? SimNode<Real>::make("negative", PhaseType::ABC)
-                             : SimNode<Real>::GND;
     const auto offset = [](Real t) -> Matrix {
       Matrix u(3, 1);
       u << 17 + 5 * std::sin(100 * t), -23 + 11 * std::sin(70 * t),
           9 - 3 * std::sin(80 * t);
       return u;
     };
+    const Matrix nodeVoltage =
+        waveform(0) + (floating ? offset(0) : Matrix::Zero(3, 1));
+    std::vector<Complex> initialNodeVoltage(3);
+    std::vector<Complex> initialNegativeVoltage(3);
+    for (int phase = 0; phase < 3; ++phase) {
+      initialNodeVoltage[phase] = nodeVoltage(phase, 0);
+      initialNegativeVoltage[phase] =
+          floating ? offset(0)(phase, 0) : Complex(0, 0);
+    }
+    auto node =
+        SimNode<Real>::make("terminal", PhaseType::ABC, initialNodeVoltage);
+    auto negative = floating ? SimNode<Real>::make("negative", PhaseType::ABC,
+                                                   initialNegativeVoltage)
+                             : SimNode<Real>::GND;
     auto branch = FMI::LinearSSN::make("imported", model);
     branch->connect({negative, node});
     auto source = VoltageBoundary3Ph::make("boundary", [=](Real t) -> Matrix {

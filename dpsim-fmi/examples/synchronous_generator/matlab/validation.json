@@ -1,0 +1,20 @@
+{
+  "max_current_error_A": 0.0016247733952461374,
+  "max_bus_voltage_error_V": 0.05765879332872714,
+  "max_speed_error_pu": 4.376046414122925e-09,
+  "max_efd_error_pu": 1.2730753207179646e-07,
+  "max_current_sum_A": 1.1757705919990258e-11,
+  "max_voltage_sum_V": 3.5697667044587433e-11,
+  "speed_min_pu": 0.9982918075985516,
+  "speed_max_pu": 1.0007053377730408,
+  "predisturbance_speed_error_pu": 1.8200996265704816e-12,
+  "predisturbance_voltage_error_pu": 2.2868373861228974e-11,
+  "peak_speed_deviation_Hz": 0.08540962007241859,
+  "voltage_min_pu": 0.9886479686355293,
+  "voltage_max_pu": 1.019008302744581,
+  "final_voltage_pu": 1.019008302744581,
+  "final_pm_pu": 0.5402338948546385,
+  "max_avr_clipping_pu": 0,
+  "max_governor_clipping_pu": 0,
+  "max_energy_balance_residual_W": 1.4058088027013582e-11
+}

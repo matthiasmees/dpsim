@@ -20,7 +20,7 @@ endif()
 
 add_executable(FMI_ImportTest ImportTest.cpp)
 target_link_libraries(FMI_ImportTest PRIVATE dpsim-fmi)
-target_include_directories(FMI_ImportTest PRIVATE ../examples)
+target_include_directories(FMI_ImportTest PRIVATE ../examples/common)
 
 set(FIXTURES linear nonlinear affine timevarying event initerror singleton missingfunction)
 set(KIND 0)
@@ -28,6 +28,10 @@ set(KIND 0)
 foreach(FIXTURE IN LISTS FIXTURES)
 	set(STAGE "${CMAKE_CURRENT_BINARY_DIR}/stage/${FIXTURE}")
 	set(SINGLETON false)
+	set(EVENT_INDICATOR "")
+	if(FIXTURE STREQUAL "event")
+		set(EVENT_INDICATOR "<EventIndicator valueReference=\"4\"/>")
+	endif()
 
 	if(FIXTURE STREQUAL "singleton")
 		set(SINGLETON true)
@@ -72,6 +76,62 @@ add_test(NAME fmi_archive_validation COMMAND ${Python3_EXECUTABLE}
 	${CMAKE_CURRENT_BINARY_DIR}/linear.fmu
 )
 
+# FMI 2.0 Model Exchange compatibility fixture.  It intentionally exercises
+# the same scalar linear importer path as the FMI 3.0 fixture.
+set(FMI2_PLATFORM linux64)
+if(APPLE)
+	set(FMI2_PLATFORM darwin64)
+elseif(WIN32)
+	set(FMI2_PLATFORM win64)
+endif()
+set(STAGE "${CMAKE_CURRENT_BINARY_DIR}/stage/fmi2_linear")
+file(MAKE_DIRECTORY "${STAGE}")
+configure_file(modelDescription2.xml "${STAGE}/modelDescription.xml" COPYONLY)
+add_library(fmi_fixture_fmi2 MODULE TestModel2.cpp)
+target_include_directories(fmi_fixture_fmi2 PRIVATE ../third_party/fmi2)
+set_target_properties(fmi_fixture_fmi2 PROPERTIES
+	PREFIX ""
+	OUTPUT_NAME TestModel2
+	SUFFIX "${FMI_SUFFIX}"
+	LIBRARY_OUTPUT_DIRECTORY "${STAGE}/binaries/${FMI2_PLATFORM}"
+	RUNTIME_OUTPUT_DIRECTORY "${STAGE}/binaries/${FMI2_PLATFORM}"
+)
+set(FMU "${CMAKE_CURRENT_BINARY_DIR}/fmi2_linear.fmu")
+add_custom_command(OUTPUT "${FMU}"
+	COMMAND ${CMAKE_COMMAND} -E tar cf "${FMU}" --format=zip -- modelDescription.xml binaries
+	WORKING_DIRECTORY "${STAGE}"
+	DEPENDS fmi_fixture_fmi2 "${STAGE}/modelDescription.xml"
+)
+add_custom_target(fmi_package_fmi2_linear DEPENDS "${FMU}")
+add_dependencies(FMI_ImportTest fmi_package_fmi2_linear)
+add_test(NAME fmi_fmi2_linear COMMAND FMI_ImportTest "${FMU}" fmi2_linear)
+
+set(STAGE "${CMAKE_CURRENT_BINARY_DIR}/stage/fmi2_nonlinear_threephase")
+file(MAKE_DIRECTORY "${STAGE}")
+configure_file(modelDescription2ThreePh.xml "${STAGE}/modelDescription.xml" COPYONLY)
+add_library(fmi_fixture_fmi2_nonlinear_threephase MODULE TestModel2ThreePh.cpp)
+target_include_directories(fmi_fixture_fmi2_nonlinear_threephase PRIVATE ../third_party/fmi2)
+set_target_properties(fmi_fixture_fmi2_nonlinear_threephase PROPERTIES
+	PREFIX ""
+	OUTPUT_NAME TestModel2ThreePh
+	SUFFIX "${FMI_SUFFIX}"
+	LIBRARY_OUTPUT_DIRECTORY "${STAGE}/binaries/${FMI2_PLATFORM}"
+	RUNTIME_OUTPUT_DIRECTORY "${STAGE}/binaries/${FMI2_PLATFORM}"
+)
+set(FMU "${CMAKE_CURRENT_BINARY_DIR}/fmi2_nonlinear_threephase.fmu")
+add_custom_command(OUTPUT "${FMU}"
+	COMMAND ${CMAKE_COMMAND} -E tar cf "${FMU}" --format=zip -- modelDescription.xml binaries
+	WORKING_DIRECTORY "${STAGE}"
+	DEPENDS fmi_fixture_fmi2_nonlinear_threephase "${STAGE}/modelDescription.xml"
+)
+add_custom_target(fmi_package_fmi2_nonlinear_threephase DEPENDS "${FMU}")
+add_executable(FMI_NonlinearTest2 NonlinearTest.cpp)
+target_link_libraries(FMI_NonlinearTest2 PRIVATE dpsim-fmi)
+target_include_directories(FMI_NonlinearTest2 PRIVATE ../examples/common)
+add_dependencies(FMI_NonlinearTest2 fmi_package_fmi2_nonlinear_threephase)
+add_test(NAME fmi_fmi2_nonlinear_threephase
+	COMMAND FMI_NonlinearTest2 "${FMU}")
+
 set(STAGE "${CMAKE_CURRENT_BINARY_DIR}/stage/threephase")
 file(MAKE_DIRECTORY "${STAGE}")
 configure_file(modelDescription3Ph.xml "${STAGE}/modelDescription.xml" COPYONLY)
@@ -99,7 +159,7 @@ add_custom_target(fmi_package_threephase DEPENDS "${FMU}")
 
 add_executable(FMI_ImportTest3Ph ImportTest3Ph.cpp)
 target_link_libraries(FMI_ImportTest3Ph PRIVATE dpsim-fmi)
-target_include_directories(FMI_ImportTest3Ph PRIVATE ../examples)
+target_include_directories(FMI_ImportTest3Ph PRIVATE ../examples/common)
 add_dependencies(FMI_ImportTest3Ph fmi_package_threephase)
 
 add_test(NAME fmi_threephase COMMAND FMI_ImportTest3Ph "${FMU}")
@@ -133,10 +193,11 @@ add_custom_target(fmi_package_nonlinear_threephase DEPENDS "${FMU}")
 
 add_executable(FMI_NonlinearTest NonlinearTest.cpp)
 target_link_libraries(FMI_NonlinearTest PRIVATE dpsim-fmi)
-target_include_directories(FMI_NonlinearTest PRIVATE ../examples)
+target_include_directories(FMI_NonlinearTest PRIVATE ../examples/common)
 add_dependencies(FMI_NonlinearTest fmi_package_nonlinear_threephase)
 
 add_test(NAME fmi_nonlinear_threephase COMMAND FMI_NonlinearTest "${FMU}")
+add_test(NAME fmi_nonlinear_reuse_jacobian COMMAND FMI_NonlinearTest "${FMU}" reuse)
 add_test(NAME fmi_nonlinear_reject_unconverged COMMAND FMI_NonlinearTest "${FMU}" fail)
 
 # A completed-step event changes terminal current without reinitializing states.
@@ -172,7 +233,7 @@ add_custom_target(fmi_package_event_current DEPENDS "${FMU}")
 
 add_executable(FMI_EventCurrentTest EventCurrentTest.cpp)
 target_link_libraries(FMI_EventCurrentTest PRIVATE dpsim-fmi)
-target_include_directories(FMI_EventCurrentTest PRIVATE ../examples)
+target_include_directories(FMI_EventCurrentTest PRIVATE ../examples/common)
 add_dependencies(FMI_EventCurrentTest fmi_package_event_current)
 
 add_test(NAME fmi_reject_event_current_jump COMMAND FMI_EventCurrentTest "${FMU}")
@@ -206,7 +267,7 @@ add_custom_target(fmi_package_state_event DEPENDS "${FMU}")
 
 add_executable(FMI_StateEventTest StateEventTest.cpp)
 target_link_libraries(FMI_StateEventTest PRIVATE dpsim-fmi)
-target_include_directories(FMI_StateEventTest PRIVATE ../examples)
+target_include_directories(FMI_StateEventTest PRIVATE ../examples/common)
 add_dependencies(FMI_StateEventTest fmi_package_state_event)
 
 add_test(NAME fmi_state_event_reset COMMAND FMI_StateEventTest "${FMU}")
@@ -215,6 +276,21 @@ set(STAGE "${CMAKE_CURRENT_BINARY_DIR}/stage/sampled_threephase")
 file(MAKE_DIRECTORY "${STAGE}")
 
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/modelDescription3Ph.xml" SAMPLED_XML)
+
+string(REPLACE "name=\"u_a\" valueReference=\"0\" causality=\"input\" variability=\"continuous\" start=\"0\""
+	"name=\"u_a\" valueReference=\"0\" causality=\"input\" variability=\"continuous\" start=\"7\"" SAMPLED_XML "${SAMPLED_XML}")
+string(REPLACE "name=\"u_b\" valueReference=\"1\" causality=\"input\" variability=\"continuous\" start=\"0\""
+	"name=\"u_b\" valueReference=\"1\" causality=\"input\" variability=\"continuous\" start=\"-11\"" SAMPLED_XML "${SAMPLED_XML}")
+string(REPLACE "name=\"u_c\" valueReference=\"2\" causality=\"input\" variability=\"continuous\" start=\"0\""
+	"name=\"u_c\" valueReference=\"2\" causality=\"input\" variability=\"continuous\" start=\"13\"" SAMPLED_XML "${SAMPLED_XML}")
+
+string(
+	REPLACE
+		"<ModelExchange "
+		"<ModelExchange canGetAndSetFMUState=\"true\" "
+		SAMPLED_XML
+		"${SAMPLED_XML}"
+)
 
 string(
 	REPLACE
@@ -228,7 +304,7 @@ file(WRITE "${STAGE}/modelDescription.xml" "${SAMPLED_XML}")
 
 add_library(fmi_fixture_sampled_threephase MODULE TestModel3Ph.cpp)
 target_include_directories(fmi_fixture_sampled_threephase PRIVATE ../third_party/fmi3)
-target_compile_definitions(fmi_fixture_sampled_threephase PRIVATE FIXTURE_NONLINEAR=1 FIXTURE_SAMPLED=1)
+target_compile_definitions(fmi_fixture_sampled_threephase PRIVATE FIXTURE_NONLINEAR=1 FIXTURE_SAMPLED=1 FIXTURE_SNAPSHOTS=1)
 
 set_target_properties(fmi_fixture_sampled_threephase PROPERTIES
 	PREFIX ""
@@ -250,12 +326,42 @@ add_custom_target(fmi_package_sampled_threephase DEPENDS "${FMU}")
 
 add_executable(FMI_SampledTest SampledTest.cpp)
 target_link_libraries(FMI_SampledTest PRIVATE dpsim-fmi)
-target_include_directories(FMI_SampledTest PRIVATE ../examples)
+target_include_directories(FMI_SampledTest PRIVATE ../examples/common)
 add_dependencies(FMI_SampledTest fmi_package_sampled_threephase)
 
 add_test(NAME fmi_sampled_threephase COMMAND FMI_SampledTest "${FMU}")
-add_test(NAME fmi_reject_misaligned_tick COMMAND FMI_SampledTest "${FMU}" misaligned)
+add_test(NAME fmi_sampled_reuse_jacobian COMMAND FMI_SampledTest "${FMU}" reuse)
+add_test(NAME fmi_multirate_sampled_tick COMMAND FMI_SampledTest "${FMU}" multirate)
 add_test(NAME fmi_reject_sampled_lti COMMAND FMI_ImportTest3Ph "${FMU}" reject_sampled)
+
+# The same sampled model without FMI rollback must fail before a crossed event
+# is probed or committed.
+set(STAGE "${CMAKE_CURRENT_BINARY_DIR}/stage/sampled_no_rollback")
+file(MAKE_DIRECTORY "${STAGE}")
+string(REPLACE " canGetAndSetFMUState=\"true\"" ""
+	SAMPLED_NO_ROLLBACK_XML "${SAMPLED_XML}")
+file(WRITE "${STAGE}/modelDescription.xml" "${SAMPLED_NO_ROLLBACK_XML}")
+
+add_library(fmi_fixture_sampled_no_rollback MODULE TestModel3Ph.cpp)
+target_include_directories(fmi_fixture_sampled_no_rollback PRIVATE ../third_party/fmi3)
+target_compile_definitions(fmi_fixture_sampled_no_rollback PRIVATE FIXTURE_NONLINEAR=1 FIXTURE_SAMPLED=1)
+set_target_properties(fmi_fixture_sampled_no_rollback PROPERTIES
+	PREFIX "" OUTPUT_NAME TestModel3Ph SUFFIX "${FMI_SUFFIX}"
+	LIBRARY_OUTPUT_DIRECTORY "${STAGE}/binaries/${FMI_PLATFORM}"
+	RUNTIME_OUTPUT_DIRECTORY "${STAGE}/binaries/${FMI_PLATFORM}"
+)
+set(NO_ROLLBACK_FMU "${CMAKE_CURRENT_BINARY_DIR}/sampled_no_rollback.fmu")
+add_custom_command(OUTPUT "${NO_ROLLBACK_FMU}"
+	COMMAND ${CMAKE_COMMAND} -E tar cf "${NO_ROLLBACK_FMU}" --format=zip -- modelDescription.xml binaries
+	WORKING_DIRECTORY "${STAGE}"
+	DEPENDS fmi_fixture_sampled_no_rollback "${STAGE}/modelDescription.xml"
+)
+add_custom_target(fmi_package_sampled_no_rollback DEPENDS "${NO_ROLLBACK_FMU}")
+add_dependencies(FMI_SampledTest fmi_package_sampled_no_rollback)
+add_test(NAME fmi_multirate_requires_rollback
+	COMMAND FMI_SampledTest "${NO_ROLLBACK_FMU}" no_rollback)
+add_test(NAME fmi_multirate_single_pass
+	COMMAND FMI_SampledTest "${NO_ROLLBACK_FMU}" single_pass)
 
 # Additional runtime lifecycle regressions share the same nonlinear equations.
 function(add_fmi_lifecycle_fixture name)

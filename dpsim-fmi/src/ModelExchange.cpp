@@ -1,17 +1,21 @@
 // SPDX-License-Identifier: MPL-2.0
 #include <dpsim-fmi/ModelExchange.h>
+#include <fmi2FunctionTypes.h>
 #include <fmi3FunctionTypes.h>
 #include <libxml/parser.h>
 #include <miniz.h>
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <filesystem>
+#include <iomanip>
 #include <limits>
 #include <map>
 #include <mutex>
 #include <random>
 #include <set>
+#include <sstream>
 #include <stdexcept>
 #ifdef _WIN32
 #include <windows.h>
@@ -133,14 +137,32 @@ fmi3ValueReference reference(const std::string &text) {
 }
 
 struct Variable {
-  std::string name, type, causality, derivative, variability;
+  std::string name, type, causality, derivative, variability, start;
   fmi3ValueReference ref;
   bool scalar;
 };
 
 } // namespace
 
-class ModelExchange::Impl {
+class ModelExchange::Backend {
+public:
+  ModelDescription model;
+  virtual ~Backend() = default;
+  virtual std::pair<Matrix, Matrix> evaluate(const Matrix &, const Matrix &,
+                                             double) = 0;
+  virtual double nextTimeEvent() const = 0;
+  virtual const std::pair<Matrix, Matrix> &acceptedValues() const = 0;
+  virtual const Matrix &acceptedState() const = 0;
+  virtual bool supportsRollback() const = 0;
+  virtual void saveCheckpoint() = 0;
+  virtual void restoreCheckpoint() = 0;
+  virtual void discardCheckpoint() = 0;
+  virtual void prepareStep(const Matrix &, const Matrix &, double) = 0;
+  virtual void completeStep(const Matrix *eventInputs = nullptr) = 0;
+  virtual void inputEvent(const Matrix &, const Matrix &, double) = 0;
+};
+
+class Fmi3Backend final : public ModelExchange::Backend {
   Archive mArchive;
 #ifdef _WIN32
   HMODULE mLibrary = nullptr;
@@ -162,6 +184,18 @@ class ModelExchange::Impl {
   std::vector<fmi3ValueReference> mInputs;
   std::vector<fmi3ValueReference> mOutputs;
   std::size_t mEventIndicatorMetadata = 0;
+  struct Checkpoint {
+    fmi3FMUState runtime = nullptr;
+    bool continuous = false;
+    bool useTrialSnapshots = false;
+    double time = 0;
+    double acceptedTime = 0;
+    double nextTimeEvent = std::numeric_limits<double>::infinity();
+    Matrix lastState, lastInputs, acceptedState, acceptedInputs;
+    Matrix acceptedIndicators, stateNominals;
+    std::pair<Matrix, Matrix> acceptedValues;
+  };
+  std::unique_ptr<Checkpoint> mCheckpoint;
 
 #define FMI_FUNCTION(name) fmi3##name##TYPE *name = nullptr
   FMI_FUNCTION(InstantiateModelExchange);
@@ -209,13 +243,17 @@ class ModelExchange::Impl {
   static void log(fmi3InstanceEnvironment environment, fmi3Status, fmi3String,
                   fmi3String message) noexcept {
     try {
-      static_cast<Impl *>(environment)->mLastMessage = message ? message : "";
+      static_cast<Fmi3Backend *>(environment)->mLastMessage =
+          message ? message : "";
     } catch (...) {
       // Never allow a C++ exception across the FMI C callback boundary.
     }
   }
   void close() noexcept {
     if (mInstance) {
+      if (mCheckpoint && mCheckpoint->runtime && FreeFMUState)
+        FreeFMUState(mInstance, &mCheckpoint->runtime);
+      mCheckpoint.reset();
       if (mContinuous && mValid && Terminate)
         Terminate(mInstance);
       if (FreeInstance)
@@ -251,9 +289,9 @@ class ModelExchange::Impl {
   }
 
 public:
-  ModelDescription model;
-  Impl(const std::string &path, const std::vector<ScalarInput> &configuration,
-       ModelExchangeOptions options)
+  Fmi3Backend(const std::string &path,
+              const std::vector<ScalarInput> &configuration,
+              ModelExchangeOptions options)
       : mOptions(options) {
     try {
       initialize(path, configuration);
@@ -262,12 +300,13 @@ public:
       throw;
     }
   }
-  ~Impl() { close(); }
-  Impl(const Impl &) = delete;
-  Impl &operator=(const Impl &) = delete;
+  ~Fmi3Backend() override { close(); }
+  Fmi3Backend(const Fmi3Backend &) = delete;
+  Fmi3Backend &operator=(const Fmi3Backend &) = delete;
 
   void initialize(const std::string &path,
                   const std::vector<ScalarInput> &configuration) {
+    const bool automaticInputs = configuration.empty();
     const auto channels = configuration.size();
     if (channels > 64)
       fail("input count exceeds maximum 64");
@@ -284,6 +323,7 @@ public:
       fail("initial inputs must be finite");
     mInputs.resize(channels);
     std::vector<bool> foundInputs(channels, false);
+    std::vector<double> discoveredInputStarts;
     mArchive.extract(path);
     const auto xmlPath = mArchive.directory / "modelDescription.xml";
     std::unique_ptr<xmlDoc, decltype(&xmlFreeDoc)> document(
@@ -297,6 +337,11 @@ public:
       fail("requires an FMI 3.0 model description");
     auto me = child(root, "ModelExchange");
     mNeedsCompletedIntegratorStep = flag(me, "needsCompletedIntegratorStep");
+    model.needsCompletedIntegratorStep = mNeedsCompletedIntegratorStep;
+    model.canGetAndSetFMUState = flag(me, "canGetAndSetFMUState");
+    model.canSerializeFMUState = flag(me, "canSerializeFMUState");
+    model.canBeInstantiatedOnlyOncePerProcess =
+        flag(me, "canBeInstantiatedOnlyOncePerProcess");
     if (flag(me, "needsExecutionTool"))
       fail("FMUs requiring an external execution tool are unsupported");
     const auto identifier = property(me, "modelIdentifier");
@@ -308,6 +353,8 @@ public:
         token.empty())
       fail("invalid modelIdentifier or instantiationToken");
     model.modelName = property(root, "modelName");
+    model.modelIdentifier = identifier;
+    model.instantiationToken = token;
     if (model.modelName.empty())
       fail("modelName is missing");
     std::map<fmi3ValueReference, Variable> variables;
@@ -321,14 +368,18 @@ public:
                         property(v, "causality", "local"),
                         property(v, "derivative"),
                         property(v, "variability", "continuous"),
+                        property(v, "start", "0"),
                         reference(property(v, "valueReference")),
                         true};
       for (auto dimension = v->children; dimension; dimension = dimension->next)
         if (tag(dimension, "Dimension"))
           variable.scalar = false;
-      if (!names.insert(variable.name).second ||
-          !variables.emplace(variable.ref, variable).second)
-        fail("duplicate variable name or value reference");
+      if (!names.insert(variable.name).second)
+        fail("duplicate FMI variable name");
+      // FMI permits aliases: several variables may intentionally share one
+      // value reference. Keep the first descriptor for derivative metadata;
+      // names and the input/output reference lists retain every variable.
+      variables.emplace(variable.ref, variable);
       if (variable.type == "Clock")
         fail("clocked models are unsupported");
       if (variable.variability == "discrete")
@@ -342,6 +393,16 @@ public:
             variable.variability != "continuous")
           fail("requires continuous scalar Float64 inputs and outputs");
         if (variable.causality == "input") {
+          if (automaticInputs) {
+            std::size_t consumed = 0;
+            const double start = std::stod(variable.start, &consumed);
+            if (consumed != variable.start.size() || !std::isfinite(start))
+              fail("invalid Float64 input start for " + variable.name);
+            model.inputNames.push_back(variable.name);
+            mInputs.push_back(variable.ref);
+            discoveredInputStarts.push_back(start);
+            continue;
+          }
           const auto found = std::find(model.inputNames.begin(),
                                        model.inputNames.end(), variable.name);
           if (found == model.inputNames.end())
@@ -360,10 +421,18 @@ public:
     if (std::find(foundInputs.begin(), foundInputs.end(), false) !=
         foundInputs.end())
       fail("mapped input does not exist");
+    if (automaticInputs) {
+      if (discoveredInputStarts.size() > 64)
+        fail("input count exceeds maximum 64");
+      model.initialInputs.resize(discoveredInputStarts.size(), 1);
+      for (std::size_t index = 0; index < discoveredInputStarts.size(); ++index)
+        model.initialInputs(index, 0) = discoveredInputStarts[index];
+    }
     auto structure = child(root, "ModelStructure");
     for (auto entry = structure->children; entry; entry = entry->next) {
       if (tag(entry, "EventIndicator")) {
         ++mEventIndicatorMetadata;
+        model.hasEventIndicators = true;
         if (!mOptions.endpointStateEvents)
           fail("state events are unsupported unless endpoint handling is "
                "explicitly enabled");
@@ -470,8 +539,10 @@ public:
     check(ExitInitializationMode(mInstance), "exit initialization mode");
     bool settled = false;
     for (int iteration = 0; iteration < 100; ++iteration) {
-      fmi3Boolean again, terminate, nominalsChanged, statesChanged, timeEvent;
-      double nextTime;
+      fmi3Boolean again = fmi3False, terminate = fmi3False;
+      fmi3Boolean nominalsChanged = fmi3False, statesChanged = fmi3False;
+      fmi3Boolean timeEvent = fmi3False;
+      double nextTime = std::numeric_limits<double>::infinity();
       check(UpdateDiscreteStates(mInstance, &again, &terminate,
                                  &nominalsChanged, &statesChanged, &timeEvent,
                                  &nextTime),
@@ -570,13 +641,64 @@ public:
     mAcceptedValues = readValues();
     mAcceptedIndicators = indicators ? *indicators : readEventIndicators();
   }
-  const std::pair<Matrix, Matrix> &acceptedValues() const {
+  const std::pair<Matrix, Matrix> &acceptedValues() const override {
     return mAcceptedValues;
   }
-  const Matrix &acceptedState() const { return mAcceptedState; }
+  const Matrix &acceptedState() const override { return mAcceptedState; }
+  bool supportsRollback() const override {
+    return GetFMUState && SetFMUState && FreeFMUState;
+  }
+  void saveCheckpoint() override {
+    if (!supportsRollback())
+      fail("multirate integration requires canGetAndSetFMUState");
+    if (mCheckpoint)
+      fail("an FMI checkpoint is already active");
+    auto checkpoint = std::make_unique<Checkpoint>();
+    check(GetFMUState(mInstance, &checkpoint->runtime),
+          "save multirate checkpoint");
+    checkpoint->continuous = mContinuous;
+    checkpoint->useTrialSnapshots = mUseTrialSnapshots;
+    checkpoint->time = mTime;
+    checkpoint->acceptedTime = mAcceptedTime;
+    checkpoint->nextTimeEvent = mNextTimeEvent;
+    checkpoint->lastState = mLastState;
+    checkpoint->lastInputs = mLastInputs;
+    checkpoint->acceptedState = mAcceptedState;
+    checkpoint->acceptedInputs = mAcceptedInputs;
+    checkpoint->acceptedIndicators = mAcceptedIndicators;
+    checkpoint->stateNominals = model.stateNominals;
+    checkpoint->acceptedValues = mAcceptedValues;
+    mCheckpoint = std::move(checkpoint);
+  }
+  void restoreCheckpoint() override {
+    if (!mCheckpoint || !mCheckpoint->runtime)
+      fail("no active FMI checkpoint to restore");
+    check(SetFMUState(mInstance, mCheckpoint->runtime),
+          "restore multirate checkpoint");
+    mContinuous = mCheckpoint->continuous;
+    mUseTrialSnapshots = mCheckpoint->useTrialSnapshots;
+    mTime = mCheckpoint->time;
+    mAcceptedTime = mCheckpoint->acceptedTime;
+    mNextTimeEvent = mCheckpoint->nextTimeEvent;
+    mLastState = mCheckpoint->lastState;
+    mLastInputs = mCheckpoint->lastInputs;
+    mAcceptedState = mCheckpoint->acceptedState;
+    mAcceptedInputs = mCheckpoint->acceptedInputs;
+    mAcceptedIndicators = mCheckpoint->acceptedIndicators;
+    model.stateNominals = mCheckpoint->stateNominals;
+    mAcceptedValues = mCheckpoint->acceptedValues;
+  }
+  void discardCheckpoint() override {
+    if (!mCheckpoint)
+      return;
+    if (mCheckpoint->runtime)
+      check(FreeFMUState(mInstance, &mCheckpoint->runtime),
+            "free multirate checkpoint");
+    mCheckpoint.reset();
+  }
 
   std::pair<Matrix, Matrix> evaluate(const Matrix &state, const Matrix &voltage,
-                                     double time = 0) {
+                                     double time = 0) override {
     prepareStep(state, voltage, time);
     if (std::abs(mTime - mAcceptedTime) <= 1e-12 && state == mAcceptedState &&
         voltage == mAcceptedInputs)
@@ -603,7 +725,8 @@ public:
       throw;
     }
   }
-  void prepareStep(const Matrix &state, const Matrix &voltage, double time) {
+  void prepareStep(const Matrix &state, const Matrix &voltage,
+                   double time) override {
     if (state.rows() != model.initialState.rows() || state.cols() != 1 ||
         voltage.rows() != model.initialInputs.rows() || voltage.cols() != 1 ||
         !state.allFinite() || !voltage.allFinite() || !std::isfinite(time))
@@ -617,13 +740,28 @@ public:
     mLastInputs = voltage;
   }
   void updateNextTimeEvent(bool defined, double next) {
-    if (defined && (!std::isfinite(next) || next <= mTime))
-      fail("FMI next time event must advance time");
+    // A few exported FMUs use the defined flag together with +inf to mean
+    // that no further scheduled event exists. Treat that combination like an
+    // undefined event, while retaining strict validation for NaN and stale
+    // finite event times.
+    if (defined && std::isinf(next) && next > 0) {
+      mNextTimeEvent = std::numeric_limits<double>::infinity();
+      if (GetFMUState && model.hasDiscreteVariables)
+        mUseTrialSnapshots = true;
+      return;
+    }
+    if (defined && (!std::isfinite(next) || next <= mTime)) {
+      std::ostringstream message;
+      message << std::setprecision(17)
+              << "FMI next time event must advance time (current=" << mTime
+              << ", next=" << next << ")";
+      fail(message.str());
+    }
     mNextTimeEvent = defined ? next : std::numeric_limits<double>::infinity();
     if (GetFMUState && (defined || model.hasDiscreteVariables))
       mUseTrialSnapshots = true;
   }
-  double nextTimeEvent() const { return mNextTimeEvent; }
+  double nextTimeEvent() const override { return mNextTimeEvent; }
   void settleEvent(const char *operation, const Matrix *eventInputs = nullptr) {
     if (!EnterEventMode)
       fail("missing function: fmi3EnterEventMode required for events");
@@ -643,8 +781,10 @@ public:
     }
     bool settled = false;
     for (int k = 0; k < 100; ++k) {
-      fmi3Boolean again, terminate, nominals, values, timeEvent;
-      double next;
+      fmi3Boolean again = fmi3False, terminate = fmi3False;
+      fmi3Boolean nominals = fmi3False, values = fmi3False;
+      fmi3Boolean timeEvent = fmi3False;
+      double next = std::numeric_limits<double>::infinity();
       check(UpdateDiscreteStates(mInstance, &again, &terminate, &nominals,
                                  &values, &timeEvent, &next),
             operation);
@@ -681,7 +821,7 @@ public:
       mLastState = after;
     }
   }
-  void completeStep(const Matrix *eventInputs = nullptr) {
+  void completeStep(const Matrix *eventInputs = nullptr) override {
     // Apply the accepted point without evaluating provisional outputs first.
     applyPoint(mLastState, mLastInputs, mTime);
     fmi3Boolean event = fmi3False, terminate = fmi3False;
@@ -709,7 +849,8 @@ public:
     else
       cacheAccepted(&endpointIndicators);
   }
-  void inputEvent(const Matrix &state, const Matrix &inputs, double time) {
+  void inputEvent(const Matrix &state, const Matrix &inputs,
+                  double time) override {
     prepareStep(state, inputs, time);
     applyPoint(mLastState, mLastInputs, mTime);
     settleEvent("external input event");
@@ -717,10 +858,582 @@ public:
   }
 };
 
+class Fmi2Backend final : public ModelExchange::Backend {
+  Archive mArchive;
+#ifdef _WIN32
+  HMODULE mLibrary = nullptr;
+#else
+  void *mLibrary = nullptr;
+#endif
+  fmi2Component mInstance = nullptr;
+  bool mContinuous = false;
+  bool mValid = true;
+  bool mCanGetAndSetFMUState = false;
+  bool mUseTrialSnapshots = false;
+  ModelExchangeOptions mOptions;
+  double mTime = 0, mAcceptedTime = 0;
+  Matrix mLastState, mLastInputs, mAcceptedState, mAcceptedInputs;
+  Matrix mAcceptedIndicators;
+  std::pair<Matrix, Matrix> mAcceptedValues;
+  double mNextTimeEvent = std::numeric_limits<double>::infinity();
+  std::string mLastMessage;
+  std::vector<fmi2ValueReference> mInputs, mOutputs;
+  std::size_t mEventIndicatorMetadata = 0;
+  std::unique_ptr<fmi2FMUstate> mCheckpoint;
+
+#define FMI2_FUNCTION(name) fmi2##name##TYPE *name = nullptr
+  FMI2_FUNCTION(Instantiate);
+  FMI2_FUNCTION(GetVersion);
+  FMI2_FUNCTION(FreeInstance);
+  FMI2_FUNCTION(Terminate);
+  FMI2_FUNCTION(SetupExperiment);
+  FMI2_FUNCTION(EnterInitializationMode);
+  FMI2_FUNCTION(ExitInitializationMode);
+  FMI2_FUNCTION(EnterEventMode);
+  FMI2_FUNCTION(NewDiscreteStates);
+  FMI2_FUNCTION(EnterContinuousTimeMode);
+  FMI2_FUNCTION(SetTime);
+  FMI2_FUNCTION(SetReal);
+  FMI2_FUNCTION(GetReal);
+  FMI2_FUNCTION(GetContinuousStates);
+  FMI2_FUNCTION(SetContinuousStates);
+  FMI2_FUNCTION(GetDerivatives);
+  FMI2_FUNCTION(GetNumberOfContinuousStates);
+  FMI2_FUNCTION(GetNumberOfEventIndicators);
+  FMI2_FUNCTION(GetEventIndicators);
+  FMI2_FUNCTION(CompletedIntegratorStep);
+  FMI2_FUNCTION(GetNominalsOfContinuousStates);
+  FMI2_FUNCTION(GetFMUstate);
+  FMI2_FUNCTION(SetFMUstate);
+  FMI2_FUNCTION(FreeFMUstate);
+#undef FMI2_FUNCTION
+
+  template <class T> T symbol(const char *name, bool required = true) {
+#ifdef _WIN32
+    auto address = GetProcAddress(mLibrary, name);
+#else
+    auto address = dlsym(mLibrary, name);
+#endif
+    if (!address && required)
+      fail(std::string("missing function: ") + name);
+    return reinterpret_cast<T>(address);
+  }
+  void check(fmi2Status status, const char *operation) {
+    if (status > fmi2Warning) {
+      mValid = false;
+      fail(std::string(operation) + " failed (status " +
+           std::to_string(status) + "): " + mLastMessage);
+    }
+  }
+  static void log(fmi2ComponentEnvironment environment, fmi2String, fmi2Status,
+                  fmi2String, fmi2String message, ...) noexcept {
+    try {
+      static_cast<Fmi2Backend *>(environment)->mLastMessage =
+          message ? message : "";
+    } catch (...) {
+    }
+  }
+  static void *allocate(size_t n, size_t size) { return std::calloc(n, size); }
+  static void release(void *pointer) { std::free(pointer); }
+  void close() noexcept {
+    if (mInstance) {
+      if (mCheckpoint && *mCheckpoint && FreeFMUstate)
+        FreeFMUstate(mInstance, mCheckpoint.get());
+      mCheckpoint.reset();
+      if (mContinuous && mValid && Terminate)
+        Terminate(mInstance);
+      if (FreeInstance)
+        FreeInstance(mInstance);
+      mInstance = nullptr;
+    }
+    if (mLibrary) {
+#ifdef _WIN32
+      FreeLibrary(mLibrary);
+#else
+      dlclose(mLibrary);
+#endif
+      mLibrary = nullptr;
+    }
+  }
+  static std::string binaryDirectory() {
+#ifdef __APPLE__
+    return "darwin64";
+#elif defined(_WIN32)
+    return "win64";
+#elif defined(__linux__)
+    return "linux64";
+#else
+    fail("unsupported host operating system");
+#endif
+  }
+  struct Variable {
+    std::string name, causality, variability, start;
+    fmi2ValueReference ref = 0;
+    bool real = false;
+  };
+  static fmi2ValueReference reference(const std::string &text) {
+    std::size_t consumed = 0;
+    auto value = std::stoul(text, &consumed);
+    if (consumed != text.size())
+      fail("invalid FMI 2.0 value reference: " + text);
+    return static_cast<fmi2ValueReference>(value);
+  }
+  std::pair<Matrix, Matrix> readValues() {
+    Matrix derivatives(model.initialState.rows(), 1),
+        outputs(mOutputs.size(), 1);
+    check(GetReal(mInstance, mOutputs.data(), mOutputs.size(), outputs.data()),
+          "evaluate outputs");
+    if (derivatives.rows())
+      check(GetDerivatives(mInstance, derivatives.data(), derivatives.rows()),
+            "evaluate derivatives");
+    if (!derivatives.allFinite() || !outputs.allFinite())
+      fail("non-finite derivatives or outputs during model recovery");
+    return {derivatives, outputs};
+  }
+  Matrix readEventIndicators() {
+    Matrix indicators(mEventIndicatorMetadata, 1);
+    if (indicators.rows())
+      check(GetEventIndicators(mInstance, indicators.data(), indicators.rows()),
+            "evaluate event indicators");
+    return indicators;
+  }
+  void applyPoint(const Matrix &state, const Matrix &inputs, double time) {
+    check(SetTime(mInstance, time), "set evaluation time");
+    if (state.rows())
+      check(SetContinuousStates(mInstance, state.data(), state.rows()),
+            "set trial states");
+    if (mInputs.size())
+      check(SetReal(mInstance, mInputs.data(), mInputs.size(), inputs.data()),
+            "set trial inputs");
+  }
+  static bool crossed(const Matrix &before, const Matrix &after) {
+    for (Eigen::Index k = 0; k < before.rows(); ++k)
+      if ((before(k, 0) > 0) != (after(k, 0) > 0))
+        return true;
+    return false;
+  }
+  void updateEventInfo(const fmi2EventInfo &info) {
+    if (info.nextEventTimeDefined) {
+      if (!std::isfinite(info.nextEventTime) || info.nextEventTime <= mTime)
+        fail("FMI 2.0 next event time must advance time");
+      mNextTimeEvent = info.nextEventTime;
+    } else {
+      mNextTimeEvent = std::numeric_limits<double>::infinity();
+    }
+  }
+  void cacheAccepted(const Matrix *indicators = nullptr) {
+    mAcceptedTime = mTime;
+    mAcceptedState = mLastState;
+    mAcceptedInputs = mLastInputs;
+    mAcceptedValues = readValues();
+    mAcceptedIndicators = indicators ? *indicators : readEventIndicators();
+  }
+  void settleEvent(const Matrix *eventInputs = nullptr) {
+    if (!EnterEventMode || !NewDiscreteStates || !EnterContinuousTimeMode)
+      fail("FMI 2.0 event functions are unavailable");
+    Matrix before = mLastState;
+    check(EnterEventMode(mInstance), "enter FMI 2.0 event mode");
+    mContinuous = false;
+    if (eventInputs)
+      check(SetReal(mInstance, mInputs.data(), mInputs.size(),
+                    eventInputs->data()),
+            "apply event inputs");
+    fmi2EventInfo info{};
+    bool settled = false;
+    for (int k = 0; k < 100; ++k) {
+      check(NewDiscreteStates(mInstance, &info), "FMI 2.0 event iteration");
+      if (info.terminateSimulation)
+        fail("initialization/event requested termination");
+      if (!info.newDiscreteStatesNeeded) {
+        updateEventInfo(info);
+        settled = true;
+        break;
+      }
+    }
+    if (!settled)
+      fail("FMI 2.0 event iteration did not converge");
+    check(EnterContinuousTimeMode(mInstance), "leave FMI 2.0 event mode");
+    mContinuous = true;
+    if (before.rows()) {
+      Matrix after(before.rows(), 1);
+      check(GetContinuousStates(mInstance, after.data(), after.rows()),
+            "get post-event states");
+      if ((after - before).cwiseAbs().maxCoeff() >
+              1e-12 * (1 + before.cwiseAbs().maxCoeff()) &&
+          !mOptions.allowContinuousStateResets)
+        fail("FMI 2.0 event requested unsupported state reinitialization");
+      mLastState = after;
+    }
+  }
+
+public:
+  Fmi2Backend(const std::string &path,
+              const std::vector<ScalarInput> &configuration,
+              ModelExchangeOptions options)
+      : mOptions(options) {
+    try {
+      initialize(path, configuration);
+    } catch (...) {
+      close();
+      throw;
+    }
+  }
+  ~Fmi2Backend() override { close(); }
+  void initialize(const std::string &path,
+                  const std::vector<ScalarInput> &configuration) {
+    const bool automaticInputs = configuration.empty();
+    if (configuration.size() > 64)
+      fail("input count exceeds maximum 64");
+    if (!automaticInputs) {
+      model.initialInputs = Matrix::Zero(configuration.size(), 1);
+      for (std::size_t k = 0; k < configuration.size(); ++k) {
+        if (configuration[k].name.empty() ||
+            !std::isfinite(configuration[k].initialValue))
+          fail("invalid FMI 2.0 input mapping");
+        model.inputNames.push_back(configuration[k].name);
+        model.initialInputs(k, 0) = configuration[k].initialValue;
+      }
+    }
+    mArchive.extract(path);
+    const auto xmlPath = mArchive.directory / "modelDescription.xml";
+    std::unique_ptr<xmlDoc, decltype(&xmlFreeDoc)> document(
+        xmlReadFile(xmlPath.string().c_str(), nullptr, XML_PARSE_NONET),
+        &xmlFreeDoc);
+    if (!document || document->intSubset || document->extSubset)
+      fail("invalid modelDescription.xml (DTDs are unsupported)");
+    auto root = xmlDocGetRootElement(document.get());
+    if (!root || !tag(root, "fmiModelDescription") ||
+        property(root, "fmiVersion") != "2.0")
+      fail("requires an FMI 2.0 model description");
+    auto me = child(root, "ModelExchange");
+    const auto identifier = property(me, "modelIdentifier");
+    const auto guid = property(root, "guid");
+    if (identifier.empty() || guid.empty())
+      fail("invalid FMI 2.0 modelIdentifier or guid");
+    model.modelName = property(root, "modelName", identifier);
+    model.modelIdentifier = identifier;
+    model.instantiationToken = guid;
+    mCanGetAndSetFMUState = flag(me, "canGetAndSetFMUstate");
+    model.canGetAndSetFMUState = mCanGetAndSetFMUState;
+    model.canSerializeFMUState = flag(me, "canSerializeFMUstate");
+    model.canBeInstantiatedOnlyOncePerProcess =
+        flag(me, "canBeInstantiatedOnlyOncePerProcess");
+    std::map<fmi2ValueReference, Variable> variables;
+    std::set<std::string> names;
+    std::vector<std::string> variableNames;
+    std::vector<bool> foundInputs(configuration.size(), false);
+    std::vector<double> discoveredStarts;
+    auto modelVariables = child(root, "ModelVariables");
+    for (auto v = modelVariables->children; v; v = v->next) {
+      if (!tag(v, "ScalarVariable"))
+        continue;
+      variableNames.push_back(property(v, "name"));
+      xmlNode *real = nullptr;
+      for (auto type = v->children; type; type = type->next)
+        if (tag(type, "Real")) {
+          real = type;
+          break;
+        }
+      if (!real)
+        continue;
+      Variable variable{property(v, "name"),
+                        property(v, "causality", "local"),
+                        property(v, "variability", "continuous"),
+                        property(real, "start", "0"),
+                        reference(property(v, "valueReference")),
+                        true};
+      if (variable.variability == "discrete")
+        model.hasDiscreteVariables = true;
+      if (!names.insert(variable.name).second)
+        fail("duplicate FMI variable name");
+      // FMI permits aliases: several variables may intentionally share one
+      // value reference. Keep the first descriptor for derivative metadata;
+      // names and the input/output reference lists retain every variable.
+      variables.emplace(variable.ref, variable);
+      if (variable.causality == "input") {
+        if (automaticInputs) {
+          std::size_t consumed = 0;
+          double start = std::stod(variable.start, &consumed);
+          if (consumed != variable.start.size() || !std::isfinite(start))
+            fail("invalid FMI 2.0 input start for " + variable.name);
+          model.inputNames.push_back(variable.name);
+          mInputs.push_back(variable.ref);
+          discoveredStarts.push_back(start);
+        } else {
+          auto found = std::find(model.inputNames.begin(),
+                                 model.inputNames.end(), variable.name);
+          if (found == model.inputNames.end())
+            continue;
+          foundInputs[found - model.inputNames.begin()] = true;
+          mInputs.resize(configuration.size());
+          mInputs[found - model.inputNames.begin()] = variable.ref;
+        }
+      } else if (variable.causality == "output") {
+        model.outputNames.push_back(variable.name);
+        mOutputs.push_back(variable.ref);
+      }
+    }
+    if (!automaticInputs) {
+      if (std::find(foundInputs.begin(), foundInputs.end(), false) !=
+          foundInputs.end())
+        fail("mapped input does not exist");
+    } else {
+      model.initialInputs = Matrix::Zero(discoveredStarts.size(), 1);
+      for (std::size_t k = 0; k < discoveredStarts.size(); ++k)
+        model.initialInputs(k, 0) = discoveredStarts[k];
+    }
+    auto structure = child(root, "ModelStructure");
+    for (auto entry = structure->children; entry; entry = entry->next) {
+      if (tag(entry, "Derivatives")) {
+        for (auto unknown = entry->children; unknown; unknown = unknown->next)
+          if (tag(unknown, "Unknown")) {
+            const auto derivative = property(unknown, "derivative");
+            std::size_t index = 0, consumed = 0;
+            if (!derivative.empty())
+              index = std::stoul(derivative, &consumed);
+            if (consumed == derivative.size() && index > 0 &&
+                index <= variableNames.size())
+              model.stateNames.push_back(variableNames[index - 1]);
+            else
+              model.stateNames.push_back(
+                  "state" + std::to_string(model.stateNames.size()));
+          }
+      }
+      if (tag(entry, "EventIndicators")) {
+        for (auto unknown = entry->children; unknown; unknown = unknown->next)
+          if (tag(unknown, "Unknown"))
+            ++mEventIndicatorMetadata;
+        model.hasEventIndicators = mEventIndicatorMetadata != 0;
+      }
+    }
+    if (model.hasEventIndicators && !mOptions.endpointStateEvents)
+      fail("state events are unsupported unless endpoint handling is "
+           "explicitly enabled");
+    auto binary =
+        mArchive.directory / "binaries" / binaryDirectory() / identifier;
+#ifdef __APPLE__
+    binary += ".dylib";
+#elif defined(_WIN32)
+    binary += ".dll";
+#else
+    binary += ".so";
+#endif
+    if (!fs::is_regular_file(binary))
+      fail("missing FMI 2.0 host binary: " +
+           binary.lexically_relative(mArchive.directory).string());
+#ifdef _WIN32
+    mLibrary = LoadLibraryW(binary.wstring().c_str());
+#else
+    mLibrary = dlopen(binary.string().c_str(), RTLD_NOW | RTLD_LOCAL);
+#endif
+    if (!mLibrary)
+      fail("cannot load FMI 2.0 FMU binary");
+#define LOAD2(name) name = symbol<decltype(name)>("fmi2" #name)
+    LOAD2(Instantiate);
+    LOAD2(GetVersion);
+    LOAD2(FreeInstance);
+    LOAD2(Terminate);
+    LOAD2(SetupExperiment);
+    LOAD2(EnterInitializationMode);
+    LOAD2(ExitInitializationMode);
+    LOAD2(EnterEventMode);
+    LOAD2(NewDiscreteStates);
+    LOAD2(EnterContinuousTimeMode);
+    LOAD2(SetTime);
+    LOAD2(SetReal);
+    LOAD2(GetReal);
+    LOAD2(GetContinuousStates);
+    LOAD2(SetContinuousStates);
+    LOAD2(GetDerivatives);
+    LOAD2(GetNumberOfContinuousStates);
+    LOAD2(GetNumberOfEventIndicators);
+    LOAD2(GetEventIndicators);
+    LOAD2(CompletedIntegratorStep);
+    LOAD2(GetNominalsOfContinuousStates);
+    GetFMUstate = symbol<decltype(GetFMUstate)>("fmi2GetFMUstate", false);
+    SetFMUstate = symbol<decltype(SetFMUstate)>("fmi2SetFMUstate", false);
+    FreeFMUstate = symbol<decltype(FreeFMUstate)>("fmi2FreeFMUstate", false);
+#undef LOAD2
+    if (!GetVersion() || std::string(GetVersion()) != "2.0")
+      fail("binary does not implement FMI 2.0");
+    if (model.canBeInstantiatedOnlyOncePerProcess) {
+      static std::mutex mutex;
+      static std::set<std::string> instantiated;
+      std::lock_guard<std::mutex> guard(mutex);
+      if (!instantiated.insert(identifier + ":" + guid).second)
+        fail("FMU permits only one instantiation per process; load a separate "
+             "export or reuse the imported model");
+    }
+    fmi2CallbackFunctions callbacks{log, allocate, release, nullptr, this};
+    mInstance = Instantiate(model.modelName.c_str(), 0, guid.c_str(), nullptr,
+                            &callbacks, fmi2False, fmi2False);
+    if (!mInstance)
+      fail("FMI 2.0 instantiation failed: " + mLastMessage);
+    check(SetupExperiment(mInstance, fmi2False, 0, 0, fmi2False, 0),
+          "setup FMI 2.0 experiment");
+    check(EnterInitializationMode(mInstance), "enter FMI 2.0 initialization");
+    check(SetReal(mInstance, mInputs.data(), mInputs.size(),
+                  model.initialInputs.data()),
+          "set initial inputs");
+    check(ExitInitializationMode(mInstance), "exit FMI 2.0 initialization");
+    check(EnterContinuousTimeMode(mInstance), "enter FMI 2.0 continuous mode");
+    mContinuous = true;
+    size_t states = 0, indicators = 0;
+    check(GetNumberOfContinuousStates(mInstance, &states),
+          "get FMI 2.0 state count");
+    check(GetNumberOfEventIndicators(mInstance, &indicators),
+          "get FMI 2.0 event indicator count");
+    if (indicators != mEventIndicatorMetadata)
+      fail("FMI 2.0 event indicator count is inconsistent with XML");
+    if (states > 512)
+      fail("FMI 2.0 state count is excessive");
+    model.stateNames.resize(states);
+    for (std::size_t k = 0; k < states; ++k)
+      if (model.stateNames[k].empty())
+        model.stateNames[k] = "state" + std::to_string(k);
+    model.initialState.resize(states, 1);
+    if (states)
+      check(GetContinuousStates(mInstance, model.initialState.data(), states),
+            "get FMI 2.0 initial states");
+    model.stateNominals = Matrix::Ones(states, 1);
+    if (states)
+      check(GetNominalsOfContinuousStates(mInstance, model.stateNominals.data(),
+                                          states),
+            "get FMI 2.0 state nominals");
+    if (!model.initialState.allFinite() || !model.stateNominals.allFinite() ||
+        (model.stateNominals.array() <= 0).any())
+      fail("invalid FMI 2.0 initial state data");
+    mLastState = mAcceptedState = model.initialState;
+    mLastInputs = mAcceptedInputs = model.initialInputs;
+    mAcceptedValues = readValues();
+    mAcceptedIndicators = readEventIndicators();
+    mUseTrialSnapshots = mCanGetAndSetFMUState && GetFMUstate && SetFMUstate &&
+                         FreeFMUstate &&
+                         (model.hasDiscreteVariables || indicators != 0);
+  }
+  std::pair<Matrix, Matrix> evaluate(const Matrix &state, const Matrix &inputs,
+                                     double time) override {
+    prepareStep(state, inputs, time);
+    if (std::abs(mTime - mAcceptedTime) <= 1e-12 && state == mAcceptedState &&
+        inputs == mAcceptedInputs)
+      return mAcceptedValues;
+    fmi2FMUstate saved = nullptr;
+    if (mUseTrialSnapshots)
+      check(GetFMUstate(mInstance, &saved), "snapshot FMI 2.0 trial");
+    try {
+      applyPoint(state, inputs, mTime);
+      auto result = readValues();
+      if (saved) {
+        check(SetFMUstate(mInstance, saved), "restore FMI 2.0 trial");
+        check(FreeFMUstate(mInstance, &saved), "free FMI 2.0 trial");
+      }
+      return result;
+    } catch (...) {
+      if (saved) {
+        if (mValid)
+          SetFMUstate(mInstance, saved);
+        FreeFMUstate(mInstance, &saved);
+      }
+      throw;
+    }
+  }
+  double nextTimeEvent() const override { return mNextTimeEvent; }
+  const std::pair<Matrix, Matrix> &acceptedValues() const override {
+    return mAcceptedValues;
+  }
+  const Matrix &acceptedState() const override { return mAcceptedState; }
+  bool supportsRollback() const override {
+    return mCanGetAndSetFMUState && GetFMUstate && SetFMUstate && FreeFMUstate;
+  }
+  void saveCheckpoint() override {
+    if (!supportsRollback())
+      fail("multirate integration requires FMI 2.0 FMU state support");
+    if (mCheckpoint)
+      fail("an FMI checkpoint is already active");
+    auto state = std::make_unique<fmi2FMUstate>(nullptr);
+    check(GetFMUstate(mInstance, state.get()), "save FMI 2.0 checkpoint");
+    mCheckpoint = std::move(state);
+  }
+  void restoreCheckpoint() override {
+    if (!mCheckpoint || !*mCheckpoint)
+      fail("no active FMI 2.0 checkpoint");
+    check(SetFMUstate(mInstance, *mCheckpoint), "restore FMI 2.0 checkpoint");
+  }
+  void discardCheckpoint() override {
+    if (mCheckpoint && *mCheckpoint)
+      check(FreeFMUstate(mInstance, mCheckpoint.get()),
+            "free FMI 2.0 checkpoint");
+    mCheckpoint.reset();
+  }
+  void prepareStep(const Matrix &state, const Matrix &inputs,
+                   double time) override {
+    if (state.rows() != model.initialState.rows() || state.cols() != 1 ||
+        inputs.rows() != model.initialInputs.rows() || inputs.cols() != 1 ||
+        !state.allFinite() || !inputs.allFinite() || !std::isfinite(time))
+      fail("invalid state/input/time in FMI 2.0 evaluation");
+    const double tolerance = 1e-10 * std::max(1.0, std::abs(time));
+    if (time > mNextTimeEvent + tolerance)
+      fail("evaluation crossed a scheduled FMI 2.0 time event");
+    mTime =
+        std::abs(time - mNextTimeEvent) <= tolerance ? mNextTimeEvent : time;
+    mLastState = state;
+    mLastInputs = inputs;
+  }
+  void completeStep(const Matrix *eventInputs = nullptr) override {
+    applyPoint(mLastState, mLastInputs, mTime);
+    fmi2Boolean event = fmi2False, terminate = fmi2False;
+    check(CompletedIntegratorStep(mInstance, fmi2True, &event, &terminate),
+          "complete FMI 2.0 integrator step");
+    if (terminate)
+      fail("FMI 2.0 integrator step requested termination");
+    const Matrix endpoint = readEventIndicators();
+    const bool due = std::isfinite(mNextTimeEvent) &&
+                     std::abs(mTime - mNextTimeEvent) <=
+                         1e-10 * std::max(1.0, std::abs(mTime));
+    if (event || due || eventInputs || crossed(mAcceptedIndicators, endpoint))
+      settleEvent(eventInputs);
+    if (eventInputs)
+      mLastInputs = *eventInputs;
+    if (event || due || eventInputs || crossed(mAcceptedIndicators, endpoint))
+      cacheAccepted();
+    else
+      cacheAccepted(&endpoint);
+  }
+  void inputEvent(const Matrix &state, const Matrix &inputs,
+                  double time) override {
+    prepareStep(state, inputs, time);
+    applyPoint(mLastState, mLastInputs, mTime);
+    settleEvent();
+    cacheAccepted();
+  }
+};
+
+std::string detectFmiVersion(const std::string &path) {
+  Archive archive;
+  archive.extract(path);
+  const auto xmlPath = archive.directory / "modelDescription.xml";
+  std::unique_ptr<xmlDoc, decltype(&xmlFreeDoc)> document(
+      xmlReadFile(xmlPath.string().c_str(), nullptr, XML_PARSE_NONET),
+      &xmlFreeDoc);
+  if (!document)
+    fail("invalid modelDescription.xml");
+  auto root = xmlDocGetRootElement(document.get());
+  if (!root || !tag(root, "fmiModelDescription"))
+    fail("invalid fmiModelDescription root element");
+  return property(root, "fmiVersion");
+}
+
 ModelExchange::ModelExchange(const std::string &path,
                              const std::vector<ScalarInput> &inputs,
                              ModelExchangeOptions options)
-    : mImpl(std::make_unique<Impl>(path, inputs, options)) {}
+    : mImpl(detectFmiVersion(path) == "2.0"
+                ? std::unique_ptr<Backend>(
+                      std::make_unique<Fmi2Backend>(path, inputs, options))
+                : std::unique_ptr<Backend>(
+                      std::make_unique<Fmi3Backend>(path, inputs, options))) {}
+ModelExchange::ModelExchange(const std::string &path,
+                             ModelExchangeOptions options)
+    : ModelExchange(path, std::vector<ScalarInput>{}, options) {}
 ModelExchange::~ModelExchange() = default;
 const ModelDescription &ModelExchange::description() const {
   return mImpl->model;
@@ -736,6 +1449,12 @@ const std::pair<Matrix, Matrix> &ModelExchange::acceptedValues() const {
 const Matrix &ModelExchange::acceptedState() const {
   return mImpl->acceptedState();
 }
+bool ModelExchange::supportsRollback() const {
+  return mImpl->supportsRollback();
+}
+void ModelExchange::saveCheckpoint() { mImpl->saveCheckpoint(); }
+void ModelExchange::restoreCheckpoint() { mImpl->restoreCheckpoint(); }
+void ModelExchange::discardCheckpoint() { mImpl->discardCheckpoint(); }
 double ModelExchange::nextTimeEvent() const { return mImpl->nextTimeEvent(); }
 void ModelExchange::prepareStep(const Matrix &state, const Matrix &inputs,
                                 double time) {

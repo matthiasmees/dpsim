@@ -1,10 +1,11 @@
-# FMI 3.0 Model Exchange to EMT SSN
+# FMI 2.0/3.0 Model Exchange to EMT SSN
 
 Nonlinear three-phase import is available through `ModelExchange` and
 `NonlinearSSN`; see [the nonlinear importer guide](NONLINEAR.md). The sections
 below describe the fixed LTI extraction path and its limitations.
 
 `dpsim-fmi` imports a **declared linear, time-invariant** Model Exchange FMU
+from FMI 2.0 or FMI 3.0
 as a two-terminal scalar or three-phase EMT component. Its internal state count and equations
 come from the FMU. The component connects to ordinary DPsim nodes and contributes
 an SSN Norton equivalent to the existing MNA solver. No dedicated R/L/C classes,
@@ -48,8 +49,9 @@ The current implementation uses SI values without automatic unit conversion.
 ## Build
 
 The feature is optional and disabled by default. It requires LibXml2 and fetches
-the pinned miniz 3.0.2 ZIP library. Official FMI 3.0.2 C headers and their license
-are included under `third_party/fmi3`. No FMI dependencies are searched or fetched
+the pinned miniz 3.0.2 ZIP library. FMI 2.0 and official FMI 3.0.2 C headers and
+their licenses are included under `third_party/fmi2` and `third_party/fmi3`.
+No FMI dependencies are searched or fetched
 when `WITH_FMI=OFF`.
 
 From the repository root, with normal DPsim dependencies installed:
@@ -91,7 +93,7 @@ For a complete runnable comparison, open
 [`examples/FMI_EMT_LinearSSN_MATLAB_Comparison.ipynb`](examples/FMI_EMT_LinearSSN_MATLAB_Comparison.ipynb)
 in VS Code, select the **DPsim Python** kernel, and run all cells. It runs the
 actual C++ example, plots the MATLAB and DPsim waveforms and errors, and saves
-maximum/RMS error metrics under `outputs/fmi-notebook`. The first cell contains
+maximum/RMS error metrics under `dpsim-fmi/examples/linear_scalar/results`. The first cell contains
 the configurable FMU, reference-data and build paths.
 
 For an application, the essential construction is:
@@ -114,7 +116,7 @@ assumptions about the exporter's internal coordinates.
 To compare the example's CSV with the MATLAB script's references:
 
 ```sh
-python3 dpsim-fmi/tests/compare_reference.py \
+python3 dpsim-fmi/examples/regression/compare_reference.py \
   outputs/fmi/logs/fmi_rlc.csv /absolute/path/to/matlab-output
 ```
 
@@ -132,12 +134,12 @@ README for MATLAB instructions.
 From the repository root after building the targets above:
 
 ```sh
-mkdir -p outputs/fmi-3ph
-cd outputs/fmi-3ph
+mkdir -p dpsim-fmi/examples/linear_three_phase/initial_results
+cd dpsim-fmi/examples/linear_three_phase/initial_results
 ../../build-fmi/dpsim-fmi/FMI_EMT_Ph3_LinearSSN /absolute/path/dpsim_rlc_3ph_me.fmu
 cd ../..
-python3 dpsim-fmi/tests/compare_reference_3ph.py \
-  outputs/fmi-3ph/logs/fmi_rlc_3ph.csv /absolute/path/to/matlab-output
+python3 dpsim-fmi/examples/regression/compare_reference_3ph.py \
+  dpsim-fmi/examples/linear_three_phase/initial_results/logs/fmi_rlc_3ph.csv /absolute/path/to/matlab-output
 ```
 
 The example defaults to input names `u_a/u_b/u_c` and current names
@@ -164,6 +166,16 @@ condition. Clones reuse the same recovered matrices and initialized state;
 they do not reinitialize the FMU for a different starting condition. For the
 balanced sine benchmark phases B/C start at approximately ±281.691 V; assuming
 all three inputs start at zero would produce an incorrect first step.
+
+When a `LinearSSN` component is connected to DPsim nodes, its initialization
+uses the connected nodes' instantaneous initial voltage difference for the SSN
+history and electrical input attributes. This applies to scalar, grounded
+three-phase, and floating three-phase connections. The recovered linear model's
+state remains the state obtained during FMU import; changing the network start
+voltage therefore aligns the terminal history but does not reconstruct a new
+internal FMU operating point. For a state-dependent operating point, provide
+matching `initialVoltages` when importing the model or use the nonlinear
+Model Exchange path, which evaluates the FMU at the connected voltage.
 
 Both terminals must be ABC nodes or ground for a three-channel model.
 `v_intf` and `i_intf` are 3×1 abc vectors; each `fmi.input.<name>` and
@@ -198,6 +210,9 @@ This is reference material for a future nonlinear adapter and does not extend
 - Co-Simulation-only FMUs, arrays at the boundary/in state vectors, clocks,
   discrete/tunable variables, affine offsets, state/time events and external
   execution-tool dependencies are rejected. Fixed parameters use FMU defaults.
+- FMI 2.0 and FMI 3.0 Model Exchange share the same public `ModelExchange`,
+  `LinearModel`, `LinearSSN`, and `NonlinearSSN` readers. FMI 2.0 uses its
+  native lifecycle and event API; it is not converted by editing the FMU XML.
 - The electrical adapter supports one scalar pair or one ordered abc bundle
   at each terminal. Scalar Float64 FMI variables represent the three channels;
   FMI array variables, arbitrary multiport layouts, dynamic-phasor conversion
@@ -221,3 +236,18 @@ initial states, clone behavior, phase validation, and both grounded and
 ungrounded negative terminals. They are minimal test doubles, not certified general-purpose FMUs.
 The actual MATLAB-exported benchmark is a separate end-to-end check and is not
 committed to this repository.
+
+## Nonlinear FMU capability inspection
+
+The example `FMI_Capabilities` inspects a Model Exchange FMU and reports its
+continuous interface, event indicators, FMU-state capabilities, process
+instantiation limit, and a 50 µs rollback replay probe. The probe distinguishes
+rollback advertised by metadata from rollback deterministic enough for Newton
+coupling:
+
+```sh
+build-fmi/dpsim-fmi/FMI_Capabilities path/to/model.fmu
+```
+
+Use `rollback_newton` only when the probe reports deterministic. Otherwise use
+the generic `single_pass_explicit` multirate mode.

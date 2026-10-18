@@ -1,0 +1,22 @@
+{
+  "balanced_load": {
+    "simulink/systems/system_571.xml": true,
+    "simulink/systems/system_655.xml": true
+  },
+  "unbalanced_load": {
+    "simulink/systems/system_571.xml": true,
+    "simulink/systems/system_655.xml": true
+  },
+  "voltage_sag": {
+    "simulink/systems/system_571.xml": true,
+    "simulink/systems/system_655.xml": true
+  },
+  "phase_jump": {
+    "simulink/systems/system_571.xml": true,
+    "simulink/systems/system_655.xml": true
+  },
+  "frequency_change": {
+    "simulink/systems/system_571.xml": true,
+    "simulink/systems/system_655.xml": true
+  }
+}

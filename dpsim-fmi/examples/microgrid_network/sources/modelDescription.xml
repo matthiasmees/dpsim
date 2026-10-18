@@ -1,0 +1,3221 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<fmiModelDescription
+  fmiVersion="2.0"
+  modelName="grid.network"
+  guid="{de99daa8-ed99-45c5-8dff-5db4b75ea8da}"
+  description=""
+  generationTool="OpenModelica Compiler OpenModelica 1.17.0~dev-48-g8f139b3"
+  generationDateAndTime="2020-10-30T17:02:29Z"
+  variableNamingConvention="structured"
+  numberOfEventIndicators="0">
+  <ModelExchange
+    modelIdentifier="grid_network" providesDirectionalDerivative="true">
+  </ModelExchange>
+  <UnitDefinitions>
+    <Unit name="Ohm">
+      <BaseUnit m="2" s="-3" A="-2" kg="1" />
+    </Unit>
+    <Unit name="H">
+      <BaseUnit m="2" s="-2" A="-2" kg="1" />
+    </Unit>
+    <Unit name="F">
+      <BaseUnit m="-2" s="4" A="2" kg="-1" />
+    </Unit>
+    <Unit name="1">
+      <BaseUnit />
+    </Unit>
+    <Unit name="s-1.A">
+      <BaseUnit s="-1" A="1" />
+    </Unit>
+    <Unit name="km2.s-4.A-1.g">
+      <BaseUnit m="2" s="-4" A="-1" kg="1" factor="1000.0" />
+    </Unit>
+    <Unit name="A">
+      <BaseUnit A="1" />
+    </Unit>
+    <Unit name="V">
+      <BaseUnit m="2" s="-3" A="-1" kg="1" />
+    </Unit>
+  </UnitDefinitions>
+  <LogCategories>
+    <Category name="logEvents" />
+    <Category name="logSingularLinearSystems" />
+    <Category name="logNonlinearSystems" />
+    <Category name="logDynamicStateSelection" />
+    <Category name="logStatusWarning" />
+    <Category name="logStatusDiscard" />
+    <Category name="logStatusError" />
+    <Category name="logStatusFatal" />
+    <Category name="logStatusPending" />
+    <Category name="logAll" />
+    <Category name="logFmi2Call" />
+  </LogCategories>
+  <DefaultExperiment startTime="0.0" stopTime="1.0" tolerance="1e-06"/>
+  <ModelVariables>
+  <!-- Index of variable = "1" -->
+  <ScalarVariable
+    name="lc1.capacitor1.v"
+    valueReference="0"
+    description="Voltage drop of the two pins (= p.v - n.v)"
+    initial="exact">
+    <Real start="0.0" unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "2" -->
+  <ScalarVariable
+    name="lc1.capacitor2.v"
+    valueReference="1"
+    description="Voltage drop of the two pins (= p.v - n.v)"
+    initial="exact">
+    <Real start="0.0" unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "3" -->
+  <ScalarVariable
+    name="lc1.capacitor3.v"
+    valueReference="2"
+    description="Voltage drop of the two pins (= p.v - n.v)"
+    initial="exact">
+    <Real start="0.0" unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "4" -->
+  <ScalarVariable
+    name="lc1.inductor1.i"
+    valueReference="3"
+    description="Current flowing from pin p to pin n"
+    initial="exact">
+    <Real start="0.0" unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "5" -->
+  <ScalarVariable
+    name="lc1.inductor2.i"
+    valueReference="4"
+    description="Current flowing from pin p to pin n"
+    initial="exact">
+    <Real start="0.0" unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "6" -->
+  <ScalarVariable
+    name="lc1.inductor3.i"
+    valueReference="5"
+    description="Current flowing from pin p to pin n"
+    initial="exact">
+    <Real start="0.0" unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "7" -->
+  <ScalarVariable
+    name="lc2.capacitor1.v"
+    valueReference="6"
+    description="Voltage drop of the two pins (= p.v - n.v)"
+    initial="exact">
+    <Real start="0.0" unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "8" -->
+  <ScalarVariable
+    name="lc2.capacitor2.v"
+    valueReference="7"
+    description="Voltage drop of the two pins (= p.v - n.v)"
+    initial="exact">
+    <Real start="0.0" unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "9" -->
+  <ScalarVariable
+    name="lc2.capacitor3.v"
+    valueReference="8"
+    description="Voltage drop of the two pins (= p.v - n.v)"
+    initial="exact">
+    <Real start="0.0" unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "10" -->
+  <ScalarVariable
+    name="lc2.inductor1.i"
+    valueReference="9"
+    description="Current flowing from pin p to pin n"
+    initial="exact">
+    <Real start="0.0" unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "11" -->
+  <ScalarVariable
+    name="lc2.inductor2.i"
+    valueReference="10"
+    description="Current flowing from pin p to pin n"
+    initial="exact">
+    <Real start="0.0" unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "12" -->
+  <ScalarVariable
+    name="lc2.inductor3.i"
+    valueReference="11"
+    description="Current flowing from pin p to pin n"
+    initial="exact">
+    <Real start="0.0" unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "13" -->
+  <ScalarVariable
+    name="lcl1.capacitor1.v"
+    valueReference="12"
+    description="Voltage drop of the two pins (= p.v - n.v)"
+    initial="exact">
+    <Real start="0.0" unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "14" -->
+  <ScalarVariable
+    name="lcl1.capacitor2.v"
+    valueReference="13"
+    description="Voltage drop of the two pins (= p.v - n.v)"
+    initial="exact">
+    <Real start="0.0" unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "15" -->
+  <ScalarVariable
+    name="lcl1.capacitor3.v"
+    valueReference="14"
+    description="Voltage drop of the two pins (= p.v - n.v)"
+    initial="exact">
+    <Real start="0.0" unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "16" -->
+  <ScalarVariable
+    name="lcl1.inductor1.i"
+    valueReference="15"
+    description="Current flowing from pin p to pin n"
+    initial="exact">
+    <Real start="0.0" unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "17" -->
+  <ScalarVariable
+    name="lcl1.inductor2.i"
+    valueReference="16"
+    description="Current flowing from pin p to pin n"
+    initial="exact">
+    <Real start="0.0" unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "18" -->
+  <ScalarVariable
+    name="lcl1.inductor3.i"
+    valueReference="17"
+    description="Current flowing from pin p to pin n"
+    initial="exact">
+    <Real start="0.0" unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "19" -->
+  <ScalarVariable
+    name="lcl1.inductor4.i"
+    valueReference="18"
+    description="Current flowing from pin p to pin n"
+    initial="exact">
+    <Real start="0.0" unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "20" -->
+  <ScalarVariable
+    name="lcl1.inductor5.i"
+    valueReference="19"
+    description="Current flowing from pin p to pin n"
+    initial="exact">
+    <Real start="0.0" unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "21" -->
+  <ScalarVariable
+    name="lcl1.inductor6.i"
+    valueReference="20"
+    description="Current flowing from pin p to pin n"
+    initial="exact">
+    <Real start="0.0" unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "22" -->
+  <ScalarVariable
+    name="rl1.inductor1.i"
+    valueReference="21"
+    description="Current flowing from pin p to pin n"
+    initial="exact">
+    <Real start="0.0" unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "23" -->
+  <ScalarVariable
+    name="rl1.inductor2.i"
+    valueReference="22"
+    description="Current flowing from pin p to pin n"
+    initial="exact">
+    <Real start="0.0" unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "24" -->
+  <ScalarVariable
+    name="rl1.inductor3.i"
+    valueReference="23"
+    description="Current flowing from pin p to pin n"
+    initial="exact">
+    <Real start="0.0" unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "25" -->
+  <ScalarVariable
+    name="der(lc1.capacitor1.v)"
+    valueReference="24"
+    description="der(Voltage drop of the two pins (= p.v - n.v))"
+    >
+    <Real derivative="1" unit="km2.s-4.A-1.g"/>
+  </ScalarVariable>
+  <!-- Index of variable = "26" -->
+  <ScalarVariable
+    name="der(lc1.capacitor2.v)"
+    valueReference="25"
+    description="der(Voltage drop of the two pins (= p.v - n.v))"
+    >
+    <Real derivative="2" unit="km2.s-4.A-1.g"/>
+  </ScalarVariable>
+  <!-- Index of variable = "27" -->
+  <ScalarVariable
+    name="der(lc1.capacitor3.v)"
+    valueReference="26"
+    description="der(Voltage drop of the two pins (= p.v - n.v))"
+    >
+    <Real derivative="3" unit="km2.s-4.A-1.g"/>
+  </ScalarVariable>
+  <!-- Index of variable = "28" -->
+  <ScalarVariable
+    name="der(lc1.inductor1.i)"
+    valueReference="27"
+    description="der(Current flowing from pin p to pin n)"
+    >
+    <Real derivative="4" unit="s-1.A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "29" -->
+  <ScalarVariable
+    name="der(lc1.inductor2.i)"
+    valueReference="28"
+    description="der(Current flowing from pin p to pin n)"
+    >
+    <Real derivative="5" unit="s-1.A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "30" -->
+  <ScalarVariable
+    name="der(lc1.inductor3.i)"
+    valueReference="29"
+    description="der(Current flowing from pin p to pin n)"
+    >
+    <Real derivative="6" unit="s-1.A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "31" -->
+  <ScalarVariable
+    name="der(lc2.capacitor1.v)"
+    valueReference="30"
+    description="der(Voltage drop of the two pins (= p.v - n.v))"
+    >
+    <Real derivative="7" unit="km2.s-4.A-1.g"/>
+  </ScalarVariable>
+  <!-- Index of variable = "32" -->
+  <ScalarVariable
+    name="der(lc2.capacitor2.v)"
+    valueReference="31"
+    description="der(Voltage drop of the two pins (= p.v - n.v))"
+    >
+    <Real derivative="8" unit="km2.s-4.A-1.g"/>
+  </ScalarVariable>
+  <!-- Index of variable = "33" -->
+  <ScalarVariable
+    name="der(lc2.capacitor3.v)"
+    valueReference="32"
+    description="der(Voltage drop of the two pins (= p.v - n.v))"
+    >
+    <Real derivative="9" unit="km2.s-4.A-1.g"/>
+  </ScalarVariable>
+  <!-- Index of variable = "34" -->
+  <ScalarVariable
+    name="der(lc2.inductor1.i)"
+    valueReference="33"
+    description="der(Current flowing from pin p to pin n)"
+    >
+    <Real derivative="10" unit="s-1.A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "35" -->
+  <ScalarVariable
+    name="der(lc2.inductor2.i)"
+    valueReference="34"
+    description="der(Current flowing from pin p to pin n)"
+    >
+    <Real derivative="11" unit="s-1.A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "36" -->
+  <ScalarVariable
+    name="der(lc2.inductor3.i)"
+    valueReference="35"
+    description="der(Current flowing from pin p to pin n)"
+    >
+    <Real derivative="12" unit="s-1.A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "37" -->
+  <ScalarVariable
+    name="der(lcl1.capacitor1.v)"
+    valueReference="36"
+    description="der(Voltage drop of the two pins (= p.v - n.v))"
+    >
+    <Real derivative="13" unit="km2.s-4.A-1.g"/>
+  </ScalarVariable>
+  <!-- Index of variable = "38" -->
+  <ScalarVariable
+    name="der(lcl1.capacitor2.v)"
+    valueReference="37"
+    description="der(Voltage drop of the two pins (= p.v - n.v))"
+    >
+    <Real derivative="14" unit="km2.s-4.A-1.g"/>
+  </ScalarVariable>
+  <!-- Index of variable = "39" -->
+  <ScalarVariable
+    name="der(lcl1.capacitor3.v)"
+    valueReference="38"
+    description="der(Voltage drop of the two pins (= p.v - n.v))"
+    >
+    <Real derivative="15" unit="km2.s-4.A-1.g"/>
+  </ScalarVariable>
+  <!-- Index of variable = "40" -->
+  <ScalarVariable
+    name="der(lcl1.inductor1.i)"
+    valueReference="39"
+    description="der(Current flowing from pin p to pin n)"
+    >
+    <Real derivative="16" unit="s-1.A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "41" -->
+  <ScalarVariable
+    name="der(lcl1.inductor2.i)"
+    valueReference="40"
+    description="der(Current flowing from pin p to pin n)"
+    >
+    <Real derivative="17" unit="s-1.A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "42" -->
+  <ScalarVariable
+    name="der(lcl1.inductor3.i)"
+    valueReference="41"
+    description="der(Current flowing from pin p to pin n)"
+    >
+    <Real derivative="18" unit="s-1.A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "43" -->
+  <ScalarVariable
+    name="der(lcl1.inductor4.i)"
+    valueReference="42"
+    description="der(Current flowing from pin p to pin n)"
+    >
+    <Real derivative="19" unit="s-1.A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "44" -->
+  <ScalarVariable
+    name="der(lcl1.inductor5.i)"
+    valueReference="43"
+    description="der(Current flowing from pin p to pin n)"
+    >
+    <Real derivative="20" unit="s-1.A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "45" -->
+  <ScalarVariable
+    name="der(lcl1.inductor6.i)"
+    valueReference="44"
+    description="der(Current flowing from pin p to pin n)"
+    >
+    <Real derivative="21" unit="s-1.A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "46" -->
+  <ScalarVariable
+    name="der(rl1.inductor1.i)"
+    valueReference="45"
+    description="der(Current flowing from pin p to pin n)"
+    >
+    <Real derivative="22" unit="s-1.A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "47" -->
+  <ScalarVariable
+    name="der(rl1.inductor2.i)"
+    valueReference="46"
+    description="der(Current flowing from pin p to pin n)"
+    >
+    <Real derivative="23" unit="s-1.A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "48" -->
+  <ScalarVariable
+    name="der(rl1.inductor3.i)"
+    valueReference="47"
+    description="der(Current flowing from pin p to pin n)"
+    >
+    <Real derivative="24" unit="s-1.A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "49" -->
+  <ScalarVariable
+    name="i1p1"
+    valueReference="48"
+    causality="input"
+    >
+    <Real start="0.0"/>
+  </ScalarVariable>
+  <!-- Index of variable = "50" -->
+  <ScalarVariable
+    name="i1p2"
+    valueReference="49"
+    causality="input"
+    >
+    <Real start="0.0"/>
+  </ScalarVariable>
+  <!-- Index of variable = "51" -->
+  <ScalarVariable
+    name="i1p3"
+    valueReference="50"
+    causality="input"
+    >
+    <Real start="0.0"/>
+  </ScalarVariable>
+  <!-- Index of variable = "52" -->
+  <ScalarVariable
+    name="i2p1"
+    valueReference="51"
+    causality="input"
+    >
+    <Real start="0.0"/>
+  </ScalarVariable>
+  <!-- Index of variable = "53" -->
+  <ScalarVariable
+    name="i2p2"
+    valueReference="52"
+    causality="input"
+    >
+    <Real start="0.0"/>
+  </ScalarVariable>
+  <!-- Index of variable = "54" -->
+  <ScalarVariable
+    name="i2p3"
+    valueReference="53"
+    causality="input"
+    >
+    <Real start="0.0"/>
+  </ScalarVariable>
+  <!-- Index of variable = "55" -->
+  <ScalarVariable
+    name="inverter1.gain1.y"
+    valueReference="54"
+    description="Output signal connector"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "56" -->
+  <ScalarVariable
+    name="inverter1.gain2.y"
+    valueReference="55"
+    description="Output signal connector"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "57" -->
+  <ScalarVariable
+    name="inverter1.gain3.y"
+    valueReference="56"
+    description="Output signal connector"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "58" -->
+  <ScalarVariable
+    name="inverter1.ground1.p.i"
+    valueReference="57"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "59" -->
+  <ScalarVariable
+    name="inverter1.ground1.p.v"
+    valueReference="58"
+    description="Potential at the pin"
+    initial="exact">
+    <Real start="0.0" unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "60" -->
+  <ScalarVariable
+    name="inverter2.gain1.y"
+    valueReference="59"
+    description="Output signal connector"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "61" -->
+  <ScalarVariable
+    name="inverter2.gain2.y"
+    valueReference="60"
+    description="Output signal connector"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "62" -->
+  <ScalarVariable
+    name="inverter2.gain3.y"
+    valueReference="61"
+    description="Output signal connector"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "63" -->
+  <ScalarVariable
+    name="inverter2.ground1.p.i"
+    valueReference="62"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "64" -->
+  <ScalarVariable
+    name="inverter2.ground1.p.v"
+    valueReference="63"
+    description="Potential at the pin"
+    initial="exact">
+    <Real start="0.0" unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "65" -->
+  <ScalarVariable
+    name="lc1.capacitor1.i"
+    valueReference="64"
+    description="Current flowing from pin p to pin n"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "66" -->
+  <ScalarVariable
+    name="lc1.capacitor2.i"
+    valueReference="65"
+    description="Current flowing from pin p to pin n"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "67" -->
+  <ScalarVariable
+    name="lc1.capacitor3.i"
+    valueReference="66"
+    description="Current flowing from pin p to pin n"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "68" -->
+  <ScalarVariable
+    name="lc1.ground1.p.i"
+    valueReference="67"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "69" -->
+  <ScalarVariable
+    name="lc1.ground1.p.v"
+    valueReference="68"
+    description="Potential at the pin"
+    initial="exact">
+    <Real start="0.0" unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "70" -->
+  <ScalarVariable
+    name="lc1.inductor1.v"
+    valueReference="69"
+    description="Voltage drop of the two pins (= p.v - n.v)"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "71" -->
+  <ScalarVariable
+    name="lc1.inductor2.v"
+    valueReference="70"
+    description="Voltage drop of the two pins (= p.v - n.v)"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "72" -->
+  <ScalarVariable
+    name="lc1.inductor3.v"
+    valueReference="71"
+    description="Voltage drop of the two pins (= p.v - n.v)"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "73" -->
+  <ScalarVariable
+    name="lc1.pin4.i"
+    valueReference="72"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "74" -->
+  <ScalarVariable
+    name="lc1.pin5.i"
+    valueReference="73"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "75" -->
+  <ScalarVariable
+    name="lc1.pin6.i"
+    valueReference="74"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "76" -->
+  <ScalarVariable
+    name="lc2.capacitor1.i"
+    valueReference="75"
+    description="Current flowing from pin p to pin n"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "77" -->
+  <ScalarVariable
+    name="lc2.capacitor2.i"
+    valueReference="76"
+    description="Current flowing from pin p to pin n"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "78" -->
+  <ScalarVariable
+    name="lc2.capacitor3.i"
+    valueReference="77"
+    description="Current flowing from pin p to pin n"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "79" -->
+  <ScalarVariable
+    name="lc2.ground1.p.i"
+    valueReference="78"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "80" -->
+  <ScalarVariable
+    name="lc2.ground1.p.v"
+    valueReference="79"
+    description="Potential at the pin"
+    initial="exact">
+    <Real start="0.0" unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "81" -->
+  <ScalarVariable
+    name="lc2.inductor1.v"
+    valueReference="80"
+    description="Voltage drop of the two pins (= p.v - n.v)"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "82" -->
+  <ScalarVariable
+    name="lc2.inductor2.v"
+    valueReference="81"
+    description="Voltage drop of the two pins (= p.v - n.v)"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "83" -->
+  <ScalarVariable
+    name="lc2.inductor3.v"
+    valueReference="82"
+    description="Voltage drop of the two pins (= p.v - n.v)"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "84" -->
+  <ScalarVariable
+    name="lcl1.capacitor1.i"
+    valueReference="83"
+    description="Current flowing from pin p to pin n"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "85" -->
+  <ScalarVariable
+    name="lcl1.capacitor2.i"
+    valueReference="84"
+    description="Current flowing from pin p to pin n"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "86" -->
+  <ScalarVariable
+    name="lcl1.capacitor3.i"
+    valueReference="85"
+    description="Current flowing from pin p to pin n"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "87" -->
+  <ScalarVariable
+    name="lcl1.ground1.p.i"
+    valueReference="86"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "88" -->
+  <ScalarVariable
+    name="lcl1.ground1.p.v"
+    valueReference="87"
+    description="Potential at the pin"
+    initial="exact">
+    <Real start="0.0" unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "89" -->
+  <ScalarVariable
+    name="lcl1.inductor1.v"
+    valueReference="88"
+    description="Voltage drop of the two pins (= p.v - n.v)"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "90" -->
+  <ScalarVariable
+    name="lcl1.inductor2.v"
+    valueReference="89"
+    description="Voltage drop of the two pins (= p.v - n.v)"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "91" -->
+  <ScalarVariable
+    name="lcl1.inductor3.v"
+    valueReference="90"
+    description="Voltage drop of the two pins (= p.v - n.v)"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "92" -->
+  <ScalarVariable
+    name="lcl1.inductor4.v"
+    valueReference="91"
+    description="Voltage drop of the two pins (= p.v - n.v)"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "93" -->
+  <ScalarVariable
+    name="lcl1.inductor5.v"
+    valueReference="92"
+    description="Voltage drop of the two pins (= p.v - n.v)"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "94" -->
+  <ScalarVariable
+    name="lcl1.inductor6.v"
+    valueReference="93"
+    description="Voltage drop of the two pins (= p.v - n.v)"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "95" -->
+  <ScalarVariable
+    name="rl1.ground1.p.i"
+    valueReference="94"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "96" -->
+  <ScalarVariable
+    name="rl1.ground1.p.v"
+    valueReference="95"
+    description="Potential at the pin"
+    initial="exact">
+    <Real start="0.0" unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "97" -->
+  <ScalarVariable
+    name="rl1.inductor1.v"
+    valueReference="96"
+    description="Voltage drop of the two pins (= p.v - n.v)"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "98" -->
+  <ScalarVariable
+    name="rl1.inductor2.v"
+    valueReference="97"
+    description="Voltage drop of the two pins (= p.v - n.v)"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "99" -->
+  <ScalarVariable
+    name="rl1.inductor3.v"
+    valueReference="98"
+    description="Voltage drop of the two pins (= p.v - n.v)"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "100" -->
+  <ScalarVariable
+    name="rl1.resistor1.v"
+    valueReference="99"
+    description="Voltage drop of the two pins (= p.v - n.v)"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "101" -->
+  <ScalarVariable
+    name="rl1.resistor2.v"
+    valueReference="100"
+    description="Voltage drop of the two pins (= p.v - n.v)"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "102" -->
+  <ScalarVariable
+    name="rl1.resistor3.v"
+    valueReference="101"
+    description="Voltage drop of the two pins (= p.v - n.v)"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "103" -->
+  <ScalarVariable
+    name="inverter1.gain1.k"
+    valueReference="102"
+    description="Gain value multiplied with input signal"
+    variability="fixed"
+    causality="calculatedParameter"
+    >
+    <Real unit="1"/>
+  </ScalarVariable>
+  <!-- Index of variable = "104" -->
+  <ScalarVariable
+    name="inverter1.gain2.k"
+    valueReference="103"
+    description="Gain value multiplied with input signal"
+    variability="fixed"
+    causality="calculatedParameter"
+    >
+    <Real unit="1"/>
+  </ScalarVariable>
+  <!-- Index of variable = "105" -->
+  <ScalarVariable
+    name="inverter1.gain3.k"
+    valueReference="104"
+    description="Gain value multiplied with input signal"
+    variability="fixed"
+    causality="calculatedParameter"
+    >
+    <Real unit="1"/>
+  </ScalarVariable>
+  <!-- Index of variable = "106" -->
+  <ScalarVariable
+    name="inverter1.v_DC"
+    valueReference="105"
+    variability="fixed"
+    causality="parameter"
+    >
+    <Real start="1000.0"/>
+  </ScalarVariable>
+  <!-- Index of variable = "107" -->
+  <ScalarVariable
+    name="inverter2.gain1.k"
+    valueReference="106"
+    description="Gain value multiplied with input signal"
+    variability="fixed"
+    causality="calculatedParameter"
+    >
+    <Real unit="1"/>
+  </ScalarVariable>
+  <!-- Index of variable = "108" -->
+  <ScalarVariable
+    name="inverter2.gain2.k"
+    valueReference="107"
+    description="Gain value multiplied with input signal"
+    variability="fixed"
+    causality="calculatedParameter"
+    >
+    <Real unit="1"/>
+  </ScalarVariable>
+  <!-- Index of variable = "109" -->
+  <ScalarVariable
+    name="inverter2.gain3.k"
+    valueReference="108"
+    description="Gain value multiplied with input signal"
+    variability="fixed"
+    causality="calculatedParameter"
+    >
+    <Real unit="1"/>
+  </ScalarVariable>
+  <!-- Index of variable = "110" -->
+  <ScalarVariable
+    name="inverter2.v_DC"
+    valueReference="109"
+    variability="fixed"
+    causality="parameter"
+    >
+    <Real start="1000.0"/>
+  </ScalarVariable>
+  <!-- Index of variable = "111" -->
+  <ScalarVariable
+    name="lc1.C1"
+    valueReference="110"
+    variability="fixed"
+    causality="parameter"
+    >
+    <Real start="1e-05" min="0.0" unit="F"/>
+  </ScalarVariable>
+  <!-- Index of variable = "112" -->
+  <ScalarVariable
+    name="lc1.C2"
+    valueReference="111"
+    variability="fixed"
+    causality="parameter"
+    >
+    <Real start="1e-05" min="0.0" unit="F"/>
+  </ScalarVariable>
+  <!-- Index of variable = "113" -->
+  <ScalarVariable
+    name="lc1.C3"
+    valueReference="112"
+    variability="fixed"
+    causality="parameter"
+    >
+    <Real start="1e-05" min="0.0" unit="F"/>
+  </ScalarVariable>
+  <!-- Index of variable = "114" -->
+  <ScalarVariable
+    name="lc1.L1"
+    valueReference="113"
+    variability="fixed"
+    causality="parameter"
+    >
+    <Real start="0.001" unit="H"/>
+  </ScalarVariable>
+  <!-- Index of variable = "115" -->
+  <ScalarVariable
+    name="lc1.L2"
+    valueReference="114"
+    variability="fixed"
+    causality="parameter"
+    >
+    <Real start="0.001" unit="H"/>
+  </ScalarVariable>
+  <!-- Index of variable = "116" -->
+  <ScalarVariable
+    name="lc1.L3"
+    valueReference="115"
+    variability="fixed"
+    causality="parameter"
+    >
+    <Real start="0.001" unit="H"/>
+  </ScalarVariable>
+  <!-- Index of variable = "117" -->
+  <ScalarVariable
+    name="lc1.capacitor1.C"
+    valueReference="116"
+    description="Capacitance"
+    variability="fixed"
+    causality="calculatedParameter"
+    >
+    <Real min="0.0" unit="F"/>
+  </ScalarVariable>
+  <!-- Index of variable = "118" -->
+  <ScalarVariable
+    name="lc1.capacitor2.C"
+    valueReference="117"
+    description="Capacitance"
+    variability="fixed"
+    causality="calculatedParameter"
+    >
+    <Real min="0.0" unit="F"/>
+  </ScalarVariable>
+  <!-- Index of variable = "119" -->
+  <ScalarVariable
+    name="lc1.capacitor3.C"
+    valueReference="118"
+    description="Capacitance"
+    variability="fixed"
+    causality="calculatedParameter"
+    >
+    <Real min="0.0" unit="F"/>
+  </ScalarVariable>
+  <!-- Index of variable = "120" -->
+  <ScalarVariable
+    name="lc1.inductor1.L"
+    valueReference="119"
+    description="Inductance"
+    variability="fixed"
+    causality="calculatedParameter"
+    >
+    <Real unit="H"/>
+  </ScalarVariable>
+  <!-- Index of variable = "121" -->
+  <ScalarVariable
+    name="lc1.inductor2.L"
+    valueReference="120"
+    description="Inductance"
+    variability="fixed"
+    causality="calculatedParameter"
+    >
+    <Real unit="H"/>
+  </ScalarVariable>
+  <!-- Index of variable = "122" -->
+  <ScalarVariable
+    name="lc1.inductor3.L"
+    valueReference="121"
+    description="Inductance"
+    variability="fixed"
+    causality="calculatedParameter"
+    >
+    <Real unit="H"/>
+  </ScalarVariable>
+  <!-- Index of variable = "123" -->
+  <ScalarVariable
+    name="lc2.C1"
+    valueReference="122"
+    variability="fixed"
+    causality="parameter"
+    >
+    <Real start="1e-05" min="0.0" unit="F"/>
+  </ScalarVariable>
+  <!-- Index of variable = "124" -->
+  <ScalarVariable
+    name="lc2.C2"
+    valueReference="123"
+    variability="fixed"
+    causality="parameter"
+    >
+    <Real start="1e-05" min="0.0" unit="F"/>
+  </ScalarVariable>
+  <!-- Index of variable = "125" -->
+  <ScalarVariable
+    name="lc2.C3"
+    valueReference="124"
+    variability="fixed"
+    causality="parameter"
+    >
+    <Real start="1e-05" min="0.0" unit="F"/>
+  </ScalarVariable>
+  <!-- Index of variable = "126" -->
+  <ScalarVariable
+    name="lc2.L1"
+    valueReference="125"
+    variability="fixed"
+    causality="parameter"
+    >
+    <Real start="0.001" unit="H"/>
+  </ScalarVariable>
+  <!-- Index of variable = "127" -->
+  <ScalarVariable
+    name="lc2.L2"
+    valueReference="126"
+    variability="fixed"
+    causality="parameter"
+    >
+    <Real start="0.001" unit="H"/>
+  </ScalarVariable>
+  <!-- Index of variable = "128" -->
+  <ScalarVariable
+    name="lc2.L3"
+    valueReference="127"
+    variability="fixed"
+    causality="parameter"
+    >
+    <Real start="0.001" unit="H"/>
+  </ScalarVariable>
+  <!-- Index of variable = "129" -->
+  <ScalarVariable
+    name="lc2.capacitor1.C"
+    valueReference="128"
+    description="Capacitance"
+    variability="fixed"
+    causality="calculatedParameter"
+    >
+    <Real min="0.0" unit="F"/>
+  </ScalarVariable>
+  <!-- Index of variable = "130" -->
+  <ScalarVariable
+    name="lc2.capacitor2.C"
+    valueReference="129"
+    description="Capacitance"
+    variability="fixed"
+    causality="calculatedParameter"
+    >
+    <Real min="0.0" unit="F"/>
+  </ScalarVariable>
+  <!-- Index of variable = "131" -->
+  <ScalarVariable
+    name="lc2.capacitor3.C"
+    valueReference="130"
+    description="Capacitance"
+    variability="fixed"
+    causality="calculatedParameter"
+    >
+    <Real min="0.0" unit="F"/>
+  </ScalarVariable>
+  <!-- Index of variable = "132" -->
+  <ScalarVariable
+    name="lc2.inductor1.L"
+    valueReference="131"
+    description="Inductance"
+    variability="fixed"
+    causality="calculatedParameter"
+    >
+    <Real unit="H"/>
+  </ScalarVariable>
+  <!-- Index of variable = "133" -->
+  <ScalarVariable
+    name="lc2.inductor2.L"
+    valueReference="132"
+    description="Inductance"
+    variability="fixed"
+    causality="calculatedParameter"
+    >
+    <Real unit="H"/>
+  </ScalarVariable>
+  <!-- Index of variable = "134" -->
+  <ScalarVariable
+    name="lc2.inductor3.L"
+    valueReference="133"
+    description="Inductance"
+    variability="fixed"
+    causality="calculatedParameter"
+    >
+    <Real unit="H"/>
+  </ScalarVariable>
+  <!-- Index of variable = "135" -->
+  <ScalarVariable
+    name="lcl1.C1"
+    valueReference="134"
+    variability="fixed"
+    causality="parameter"
+    >
+    <Real start="1e-05" min="0.0" unit="F"/>
+  </ScalarVariable>
+  <!-- Index of variable = "136" -->
+  <ScalarVariable
+    name="lcl1.C2"
+    valueReference="135"
+    variability="fixed"
+    causality="parameter"
+    >
+    <Real start="1e-05" min="0.0" unit="F"/>
+  </ScalarVariable>
+  <!-- Index of variable = "137" -->
+  <ScalarVariable
+    name="lcl1.C3"
+    valueReference="136"
+    variability="fixed"
+    causality="parameter"
+    >
+    <Real start="1e-05" min="0.0" unit="F"/>
+  </ScalarVariable>
+  <!-- Index of variable = "138" -->
+  <ScalarVariable
+    name="lcl1.L1"
+    valueReference="137"
+    variability="fixed"
+    causality="parameter"
+    >
+    <Real start="0.001" unit="H"/>
+  </ScalarVariable>
+  <!-- Index of variable = "139" -->
+  <ScalarVariable
+    name="lcl1.L2"
+    valueReference="138"
+    variability="fixed"
+    causality="parameter"
+    >
+    <Real start="0.001" unit="H"/>
+  </ScalarVariable>
+  <!-- Index of variable = "140" -->
+  <ScalarVariable
+    name="lcl1.L3"
+    valueReference="139"
+    variability="fixed"
+    causality="parameter"
+    >
+    <Real start="0.001" unit="H"/>
+  </ScalarVariable>
+  <!-- Index of variable = "141" -->
+  <ScalarVariable
+    name="lcl1.L4"
+    valueReference="140"
+    variability="fixed"
+    causality="parameter"
+    >
+    <Real start="0.001" unit="H"/>
+  </ScalarVariable>
+  <!-- Index of variable = "142" -->
+  <ScalarVariable
+    name="lcl1.L5"
+    valueReference="141"
+    variability="fixed"
+    causality="parameter"
+    >
+    <Real start="0.001" unit="H"/>
+  </ScalarVariable>
+  <!-- Index of variable = "143" -->
+  <ScalarVariable
+    name="lcl1.L6"
+    valueReference="142"
+    variability="fixed"
+    causality="parameter"
+    >
+    <Real start="0.001" unit="H"/>
+  </ScalarVariable>
+  <!-- Index of variable = "144" -->
+  <ScalarVariable
+    name="lcl1.capacitor1.C"
+    valueReference="143"
+    description="Capacitance"
+    variability="fixed"
+    causality="calculatedParameter"
+    >
+    <Real min="0.0" unit="F"/>
+  </ScalarVariable>
+  <!-- Index of variable = "145" -->
+  <ScalarVariable
+    name="lcl1.capacitor2.C"
+    valueReference="144"
+    description="Capacitance"
+    variability="fixed"
+    causality="calculatedParameter"
+    >
+    <Real min="0.0" unit="F"/>
+  </ScalarVariable>
+  <!-- Index of variable = "146" -->
+  <ScalarVariable
+    name="lcl1.capacitor3.C"
+    valueReference="145"
+    description="Capacitance"
+    variability="fixed"
+    causality="calculatedParameter"
+    >
+    <Real min="0.0" unit="F"/>
+  </ScalarVariable>
+  <!-- Index of variable = "147" -->
+  <ScalarVariable
+    name="lcl1.inductor1.L"
+    valueReference="146"
+    description="Inductance"
+    variability="fixed"
+    causality="calculatedParameter"
+    >
+    <Real unit="H"/>
+  </ScalarVariable>
+  <!-- Index of variable = "148" -->
+  <ScalarVariable
+    name="lcl1.inductor2.L"
+    valueReference="147"
+    description="Inductance"
+    variability="fixed"
+    causality="calculatedParameter"
+    >
+    <Real unit="H"/>
+  </ScalarVariable>
+  <!-- Index of variable = "149" -->
+  <ScalarVariable
+    name="lcl1.inductor3.L"
+    valueReference="148"
+    description="Inductance"
+    variability="fixed"
+    causality="calculatedParameter"
+    >
+    <Real unit="H"/>
+  </ScalarVariable>
+  <!-- Index of variable = "150" -->
+  <ScalarVariable
+    name="lcl1.inductor4.L"
+    valueReference="149"
+    description="Inductance"
+    variability="fixed"
+    causality="calculatedParameter"
+    >
+    <Real unit="H"/>
+  </ScalarVariable>
+  <!-- Index of variable = "151" -->
+  <ScalarVariable
+    name="lcl1.inductor5.L"
+    valueReference="150"
+    description="Inductance"
+    variability="fixed"
+    causality="calculatedParameter"
+    >
+    <Real unit="H"/>
+  </ScalarVariable>
+  <!-- Index of variable = "152" -->
+  <ScalarVariable
+    name="lcl1.inductor6.L"
+    valueReference="151"
+    description="Inductance"
+    variability="fixed"
+    causality="calculatedParameter"
+    >
+    <Real unit="H"/>
+  </ScalarVariable>
+  <!-- Index of variable = "153" -->
+  <ScalarVariable
+    name="rl1.L1"
+    valueReference="152"
+    variability="fixed"
+    causality="parameter"
+    >
+    <Real start="0.001" unit="H"/>
+  </ScalarVariable>
+  <!-- Index of variable = "154" -->
+  <ScalarVariable
+    name="rl1.L2"
+    valueReference="153"
+    variability="fixed"
+    causality="parameter"
+    >
+    <Real start="0.001" unit="H"/>
+  </ScalarVariable>
+  <!-- Index of variable = "155" -->
+  <ScalarVariable
+    name="rl1.L3"
+    valueReference="154"
+    variability="fixed"
+    causality="parameter"
+    >
+    <Real start="0.001" unit="H"/>
+  </ScalarVariable>
+  <!-- Index of variable = "156" -->
+  <ScalarVariable
+    name="rl1.R1"
+    valueReference="155"
+    variability="fixed"
+    causality="parameter"
+    >
+    <Real start="20.0" unit="Ohm"/>
+  </ScalarVariable>
+  <!-- Index of variable = "157" -->
+  <ScalarVariable
+    name="rl1.R2"
+    valueReference="156"
+    variability="fixed"
+    causality="parameter"
+    >
+    <Real start="20.0" unit="Ohm"/>
+  </ScalarVariable>
+  <!-- Index of variable = "158" -->
+  <ScalarVariable
+    name="rl1.R3"
+    valueReference="157"
+    variability="fixed"
+    causality="parameter"
+    >
+    <Real start="20.0" unit="Ohm"/>
+  </ScalarVariable>
+  <!-- Index of variable = "159" -->
+  <ScalarVariable
+    name="rl1.inductor1.L"
+    valueReference="158"
+    description="Inductance"
+    variability="fixed"
+    causality="calculatedParameter"
+    >
+    <Real unit="H"/>
+  </ScalarVariable>
+  <!-- Index of variable = "160" -->
+  <ScalarVariable
+    name="rl1.inductor2.L"
+    valueReference="159"
+    description="Inductance"
+    variability="fixed"
+    causality="calculatedParameter"
+    >
+    <Real unit="H"/>
+  </ScalarVariable>
+  <!-- Index of variable = "161" -->
+  <ScalarVariable
+    name="rl1.inductor3.L"
+    valueReference="160"
+    description="Inductance"
+    variability="fixed"
+    causality="calculatedParameter"
+    >
+    <Real unit="H"/>
+  </ScalarVariable>
+  <!-- Index of variable = "162" -->
+  <ScalarVariable
+    name="rl1.resistor1.R"
+    valueReference="161"
+    variability="fixed"
+    causality="calculatedParameter"
+    >
+    <Real unit="Ohm"/>
+  </ScalarVariable>
+  <!-- Index of variable = "163" -->
+  <ScalarVariable
+    name="rl1.resistor2.R"
+    valueReference="162"
+    variability="fixed"
+    causality="calculatedParameter"
+    >
+    <Real unit="Ohm"/>
+  </ScalarVariable>
+  <!-- Index of variable = "164" -->
+  <ScalarVariable
+    name="rl1.resistor3.R"
+    valueReference="163"
+    variability="fixed"
+    causality="calculatedParameter"
+    >
+    <Real unit="Ohm"/>
+  </ScalarVariable>
+  <!-- Index of variable = "165" -->
+  <ScalarVariable
+    name="inverter1.gain1.u"
+    valueReference="48"
+    description="Input signal connector"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "166" -->
+  <ScalarVariable
+    name="inverter1.gain2.u"
+    valueReference="49"
+    description="Input signal connector"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "167" -->
+  <ScalarVariable
+    name="inverter1.gain3.u"
+    valueReference="50"
+    description="Input signal connector"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "168" -->
+  <ScalarVariable
+    name="inverter1.pin1.i"
+    valueReference="167"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "169" -->
+  <ScalarVariable
+    name="inverter1.pin1.v"
+    valueReference="54"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "170" -->
+  <ScalarVariable
+    name="inverter1.pin2.i"
+    valueReference="169"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "171" -->
+  <ScalarVariable
+    name="inverter1.pin2.v"
+    valueReference="55"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "172" -->
+  <ScalarVariable
+    name="inverter1.pin3.i"
+    valueReference="171"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "173" -->
+  <ScalarVariable
+    name="inverter1.pin3.v"
+    valueReference="56"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "174" -->
+  <ScalarVariable
+    name="inverter1.signalVoltage1.i"
+    valueReference="173"
+    description="Current flowing from pin p to pin n"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "175" -->
+  <ScalarVariable
+    name="inverter1.signalVoltage1.n.i"
+    valueReference="3"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "176" -->
+  <ScalarVariable
+    name="inverter1.signalVoltage1.n.v"
+    valueReference="58"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "177" -->
+  <ScalarVariable
+    name="inverter1.signalVoltage1.p.i"
+    valueReference="176"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "178" -->
+  <ScalarVariable
+    name="inverter1.signalVoltage1.p.v"
+    valueReference="54"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "179" -->
+  <ScalarVariable
+    name="inverter1.signalVoltage1.v"
+    valueReference="54"
+    description="Voltage between pin p and n (= p.v - n.v) as input signal"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "180" -->
+  <ScalarVariable
+    name="inverter1.signalVoltage2.i"
+    valueReference="179"
+    description="Current flowing from pin p to pin n"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "181" -->
+  <ScalarVariable
+    name="inverter1.signalVoltage2.n.i"
+    valueReference="4"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "182" -->
+  <ScalarVariable
+    name="inverter1.signalVoltage2.n.v"
+    valueReference="58"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "183" -->
+  <ScalarVariable
+    name="inverter1.signalVoltage2.p.i"
+    valueReference="182"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "184" -->
+  <ScalarVariable
+    name="inverter1.signalVoltage2.p.v"
+    valueReference="55"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "185" -->
+  <ScalarVariable
+    name="inverter1.signalVoltage2.v"
+    valueReference="55"
+    description="Voltage between pin p and n (= p.v - n.v) as input signal"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "186" -->
+  <ScalarVariable
+    name="inverter1.signalVoltage3.i"
+    valueReference="185"
+    description="Current flowing from pin p to pin n"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "187" -->
+  <ScalarVariable
+    name="inverter1.signalVoltage3.n.i"
+    valueReference="5"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "188" -->
+  <ScalarVariable
+    name="inverter1.signalVoltage3.n.v"
+    valueReference="58"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "189" -->
+  <ScalarVariable
+    name="inverter1.signalVoltage3.p.i"
+    valueReference="188"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "190" -->
+  <ScalarVariable
+    name="inverter1.signalVoltage3.p.v"
+    valueReference="56"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "191" -->
+  <ScalarVariable
+    name="inverter1.signalVoltage3.v"
+    valueReference="56"
+    description="Voltage between pin p and n (= p.v - n.v) as input signal"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "192" -->
+  <ScalarVariable
+    name="inverter1.u1"
+    valueReference="48"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "193" -->
+  <ScalarVariable
+    name="inverter1.u2"
+    valueReference="49"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "194" -->
+  <ScalarVariable
+    name="inverter1.u3"
+    valueReference="50"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "195" -->
+  <ScalarVariable
+    name="inverter2.gain1.u"
+    valueReference="51"
+    description="Input signal connector"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "196" -->
+  <ScalarVariable
+    name="inverter2.gain2.u"
+    valueReference="52"
+    description="Input signal connector"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "197" -->
+  <ScalarVariable
+    name="inverter2.gain3.u"
+    valueReference="53"
+    description="Input signal connector"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "198" -->
+  <ScalarVariable
+    name="inverter2.pin1.i"
+    valueReference="197"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "199" -->
+  <ScalarVariable
+    name="inverter2.pin1.v"
+    valueReference="59"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "200" -->
+  <ScalarVariable
+    name="inverter2.pin2.i"
+    valueReference="199"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "201" -->
+  <ScalarVariable
+    name="inverter2.pin2.v"
+    valueReference="60"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "202" -->
+  <ScalarVariable
+    name="inverter2.pin3.i"
+    valueReference="201"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "203" -->
+  <ScalarVariable
+    name="inverter2.pin3.v"
+    valueReference="61"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "204" -->
+  <ScalarVariable
+    name="inverter2.signalVoltage1.i"
+    valueReference="203"
+    description="Current flowing from pin p to pin n"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "205" -->
+  <ScalarVariable
+    name="inverter2.signalVoltage1.n.i"
+    valueReference="15"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "206" -->
+  <ScalarVariable
+    name="inverter2.signalVoltage1.n.v"
+    valueReference="63"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "207" -->
+  <ScalarVariable
+    name="inverter2.signalVoltage1.p.i"
+    valueReference="206"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "208" -->
+  <ScalarVariable
+    name="inverter2.signalVoltage1.p.v"
+    valueReference="59"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "209" -->
+  <ScalarVariable
+    name="inverter2.signalVoltage1.v"
+    valueReference="59"
+    description="Voltage between pin p and n (= p.v - n.v) as input signal"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "210" -->
+  <ScalarVariable
+    name="inverter2.signalVoltage2.i"
+    valueReference="209"
+    description="Current flowing from pin p to pin n"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "211" -->
+  <ScalarVariable
+    name="inverter2.signalVoltage2.n.i"
+    valueReference="16"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "212" -->
+  <ScalarVariable
+    name="inverter2.signalVoltage2.n.v"
+    valueReference="63"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "213" -->
+  <ScalarVariable
+    name="inverter2.signalVoltage2.p.i"
+    valueReference="212"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "214" -->
+  <ScalarVariable
+    name="inverter2.signalVoltage2.p.v"
+    valueReference="60"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "215" -->
+  <ScalarVariable
+    name="inverter2.signalVoltage2.v"
+    valueReference="60"
+    description="Voltage between pin p and n (= p.v - n.v) as input signal"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "216" -->
+  <ScalarVariable
+    name="inverter2.signalVoltage3.i"
+    valueReference="215"
+    description="Current flowing from pin p to pin n"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "217" -->
+  <ScalarVariable
+    name="inverter2.signalVoltage3.n.i"
+    valueReference="17"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "218" -->
+  <ScalarVariable
+    name="inverter2.signalVoltage3.n.v"
+    valueReference="63"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "219" -->
+  <ScalarVariable
+    name="inverter2.signalVoltage3.p.i"
+    valueReference="218"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "220" -->
+  <ScalarVariable
+    name="inverter2.signalVoltage3.p.v"
+    valueReference="61"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "221" -->
+  <ScalarVariable
+    name="inverter2.signalVoltage3.v"
+    valueReference="61"
+    description="Voltage between pin p and n (= p.v - n.v) as input signal"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "222" -->
+  <ScalarVariable
+    name="inverter2.u1"
+    valueReference="51"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "223" -->
+  <ScalarVariable
+    name="inverter2.u2"
+    valueReference="52"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "224" -->
+  <ScalarVariable
+    name="inverter2.u3"
+    valueReference="53"
+    >
+    <Real/>
+  </ScalarVariable>
+  <!-- Index of variable = "225" -->
+  <ScalarVariable
+    name="lc1.capacitor1.n.i"
+    valueReference="224"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "226" -->
+  <ScalarVariable
+    name="lc1.capacitor1.n.v"
+    valueReference="68"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "227" -->
+  <ScalarVariable
+    name="lc1.capacitor1.p.i"
+    valueReference="64"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "228" -->
+  <ScalarVariable
+    name="lc1.capacitor1.p.v"
+    valueReference="0"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "229" -->
+  <ScalarVariable
+    name="lc1.capacitor2.n.i"
+    valueReference="228"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "230" -->
+  <ScalarVariable
+    name="lc1.capacitor2.n.v"
+    valueReference="68"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "231" -->
+  <ScalarVariable
+    name="lc1.capacitor2.p.i"
+    valueReference="65"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "232" -->
+  <ScalarVariable
+    name="lc1.capacitor2.p.v"
+    valueReference="1"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "233" -->
+  <ScalarVariable
+    name="lc1.capacitor3.n.i"
+    valueReference="232"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "234" -->
+  <ScalarVariable
+    name="lc1.capacitor3.n.v"
+    valueReference="68"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "235" -->
+  <ScalarVariable
+    name="lc1.capacitor3.p.i"
+    valueReference="66"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "236" -->
+  <ScalarVariable
+    name="lc1.capacitor3.p.v"
+    valueReference="2"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "237" -->
+  <ScalarVariable
+    name="lc1.inductor1.n.i"
+    valueReference="236"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "238" -->
+  <ScalarVariable
+    name="lc1.inductor1.n.v"
+    valueReference="0"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "239" -->
+  <ScalarVariable
+    name="lc1.inductor1.p.i"
+    valueReference="3"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "240" -->
+  <ScalarVariable
+    name="lc1.inductor1.p.v"
+    valueReference="54"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "241" -->
+  <ScalarVariable
+    name="lc1.inductor2.n.i"
+    valueReference="240"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "242" -->
+  <ScalarVariable
+    name="lc1.inductor2.n.v"
+    valueReference="1"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "243" -->
+  <ScalarVariable
+    name="lc1.inductor2.p.i"
+    valueReference="4"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "244" -->
+  <ScalarVariable
+    name="lc1.inductor2.p.v"
+    valueReference="55"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "245" -->
+  <ScalarVariable
+    name="lc1.inductor3.n.i"
+    valueReference="244"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "246" -->
+  <ScalarVariable
+    name="lc1.inductor3.n.v"
+    valueReference="2"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "247" -->
+  <ScalarVariable
+    name="lc1.inductor3.p.i"
+    valueReference="5"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "248" -->
+  <ScalarVariable
+    name="lc1.inductor3.p.v"
+    valueReference="56"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "249" -->
+  <ScalarVariable
+    name="lc1.pin1.i"
+    valueReference="3"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "250" -->
+  <ScalarVariable
+    name="lc1.pin1.v"
+    valueReference="54"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "251" -->
+  <ScalarVariable
+    name="lc1.pin2.i"
+    valueReference="4"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "252" -->
+  <ScalarVariable
+    name="lc1.pin2.v"
+    valueReference="55"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "253" -->
+  <ScalarVariable
+    name="lc1.pin3.i"
+    valueReference="5"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "254" -->
+  <ScalarVariable
+    name="lc1.pin3.v"
+    valueReference="56"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "255" -->
+  <ScalarVariable
+    name="lc1.pin4.v"
+    valueReference="0"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "256" -->
+  <ScalarVariable
+    name="lc1.pin5.v"
+    valueReference="1"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "257" -->
+  <ScalarVariable
+    name="lc1.pin6.v"
+    valueReference="2"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "258" -->
+  <ScalarVariable
+    name="lc2.capacitor1.n.i"
+    valueReference="257"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "259" -->
+  <ScalarVariable
+    name="lc2.capacitor1.n.v"
+    valueReference="79"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "260" -->
+  <ScalarVariable
+    name="lc2.capacitor1.p.i"
+    valueReference="75"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "261" -->
+  <ScalarVariable
+    name="lc2.capacitor1.p.v"
+    valueReference="6"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "262" -->
+  <ScalarVariable
+    name="lc2.capacitor2.n.i"
+    valueReference="261"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "263" -->
+  <ScalarVariable
+    name="lc2.capacitor2.n.v"
+    valueReference="79"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "264" -->
+  <ScalarVariable
+    name="lc2.capacitor2.p.i"
+    valueReference="76"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "265" -->
+  <ScalarVariable
+    name="lc2.capacitor2.p.v"
+    valueReference="7"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "266" -->
+  <ScalarVariable
+    name="lc2.capacitor3.n.i"
+    valueReference="265"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "267" -->
+  <ScalarVariable
+    name="lc2.capacitor3.n.v"
+    valueReference="79"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "268" -->
+  <ScalarVariable
+    name="lc2.capacitor3.p.i"
+    valueReference="77"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "269" -->
+  <ScalarVariable
+    name="lc2.capacitor3.p.v"
+    valueReference="8"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "270" -->
+  <ScalarVariable
+    name="lc2.inductor1.n.i"
+    valueReference="269"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "271" -->
+  <ScalarVariable
+    name="lc2.inductor1.n.v"
+    valueReference="6"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "272" -->
+  <ScalarVariable
+    name="lc2.inductor1.p.i"
+    valueReference="9"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "273" -->
+  <ScalarVariable
+    name="lc2.inductor1.p.v"
+    valueReference="0"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "274" -->
+  <ScalarVariable
+    name="lc2.inductor2.n.i"
+    valueReference="273"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "275" -->
+  <ScalarVariable
+    name="lc2.inductor2.n.v"
+    valueReference="7"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "276" -->
+  <ScalarVariable
+    name="lc2.inductor2.p.i"
+    valueReference="10"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "277" -->
+  <ScalarVariable
+    name="lc2.inductor2.p.v"
+    valueReference="1"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "278" -->
+  <ScalarVariable
+    name="lc2.inductor3.n.i"
+    valueReference="277"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "279" -->
+  <ScalarVariable
+    name="lc2.inductor3.n.v"
+    valueReference="8"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "280" -->
+  <ScalarVariable
+    name="lc2.inductor3.p.i"
+    valueReference="11"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "281" -->
+  <ScalarVariable
+    name="lc2.inductor3.p.v"
+    valueReference="2"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "282" -->
+  <ScalarVariable
+    name="lc2.pin1.i"
+    valueReference="9"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "283" -->
+  <ScalarVariable
+    name="lc2.pin1.v"
+    valueReference="0"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "284" -->
+  <ScalarVariable
+    name="lc2.pin2.i"
+    valueReference="10"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "285" -->
+  <ScalarVariable
+    name="lc2.pin2.v"
+    valueReference="1"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "286" -->
+  <ScalarVariable
+    name="lc2.pin3.i"
+    valueReference="11"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "287" -->
+  <ScalarVariable
+    name="lc2.pin3.v"
+    valueReference="2"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "288" -->
+  <ScalarVariable
+    name="lc2.pin4.i"
+    valueReference="287"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "289" -->
+  <ScalarVariable
+    name="lc2.pin4.v"
+    valueReference="6"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "290" -->
+  <ScalarVariable
+    name="lc2.pin5.i"
+    valueReference="289"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "291" -->
+  <ScalarVariable
+    name="lc2.pin5.v"
+    valueReference="7"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "292" -->
+  <ScalarVariable
+    name="lc2.pin6.i"
+    valueReference="291"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "293" -->
+  <ScalarVariable
+    name="lc2.pin6.v"
+    valueReference="8"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "294" -->
+  <ScalarVariable
+    name="lcl1.capacitor1.n.i"
+    valueReference="293"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "295" -->
+  <ScalarVariable
+    name="lcl1.capacitor1.n.v"
+    valueReference="87"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "296" -->
+  <ScalarVariable
+    name="lcl1.capacitor1.p.i"
+    valueReference="83"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "297" -->
+  <ScalarVariable
+    name="lcl1.capacitor1.p.v"
+    valueReference="12"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "298" -->
+  <ScalarVariable
+    name="lcl1.capacitor2.n.i"
+    valueReference="297"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "299" -->
+  <ScalarVariable
+    name="lcl1.capacitor2.n.v"
+    valueReference="87"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "300" -->
+  <ScalarVariable
+    name="lcl1.capacitor2.p.i"
+    valueReference="84"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "301" -->
+  <ScalarVariable
+    name="lcl1.capacitor2.p.v"
+    valueReference="13"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "302" -->
+  <ScalarVariable
+    name="lcl1.capacitor3.n.i"
+    valueReference="301"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "303" -->
+  <ScalarVariable
+    name="lcl1.capacitor3.n.v"
+    valueReference="87"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "304" -->
+  <ScalarVariable
+    name="lcl1.capacitor3.p.i"
+    valueReference="85"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "305" -->
+  <ScalarVariable
+    name="lcl1.capacitor3.p.v"
+    valueReference="14"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "306" -->
+  <ScalarVariable
+    name="lcl1.inductor1.n.i"
+    valueReference="305"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "307" -->
+  <ScalarVariable
+    name="lcl1.inductor1.n.v"
+    valueReference="12"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "308" -->
+  <ScalarVariable
+    name="lcl1.inductor1.p.i"
+    valueReference="15"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "309" -->
+  <ScalarVariable
+    name="lcl1.inductor1.p.v"
+    valueReference="59"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "310" -->
+  <ScalarVariable
+    name="lcl1.inductor2.n.i"
+    valueReference="309"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "311" -->
+  <ScalarVariable
+    name="lcl1.inductor2.n.v"
+    valueReference="13"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "312" -->
+  <ScalarVariable
+    name="lcl1.inductor2.p.i"
+    valueReference="16"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "313" -->
+  <ScalarVariable
+    name="lcl1.inductor2.p.v"
+    valueReference="60"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "314" -->
+  <ScalarVariable
+    name="lcl1.inductor3.n.i"
+    valueReference="313"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "315" -->
+  <ScalarVariable
+    name="lcl1.inductor3.n.v"
+    valueReference="14"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "316" -->
+  <ScalarVariable
+    name="lcl1.inductor3.p.i"
+    valueReference="17"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "317" -->
+  <ScalarVariable
+    name="lcl1.inductor3.p.v"
+    valueReference="61"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "318" -->
+  <ScalarVariable
+    name="lcl1.inductor4.n.i"
+    valueReference="317"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "319" -->
+  <ScalarVariable
+    name="lcl1.inductor4.n.v"
+    valueReference="0"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "320" -->
+  <ScalarVariable
+    name="lcl1.inductor4.p.i"
+    valueReference="18"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "321" -->
+  <ScalarVariable
+    name="lcl1.inductor4.p.v"
+    valueReference="12"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "322" -->
+  <ScalarVariable
+    name="lcl1.inductor5.n.i"
+    valueReference="321"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "323" -->
+  <ScalarVariable
+    name="lcl1.inductor5.n.v"
+    valueReference="1"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "324" -->
+  <ScalarVariable
+    name="lcl1.inductor5.p.i"
+    valueReference="19"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "325" -->
+  <ScalarVariable
+    name="lcl1.inductor5.p.v"
+    valueReference="13"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "326" -->
+  <ScalarVariable
+    name="lcl1.inductor6.n.i"
+    valueReference="325"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "327" -->
+  <ScalarVariable
+    name="lcl1.inductor6.n.v"
+    valueReference="2"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "328" -->
+  <ScalarVariable
+    name="lcl1.inductor6.p.i"
+    valueReference="20"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "329" -->
+  <ScalarVariable
+    name="lcl1.inductor6.p.v"
+    valueReference="14"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "330" -->
+  <ScalarVariable
+    name="lcl1.pin1.i"
+    valueReference="15"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "331" -->
+  <ScalarVariable
+    name="lcl1.pin1.v"
+    valueReference="59"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "332" -->
+  <ScalarVariable
+    name="lcl1.pin2.i"
+    valueReference="16"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "333" -->
+  <ScalarVariable
+    name="lcl1.pin2.v"
+    valueReference="60"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "334" -->
+  <ScalarVariable
+    name="lcl1.pin3.i"
+    valueReference="17"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "335" -->
+  <ScalarVariable
+    name="lcl1.pin3.v"
+    valueReference="61"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "336" -->
+  <ScalarVariable
+    name="lcl1.pin4.i"
+    valueReference="335"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "337" -->
+  <ScalarVariable
+    name="lcl1.pin4.v"
+    valueReference="0"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "338" -->
+  <ScalarVariable
+    name="lcl1.pin5.i"
+    valueReference="337"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "339" -->
+  <ScalarVariable
+    name="lcl1.pin5.v"
+    valueReference="1"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "340" -->
+  <ScalarVariable
+    name="lcl1.pin6.i"
+    valueReference="339"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "341" -->
+  <ScalarVariable
+    name="lcl1.pin6.v"
+    valueReference="2"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "342" -->
+  <ScalarVariable
+    name="rl1.inductor1.n.i"
+    valueReference="341"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "343" -->
+  <ScalarVariable
+    name="rl1.inductor1.n.v"
+    valueReference="95"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "344" -->
+  <ScalarVariable
+    name="rl1.inductor1.p.i"
+    valueReference="21"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "345" -->
+  <ScalarVariable
+    name="rl1.inductor1.p.v"
+    valueReference="96"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "346" -->
+  <ScalarVariable
+    name="rl1.inductor2.n.i"
+    valueReference="345"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "347" -->
+  <ScalarVariable
+    name="rl1.inductor2.n.v"
+    valueReference="95"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "348" -->
+  <ScalarVariable
+    name="rl1.inductor2.p.i"
+    valueReference="22"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "349" -->
+  <ScalarVariable
+    name="rl1.inductor2.p.v"
+    valueReference="97"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "350" -->
+  <ScalarVariable
+    name="rl1.inductor3.n.i"
+    valueReference="349"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "351" -->
+  <ScalarVariable
+    name="rl1.inductor3.n.v"
+    valueReference="95"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "352" -->
+  <ScalarVariable
+    name="rl1.inductor3.p.i"
+    valueReference="23"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "353" -->
+  <ScalarVariable
+    name="rl1.inductor3.p.v"
+    valueReference="98"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "354" -->
+  <ScalarVariable
+    name="rl1.pin1.i"
+    valueReference="21"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "355" -->
+  <ScalarVariable
+    name="rl1.pin1.v"
+    valueReference="6"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "356" -->
+  <ScalarVariable
+    name="rl1.pin2.i"
+    valueReference="22"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "357" -->
+  <ScalarVariable
+    name="rl1.pin2.v"
+    valueReference="7"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "358" -->
+  <ScalarVariable
+    name="rl1.pin3.i"
+    valueReference="23"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "359" -->
+  <ScalarVariable
+    name="rl1.pin3.v"
+    valueReference="8"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "360" -->
+  <ScalarVariable
+    name="rl1.resistor1.i"
+    valueReference="21"
+    description="Current flowing from pin p to pin n"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "361" -->
+  <ScalarVariable
+    name="rl1.resistor1.n.i"
+    valueReference="360"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "362" -->
+  <ScalarVariable
+    name="rl1.resistor1.n.v"
+    valueReference="96"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "363" -->
+  <ScalarVariable
+    name="rl1.resistor1.p.i"
+    valueReference="21"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "364" -->
+  <ScalarVariable
+    name="rl1.resistor1.p.v"
+    valueReference="6"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "365" -->
+  <ScalarVariable
+    name="rl1.resistor2.i"
+    valueReference="22"
+    description="Current flowing from pin p to pin n"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "366" -->
+  <ScalarVariable
+    name="rl1.resistor2.n.i"
+    valueReference="365"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "367" -->
+  <ScalarVariable
+    name="rl1.resistor2.n.v"
+    valueReference="97"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "368" -->
+  <ScalarVariable
+    name="rl1.resistor2.p.i"
+    valueReference="22"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "369" -->
+  <ScalarVariable
+    name="rl1.resistor2.p.v"
+    valueReference="7"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "370" -->
+  <ScalarVariable
+    name="rl1.resistor3.i"
+    valueReference="23"
+    description="Current flowing from pin p to pin n"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "371" -->
+  <ScalarVariable
+    name="rl1.resistor3.n.i"
+    valueReference="370"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "372" -->
+  <ScalarVariable
+    name="rl1.resistor3.n.v"
+    valueReference="98"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  <!-- Index of variable = "373" -->
+  <ScalarVariable
+    name="rl1.resistor3.p.i"
+    valueReference="23"
+    description="Current flowing into the pin"
+    >
+    <Real unit="A"/>
+  </ScalarVariable>
+  <!-- Index of variable = "374" -->
+  <ScalarVariable
+    name="rl1.resistor3.p.v"
+    valueReference="8"
+    description="Potential at the pin"
+    >
+    <Real unit="V"/>
+  </ScalarVariable>
+  </ModelVariables>
+  <ModelStructure>
+    <Derivatives>
+      <Unknown index="25" dependencies="4 10 19" dependenciesKind="dependent dependent dependent" />
+      <Unknown index="26" dependencies="5 11 20" dependenciesKind="dependent dependent dependent" />
+      <Unknown index="27" dependencies="6 12 21" dependenciesKind="dependent dependent dependent" />
+      <Unknown index="28" dependencies="1 49" dependenciesKind="dependent dependent" />
+      <Unknown index="29" dependencies="2 50" dependenciesKind="dependent dependent" />
+      <Unknown index="30" dependencies="3 51" dependenciesKind="dependent dependent" />
+      <Unknown index="31" dependencies="10 22" dependenciesKind="dependent dependent" />
+      <Unknown index="32" dependencies="11 23" dependenciesKind="dependent dependent" />
+      <Unknown index="33" dependencies="12 24" dependenciesKind="dependent dependent" />
+      <Unknown index="34" dependencies="1 7" dependenciesKind="dependent dependent" />
+      <Unknown index="35" dependencies="2 8" dependenciesKind="dependent dependent" />
+      <Unknown index="36" dependencies="3 9" dependenciesKind="dependent dependent" />
+      <Unknown index="37" dependencies="16 19" dependenciesKind="dependent dependent" />
+      <Unknown index="38" dependencies="17 20" dependenciesKind="dependent dependent" />
+      <Unknown index="39" dependencies="18 21" dependenciesKind="dependent dependent" />
+      <Unknown index="40" dependencies="13 52" dependenciesKind="dependent dependent" />
+      <Unknown index="41" dependencies="14 53" dependenciesKind="dependent dependent" />
+      <Unknown index="42" dependencies="15 54" dependenciesKind="dependent dependent" />
+      <Unknown index="43" dependencies="1 13" dependenciesKind="dependent dependent" />
+      <Unknown index="44" dependencies="2 14" dependenciesKind="dependent dependent" />
+      <Unknown index="45" dependencies="3 15" dependenciesKind="dependent dependent" />
+      <Unknown index="46" dependencies="7 22" dependenciesKind="dependent dependent" />
+      <Unknown index="47" dependencies="8 23" dependenciesKind="dependent dependent" />
+      <Unknown index="48" dependencies="9 24" dependenciesKind="dependent dependent" />
+    </Derivatives>
+    <InitialUnknowns>
+      <Unknown index="25" dependencies="4 10 19" dependenciesKind="dependent dependent dependent" />
+      <Unknown index="26" dependencies="5 11 20" dependenciesKind="dependent dependent dependent" />
+      <Unknown index="27" dependencies="6 12 21" dependenciesKind="dependent dependent dependent" />
+      <Unknown index="28" dependencies="1 106" dependenciesKind="dependent dependent" />
+      <Unknown index="29" dependencies="2 115" dependenciesKind="dependent dependent" />
+      <Unknown index="30" dependencies="3 112" dependenciesKind="dependent dependent" />
+      <Unknown index="31" dependencies="10 22" dependenciesKind="dependent dependent" />
+      <Unknown index="32" dependencies="11 23" dependenciesKind="dependent dependent" />
+      <Unknown index="33" dependencies="12 24" dependenciesKind="dependent dependent" />
+      <Unknown index="34" dependencies="1 7" dependenciesKind="dependent dependent" />
+      <Unknown index="35" dependencies="2 8" dependenciesKind="dependent dependent" />
+      <Unknown index="36" dependencies="3 9" dependenciesKind="dependent dependent" />
+      <Unknown index="37" dependencies="16 19" dependenciesKind="dependent dependent" />
+      <Unknown index="38" dependencies="17 20" dependenciesKind="dependent dependent" />
+      <Unknown index="39" dependencies="18 21" dependenciesKind="dependent dependent" />
+      <Unknown index="40" dependencies="13 114" dependenciesKind="dependent dependent" />
+      <Unknown index="41" dependencies="14 116" dependenciesKind="dependent dependent" />
+      <Unknown index="42" dependencies="15 111" dependenciesKind="dependent dependent" />
+      <Unknown index="43" dependencies="1 13" dependenciesKind="dependent dependent" />
+      <Unknown index="44" dependencies="2 14" dependenciesKind="dependent dependent" />
+      <Unknown index="45" dependencies="3 15" dependenciesKind="dependent dependent" />
+      <Unknown index="46" dependencies="7 22" dependenciesKind="dependent dependent" />
+      <Unknown index="47" dependencies="8 23" dependenciesKind="dependent dependent" />
+      <Unknown index="48" dependencies="9 24" dependenciesKind="dependent dependent" />
+      <Unknown index="103" dependencies="113" dependenciesKind="dependent" />
+      <Unknown index="104" dependencies="113" dependenciesKind="dependent" />
+      <Unknown index="105" dependencies="113" dependenciesKind="dependent" />
+      <Unknown index="107" dependencies="137" dependenciesKind="dependent" />
+      <Unknown index="108" dependencies="137" dependenciesKind="dependent" />
+      <Unknown index="109" dependencies="137" dependenciesKind="dependent" />
+      <Unknown index="117" dependencies="140" dependenciesKind="dependent" />
+      <Unknown index="118" dependencies="135" dependenciesKind="dependent" />
+      <Unknown index="119" dependencies="136" dependenciesKind="dependent" />
+      <Unknown index="120" dependencies="110" dependenciesKind="dependent" />
+      <Unknown index="121" dependencies="138" dependenciesKind="dependent" />
+      <Unknown index="122" dependencies="139" dependenciesKind="dependent" />
+      <Unknown index="129" dependencies="88" dependenciesKind="dependent" />
+      <Unknown index="130" dependencies="96" dependenciesKind="dependent" />
+      <Unknown index="131" dependencies="80" dependenciesKind="dependent" />
+      <Unknown index="132" dependencies="59" dependenciesKind="dependent" />
+      <Unknown index="133" dependencies="69" dependenciesKind="dependent" />
+      <Unknown index="134" dependencies="64" dependenciesKind="dependent" />
+      <Unknown index="144" dependencies="153" dependenciesKind="dependent" />
+      <Unknown index="145" dependencies="154" dependenciesKind="dependent" />
+      <Unknown index="146" dependencies="155" dependenciesKind="dependent" />
+      <Unknown index="147" dependencies="141" dependenciesKind="dependent" />
+      <Unknown index="148" dependencies="142" dependenciesKind="dependent" />
+      <Unknown index="149" dependencies="143" dependenciesKind="dependent" />
+      <Unknown index="150" dependencies="156" dependenciesKind="dependent" />
+      <Unknown index="151" dependencies="157" dependenciesKind="dependent" />
+      <Unknown index="152" dependencies="158" dependenciesKind="dependent" />
+      <Unknown index="159" dependencies="126" dependenciesKind="dependent" />
+      <Unknown index="160" dependencies="127" dependenciesKind="dependent" />
+      <Unknown index="161" dependencies="128" dependenciesKind="dependent" />
+      <Unknown index="162" dependencies="123" dependenciesKind="dependent" />
+      <Unknown index="163" dependencies="124" dependenciesKind="dependent" />
+      <Unknown index="164" dependencies="125" dependenciesKind="dependent" />
+    </InitialUnknowns>
+  </ModelStructure>
+</fmiModelDescription>
