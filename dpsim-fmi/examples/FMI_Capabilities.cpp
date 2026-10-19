@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 #include <cmath>
 #include <dpsim-fmi/ModelExchange.h>
+#include <iomanip>
 #include <iostream>
 
 using namespace DPsim::FMI;
@@ -22,6 +23,8 @@ int main(int argc, char **argv) {
               << "outputs: " << description.outputNames.size() << '\n'
               << "event_indicators: "
               << (description.hasEventIndicators ? "yes" : "no") << '\n'
+              << "discrete_variables: "
+              << (description.hasDiscreteVariables ? "yes" : "no") << '\n'
               << "needs_completed_integrator_step: "
               << (description.needsCompletedIntegratorStep ? "yes" : "no")
               << '\n'
@@ -32,7 +35,12 @@ int main(int argc, char **argv) {
               << "single_instance_process_limit: "
               << (description.canBeInstantiatedOnlyOncePerProcess ? "yes"
                                                                   : "no")
-              << '\n';
+              << '\n'
+              << "next_time_event: ";
+    if (std::isfinite(model->nextTimeEvent()))
+      std::cout << std::setprecision(17) << model->nextTimeEvent() << '\n';
+    else
+      std::cout << "none\n";
 
     std::cout << "input_names:";
     for (const auto &name : description.inputNames)

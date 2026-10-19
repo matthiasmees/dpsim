@@ -332,6 +332,36 @@ add_dependencies(FMI_SampledTest fmi_package_sampled_threephase)
 add_test(NAME fmi_sampled_threephase COMMAND FMI_SampledTest "${FMU}")
 add_test(NAME fmi_sampled_reuse_jacobian COMMAND FMI_SampledTest "${FMU}" reuse)
 add_test(NAME fmi_multirate_sampled_tick COMMAND FMI_SampledTest "${FMU}" multirate)
+
+# A second instance has a 0.5 ms event clock, proving that each FMU keeps its
+# own deterministic schedule while both are synchronized to one EMT macro step.
+set(STAGE "${CMAKE_CURRENT_BINARY_DIR}/stage/sampled_threephase_fast")
+file(MAKE_DIRECTORY "${STAGE}")
+file(WRITE "${STAGE}/modelDescription.xml" "${SAMPLED_XML}")
+add_library(fmi_fixture_sampled_threephase_fast MODULE TestModel3Ph.cpp)
+target_include_directories(fmi_fixture_sampled_threephase_fast PRIVATE ../third_party/fmi3)
+target_compile_definitions(fmi_fixture_sampled_threephase_fast PRIVATE
+	FIXTURE_NONLINEAR=1 FIXTURE_SAMPLED=1 FIXTURE_SNAPSHOTS=1
+	FIXTURE_SAMPLED_PERIOD=0.0005)
+set_target_properties(fmi_fixture_sampled_threephase_fast PROPERTIES
+	PREFIX "" OUTPUT_NAME TestModel3Ph SUFFIX "${FMI_SUFFIX}"
+	LIBRARY_OUTPUT_DIRECTORY "${STAGE}/binaries/${FMI_PLATFORM}"
+	RUNTIME_OUTPUT_DIRECTORY "${STAGE}/binaries/${FMI_PLATFORM}"
+)
+set(FAST_FMU "${CMAKE_CURRENT_BINARY_DIR}/sampled_threephase_fast.fmu")
+add_custom_command(OUTPUT "${FAST_FMU}"
+	COMMAND ${CMAKE_COMMAND} -E tar cf "${FAST_FMU}" --format=zip -- modelDescription.xml binaries
+	WORKING_DIRECTORY "${STAGE}"
+	DEPENDS fmi_fixture_sampled_threephase_fast "${STAGE}/modelDescription.xml"
+)
+add_custom_target(fmi_package_sampled_threephase_fast DEPENDS "${FAST_FMU}")
+add_executable(FMI_MultiRateTest MultiRateTest.cpp)
+target_link_libraries(FMI_MultiRateTest PRIVATE dpsim-fmi)
+target_include_directories(FMI_MultiRateTest PRIVATE ../examples/common)
+add_dependencies(FMI_MultiRateTest
+	fmi_package_sampled_threephase fmi_package_sampled_threephase_fast)
+add_test(NAME fmi_multirate_distinct_fmu_clocks
+	COMMAND FMI_MultiRateTest "${CMAKE_CURRENT_BINARY_DIR}/sampled_threephase.fmu" "${FAST_FMU}")
 add_test(NAME fmi_reject_sampled_lti COMMAND FMI_ImportTest3Ph "${FMU}" reject_sampled)
 
 # The same sampled model without FMI rollback must fail before a crossed event

@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
+<fmiModelDescription fmiVersion="3.0" generationDateAndTime="2026-10-19T13:41:55Z" generationTool="Simulink (R2025a)" instantiationToken="{d1d8ca8f-8964-8098-f544-b9bc9ec06282}" modelName="dpsim_rlc_me" variableNamingConvention="structured" version="1.1">
+  <ModelExchange canBeInstantiatedOnlyOncePerProcess="true" canGetAndSetFMUState="true" canSerializeFMUState="true" modelIdentifier="dpsim_rlc_me" needsExecutionTool="false"/>
+  <DefaultExperiment startTime="0" stepSize="0.002" stopTime="0.1"/>
+  <ModelVariables>
+    <Float64 causality="input" description="u" initial="exact" name="u" start="0" valueReference="0" variability="continuous"/>
+    <Float64 causality="output" description="i" initial="calculated" name="i" valueReference="1" variability="continuous"/>
+    <Float64 causality="output" description="v_C" initial="calculated" name="v_C" valueReference="2" variability="continuous"/>
+    <Float64 causality="independent" description="time" name="time" valueReference="3" variability="continuous"/>
+    <Float64 causality="local" description="ContState1" initial="calculated" name="ContState1" valueReference="4" variability="continuous"/>
+    <Float64 causality="local" description="ContState2" initial="calculated" name="ContState2" valueReference="5" variability="continuous"/>
+    <Float64 causality="local" derivative="4" description="Deriv1" initial="calculated" name="Deriv1" valueReference="6" variability="continuous"/>
+    <Float64 causality="local" derivative="5" description="Deriv2" initial="calculated" name="Deriv2" valueReference="7" variability="continuous"/>
+  </ModelVariables>
+  <ModelStructure>
+    <Output valueReference="1"/>
+    <Output valueReference="2"/>
+    <ContinuousStateDerivative valueReference="6"/>
+    <ContinuousStateDerivative valueReference="7"/>
+    <InitialUnknown valueReference="1"/>
+    <InitialUnknown valueReference="2"/>
+    <InitialUnknown valueReference="4"/>
+    <InitialUnknown valueReference="5"/>
+    <InitialUnknown valueReference="6"/>
+    <InitialUnknown valueReference="7"/>
+  </ModelStructure>
+  <Annotations>
+    <Annotation type="com.mathworks.Simulink">
+      <Simulink>
+        <ImportCompatibility FMUProduct="standalone FMU" canSourceFileCodeGeneration="false" requireMATLABOnPath="no" requireRelease="all"/>
+        <SimulinkModelInterface>
+          <Inport blockPath="dpsim_rlc_me/u" dataType="double" dimension="[1]" portName="u" portNumber="1" sampleTime="[0 0]" uniquePortName="u" unit=""/>
+          <Outport blockPath="dpsim_rlc_me/i" dataType="double" dimension="[1]" portName="i" portNumber="1" sampleTime="[0 0]" uniquePortName="i" unit=""/>
+          <Outport blockPath="dpsim_rlc_me/v_C" dataType="double" dimension="[1]" portName="v_C" portNumber="2" sampleTime="[0 0]" uniquePortName="v_C" unit=""/>
+        </SimulinkModelInterface>
+      </Simulink>
+    </Annotation>
+  </Annotations>
+</fmiModelDescription>

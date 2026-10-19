@@ -4,6 +4,9 @@
 #ifndef FIXTURE_NONLINEAR
 #define FIXTURE_NONLINEAR 0
 #endif
+#ifndef FIXTURE_SAMPLED_PERIOD
+#define FIXTURE_SAMPLED_PERIOD 0.001
+#endif
 #include <cstring>
 #include <fmi3Functions.h>
 #include <new>
@@ -78,13 +81,14 @@ fmi3Status fmi3UpdateDiscreteStates(fmi3Instance instance, fmi3Boolean *again,
   *again = *terminate = *nominals = *values = *timeEvent = fmi3False;
   *nextTime = 0;
 #ifdef FIXTURE_SAMPLED
-  if (state(instance)->t >= state(instance)->tick * .001 - 1e-12) {
+  if (state(instance)->t >=
+      state(instance)->tick * FIXTURE_SAMPLED_PERIOD - 1e-12) {
     state(instance)->sampledGain =
         1 + .1 * state(instance)->tick * state(instance)->command;
     ++state(instance)->tick;
   }
   *timeEvent = fmi3True;
-  *nextTime = state(instance)->tick * .001;
+  *nextTime = state(instance)->tick * FIXTURE_SAMPLED_PERIOD;
 #endif
   return fmi3OK;
 }

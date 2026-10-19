@@ -108,6 +108,13 @@ int main(int argc, char **argv) {
       throw std::invalid_argument(
           "multirate_mode must be rollback_newton or single_pass_explicit");
     }
+    // The x86-64 Linux FMU exported by MathWorks R2025a retains substantial
+    // memory across repeated FMI state snapshot/free cycles. Single-pass
+    // coupling does not need provisional rollback, so leave it disabled unless
+    // a configuration explicitly asks for snapshot-backed trial evaluations.
+    options.snapshotTrialEvaluations = config.value(
+        "snapshot_trial_evaluations",
+        newtonSettings.multirateMode != FMI::MultirateMode::SinglePassExplicit);
     newtonSettings.allowInstantaneousCurrentEvents =
         config.value("allow_instantaneous_current_events", false);
     newtonSettings.maxJacobianReuseSteps =

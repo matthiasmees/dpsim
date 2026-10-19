@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
+<fmiModelDescription fmiVersion="3.0" generationDateAndTime="2026-10-19T13:42:09Z" generationTool="Simulink (R2025a)" instantiationToken="{47350ba8-866b-1a61-bfd0-04440b1348f4}" modelName="dpsim_rlc_3ph_me" variableNamingConvention="structured" version="1.1">
+  <ModelExchange canBeInstantiatedOnlyOncePerProcess="true" canGetAndSetFMUState="true" canSerializeFMUState="true" modelIdentifier="dpsim_rlc_3ph_me" needsExecutionTool="false"/>
+  <DefaultExperiment startTime="0" stepSize="0.002" stopTime="0.1"/>
+  <ModelVariables>
+    <Float64 causality="input" description="u_a" initial="exact" name="u_a" start="0" valueReference="0" variability="continuous"/>
+    <Float64 causality="input" description="u_b" initial="exact" name="u_b" start="0" valueReference="1" variability="continuous"/>
+    <Float64 causality="input" description="u_c" initial="exact" name="u_c" start="0" valueReference="2" variability="continuous"/>
+    <Float64 causality="output" description="i_a" initial="calculated" name="i_a" valueReference="3" variability="continuous"/>
+    <Float64 causality="output" description="i_b" initial="calculated" name="i_b" valueReference="4" variability="continuous"/>
+    <Float64 causality="output" description="i_c" initial="calculated" name="i_c" valueReference="5" variability="continuous"/>
+    <Float64 causality="output" description="v_C_a" initial="calculated" name="v_C_a" valueReference="6" variability="continuous"/>
+    <Float64 causality="output" description="v_C_b" initial="calculated" name="v_C_b" valueReference="7" variability="continuous"/>
+    <Float64 causality="output" description="v_C_c" initial="calculated" name="v_C_c" valueReference="8" variability="continuous"/>
+    <Float64 causality="independent" description="time" name="time" valueReference="9" variability="continuous"/>
+    <Float64 causality="local" description="ContState1" initial="calculated" name="ContState1" valueReference="10" variability="continuous"/>
+    <Float64 causality="local" description="ContState2" initial="calculated" name="ContState2" valueReference="11" variability="continuous"/>
+    <Float64 causality="local" description="ContState3" initial="calculated" name="ContState3" valueReference="12" variability="continuous"/>
+    <Float64 causality="local" description="ContState4" initial="calculated" name="ContState4" valueReference="13" variability="continuous"/>
+    <Float64 causality="local" description="ContState5" initial="calculated" name="ContState5" valueReference="14" variability="continuous"/>
+    <Float64 causality="local" description="ContState6" initial="calculated" name="ContState6" valueReference="15" variability="continuous"/>
+    <Float64 causality="local" derivative="10" description="Deriv1" initial="calculated" name="Deriv1" valueReference="16" variability="continuous"/>
+    <Float64 causality="local" derivative="11" description="Deriv2" initial="calculated" name="Deriv2" valueReference="17" variability="continuous"/>
+    <Float64 causality="local" derivative="12" description="Deriv3" initial="calculated" name="Deriv3" valueReference="18" variability="continuous"/>
+    <Float64 causality="local" derivative="13" description="Deriv4" initial="calculated" name="Deriv4" valueReference="19" variability="continuous"/>
+    <Float64 causality="local" derivative="14" description="Deriv5" initial="calculated" name="Deriv5" valueReference="20" variability="continuous"/>
+    <Float64 causality="local" derivative="15" description="Deriv6" initial="calculated" name="Deriv6" valueReference="21" variability="continuous"/>
+  </ModelVariables>
+  <ModelStructure>
+    <Output valueReference="3"/>
+    <Output valueReference="4"/>
+    <Output valueReference="5"/>
+    <Output valueReference="6"/>
+    <Output valueReference="7"/>
+    <Output valueReference="8"/>
+    <ContinuousStateDerivative valueReference="16"/>
+    <ContinuousStateDerivative valueReference="17"/>
+    <ContinuousStateDerivative valueReference="18"/>
+    <ContinuousStateDerivative valueReference="19"/>
+    <ContinuousStateDerivative valueReference="20"/>
+    <ContinuousStateDerivative valueReference="21"/>
+    <InitialUnknown valueReference="3"/>
+    <InitialUnknown valueReference="4"/>
+    <InitialUnknown valueReference="5"/>
+    <InitialUnknown valueReference="6"/>
+    <InitialUnknown valueReference="7"/>
+    <InitialUnknown valueReference="8"/>
+    <InitialUnknown valueReference="10"/>
+    <InitialUnknown valueReference="11"/>
+    <InitialUnknown valueReference="12"/>
+    <InitialUnknown valueReference="13"/>
+    <InitialUnknown valueReference="14"/>
+    <InitialUnknown valueReference="15"/>
+    <InitialUnknown valueReference="16"/>
+    <InitialUnknown valueReference="17"/>
+    <InitialUnknown valueReference="18"/>
+    <InitialUnknown valueReference="19"/>
+    <InitialUnknown valueReference="20"/>
+    <InitialUnknown valueReference="21"/>
+  </ModelStructure>
+  <Annotations>
+    <Annotation type="com.mathworks.Simulink">
+      <Simulink>
+        <ImportCompatibility FMUProduct="standalone FMU" canSourceFileCodeGeneration="false" requireMATLABOnPath="no" requireRelease="all"/>
+        <SimulinkModelInterface>
+          <Inport blockPath="dpsim_rlc_3ph_me/u_a" dataType="double" dimension="[1]" portName="u_a" portNumber="1" sampleTime="[0 0]" uniquePortName="u_a" unit=""/>
+          <Inport blockPath="dpsim_rlc_3ph_me/u_b" dataType="double" dimension="[1]" portName="u_b" portNumber="2" sampleTime="[0 0]" uniquePortName="u_b" unit=""/>
+          <Inport blockPath="dpsim_rlc_3ph_me/u_c" dataType="double" dimension="[1]" portName="u_c" portNumber="3" sampleTime="[0 0]" uniquePortName="u_c" unit=""/>
+          <Outport blockPath="dpsim_rlc_3ph_me/i_a" dataType="double" dimension="[1]" portName="i_a" portNumber="1" sampleTime="[0 0]" uniquePortName="i_a" unit=""/>
+          <Outport blockPath="dpsim_rlc_3ph_me/i_b" dataType="double" dimension="[1]" portName="i_b" portNumber="2" sampleTime="[0 0]" uniquePortName="i_b" unit=""/>
+          <Outport blockPath="dpsim_rlc_3ph_me/i_c" dataType="double" dimension="[1]" portName="i_c" portNumber="3" sampleTime="[0 0]" uniquePortName="i_c" unit=""/>
+          <Outport blockPath="dpsim_rlc_3ph_me/v_C_a" dataType="double" dimension="[1]" portName="v_C_a" portNumber="4" sampleTime="[0 0]" uniquePortName="v_C_a" unit=""/>
+          <Outport blockPath="dpsim_rlc_3ph_me/v_C_b" dataType="double" dimension="[1]" portName="v_C_b" portNumber="5" sampleTime="[0 0]" uniquePortName="v_C_b" unit=""/>
+          <Outport blockPath="dpsim_rlc_3ph_me/v_C_c" dataType="double" dimension="[1]" portName="v_C_c" portNumber="6" sampleTime="[0 0]" uniquePortName="v_C_c" unit=""/>
+        </SimulinkModelInterface>
+      </Simulink>
+    </Annotation>
+  </Annotations>
+</fmiModelDescription>

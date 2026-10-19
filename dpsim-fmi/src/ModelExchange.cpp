@@ -589,9 +589,9 @@ public:
     mLastInputs = mAcceptedInputs = model.initialInputs;
     mAcceptedValues = readValues();
     mAcceptedIndicators = readEventIndicators();
-    mUseTrialSnapshots =
-        GetFMUState && (model.hasDiscreteVariables ||
-                        std::isfinite(mNextTimeEvent) || indicators != 0);
+    mUseTrialSnapshots = mOptions.snapshotTrialEvaluations && GetFMUState &&
+                         (model.hasDiscreteVariables ||
+                          std::isfinite(mNextTimeEvent) || indicators != 0);
   }
 
   Matrix readEventIndicators() {
@@ -740,13 +740,15 @@ public:
     mLastInputs = voltage;
   }
   void updateNextTimeEvent(bool defined, double next) {
-    // A few exported FMUs use the defined flag together with +inf to mean
-    // that no further scheduled event exists. Treat that combination like an
-    // undefined event, while retaining strict validation for NaN and stale
-    // finite event times.
-    if (defined && std::isinf(next) && next > 0) {
+    // Some exported FMUs use the defined flag together with +inf or DBL_MAX
+    // to mean that no further scheduled event exists. Treat those sentinels
+    // like an undefined event, while retaining strict validation for NaN and
+    // stale finite event times.
+    if (defined && ((std::isinf(next) && next > 0) ||
+                    next >= std::numeric_limits<double>::max() / 2.0)) {
       mNextTimeEvent = std::numeric_limits<double>::infinity();
-      if (GetFMUState && model.hasDiscreteVariables)
+      if (mOptions.snapshotTrialEvaluations && GetFMUState &&
+          model.hasDiscreteVariables)
         mUseTrialSnapshots = true;
       return;
     }
@@ -758,7 +760,8 @@ public:
       fail(message.str());
     }
     mNextTimeEvent = defined ? next : std::numeric_limits<double>::infinity();
-    if (GetFMUState && (defined || model.hasDiscreteVariables))
+    if (mOptions.snapshotTrialEvaluations && GetFMUState &&
+        (defined || model.hasDiscreteVariables))
       mUseTrialSnapshots = true;
   }
   double nextTimeEvent() const override { return mNextTimeEvent; }
@@ -1307,7 +1310,8 @@ public:
     mLastInputs = mAcceptedInputs = model.initialInputs;
     mAcceptedValues = readValues();
     mAcceptedIndicators = readEventIndicators();
-    mUseTrialSnapshots = mCanGetAndSetFMUState && GetFMUstate && SetFMUstate &&
+    mUseTrialSnapshots = mOptions.snapshotTrialEvaluations &&
+                         mCanGetAndSetFMUState && GetFMUstate && SetFMUstate &&
                          FreeFMUstate &&
                          (model.hasDiscreteVariables || indicators != 0);
   }

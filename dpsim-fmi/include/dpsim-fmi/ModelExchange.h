@@ -17,6 +17,10 @@ struct ModelExchangeOptions {
   bool endpointStateEvents = false;
   /// Accept continuous-state values reinitialized by FMI event iteration.
   bool allowContinuousStateResets = false;
+  /// Snapshot provisional evaluations when the FMU supports rollback. Disable
+  /// this for exporters whose repeated GetFMUState/FreeFMUState calls retain
+  /// memory; continuous-time evaluations still set time, states, and inputs.
+  bool snapshotTrialEvaluations = true;
 };
 struct ModelDescription {
   std::string modelName;

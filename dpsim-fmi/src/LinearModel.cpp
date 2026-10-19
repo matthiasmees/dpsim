@@ -3,6 +3,7 @@
 #include <cmath>
 #include <dpsim-fmi/LinearModel.h>
 #include <dpsim-fmi/ModelExchange.h>
+#include <limits>
 #include <set>
 #include <stdexcept>
 namespace DPsim::FMI {
@@ -43,8 +44,11 @@ LinearModel::Ptr LinearModel::loadMulti(const std::string &path,
                                                  : port.initialVoltages[k]});
   ModelExchange runtime(path, inputs);
   const auto &description = runtime.description();
-  if (description.hasDiscreteVariables ||
-      std::isfinite(runtime.nextTimeEvent()))
+  // MATLAB R2025a uses DBL_MAX as its FMI 3 "no scheduled event" sentinel.
+  const bool hasScheduledEvent =
+      std::isfinite(runtime.nextTimeEvent()) &&
+      runtime.nextTimeEvent() < std::numeric_limits<double>::max() / 2.0;
+  if (description.hasDiscreteVariables || hasScheduledEvent)
     fail("sampled/discrete dynamics require the persistent nonlinear importer");
   LinearModel model;
   model.modelName = description.modelName;
