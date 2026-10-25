@@ -1,0 +1,24 @@
+{
+  "frequency_Hz": 50.0,
+  "voltage_peak_V": 325.269119,
+  "step_s": 5e-05,
+  "stop_time_s": 0.02,
+  "series_R_ohm": 0.15,
+  "series_L_H": 0.0002,
+  "load_R_ohm": 1000.0,
+  "initial_voltage_scale": 1.0,
+  "multirate_mode": "rollback_newton",
+  "fmi_mapping": {
+    "voltage_inputs": [
+      "v_a",
+      "v_b",
+      "v_c"
+    ],
+    "current_outputs": [
+      "i_a",
+      "i_b",
+      "i_c"
+    ],
+    "current_sign_to_passive": 1.0
+  }
+}

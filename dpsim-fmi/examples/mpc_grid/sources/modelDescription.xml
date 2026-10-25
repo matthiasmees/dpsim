@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<fmiModelDescription fmiVersion="3.0" modelName="MPCGridLoad" instantiationToken="dpsim-mpc-grid-load" variableNamingConvention="flat">
+  <ModelExchange modelIdentifier="mpc_grid_mpc" needsCompletedIntegratorStep="false" canGetAndSetFMUState="true" canSerializeFMUState="false" canBeInstantiatedOnlyOncePerProcess="false"/>
+  <UnitDefinitions>
+    <Unit name="V"><BaseUnit m="2" kg="1" s="-3" A="-1"/></Unit>
+    <Unit name="A"><BaseUnit A="1"/></Unit>
+    <Unit name="V_per_s"><BaseUnit m="2" kg="1" s="-4" A="-1"/></Unit>
+    <Unit name="s"><BaseUnit s="1"/></Unit>
+  </UnitDefinitions>
+  <DefaultExperiment startTime="0" stopTime="0.02" tolerance="1e-5" stepSize="5e-5"/>
+  <ModelVariables>
+    <Float64 name="v_a" valueReference="0" causality="input" variability="continuous" initial="exact" start="0" unit="V"/>
+    <Float64 name="v_b" valueReference="1" causality="input" variability="continuous" initial="exact" start="0" unit="V"/>
+    <Float64 name="v_c" valueReference="2" causality="input" variability="continuous" initial="exact" start="0" unit="V"/>
+    <Float64 name="i_a" valueReference="3" causality="output" variability="continuous" initial="calculated" unit="A"/>
+    <Float64 name="i_b" valueReference="4" causality="output" variability="continuous" initial="calculated" unit="A"/>
+    <Float64 name="i_c" valueReference="5" causality="output" variability="continuous" initial="calculated" unit="A"/>
+    <Float64 name="i_ref_a" valueReference="6" causality="output" variability="continuous" initial="calculated" unit="A"/>
+    <Float64 name="i_ref_b" valueReference="7" causality="output" variability="continuous" initial="calculated" unit="A"/>
+    <Float64 name="i_ref_c" valueReference="8" causality="output" variability="continuous" initial="calculated" unit="A"/>
+    <Float64 name="u_inv_a" valueReference="9" causality="output" variability="continuous" initial="calculated" unit="V"/>
+    <Float64 name="u_inv_b" valueReference="10" causality="output" variability="continuous" initial="calculated" unit="V"/>
+    <Float64 name="u_inv_c" valueReference="11" causality="output" variability="continuous" initial="calculated" unit="V"/>
+    <Float64 name="mpc_cost" valueReference="12" causality="output" variability="continuous" initial="calculated"/>
+    <Float64 name="controller_ticks" valueReference="13" causality="output" variability="continuous" initial="calculated"/>
+    <Float64 name="time" valueReference="14" causality="independent" variability="continuous" unit="s"/>
+    <Float64 name="i_a_state" valueReference="15" variability="continuous" initial="exact" start="0" nominal="4" unit="A"/>
+    <Float64 name="i_b_state" valueReference="16" variability="continuous" initial="exact" start="0" nominal="4" unit="A"/>
+    <Float64 name="i_c_state" valueReference="17" variability="continuous" initial="exact" start="0" nominal="4" unit="A"/>
+    <Float64 name="di_a_dt" valueReference="18" derivative="15" variability="continuous" initial="calculated" unit="A"/>
+    <Float64 name="di_b_dt" valueReference="19" derivative="16" variability="continuous" initial="calculated" unit="A"/>
+    <Float64 name="di_c_dt" valueReference="20" derivative="17" variability="continuous" initial="calculated" unit="A"/>
+  </ModelVariables>
+  <ModelStructure>
+    <Output valueReference="3"/><Output valueReference="4"/><Output valueReference="5"/>
+    <Output valueReference="6"/><Output valueReference="7"/><Output valueReference="8"/>
+    <Output valueReference="9"/><Output valueReference="10"/><Output valueReference="11"/>
+    <Output valueReference="12"/><Output valueReference="13"/>
+    <ContinuousStateDerivative valueReference="18"/><ContinuousStateDerivative valueReference="19"/><ContinuousStateDerivative valueReference="20"/>
+    <InitialUnknown valueReference="3"/><InitialUnknown valueReference="4"/><InitialUnknown valueReference="5"/>
+    <InitialUnknown valueReference="18"/><InitialUnknown valueReference="19"/><InitialUnknown valueReference="20"/>
+  </ModelStructure>
+</fmiModelDescription>
