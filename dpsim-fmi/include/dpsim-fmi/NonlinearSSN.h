@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 #pragma once
 #include <array>
+#include <cstdint>
 #include <dpsim-fmi/ModelExchange.h>
 #include <dpsim-models/MNASimPowerComp.h>
 #include <dpsim-models/Solver/MNANonlinearCompInterface.h>
@@ -66,7 +67,11 @@ class NonlinearSSN final : public CPS::MNASimPowerComp<CPS::Real>,
   CPS::Matrix mMacroOldVoltage;
   CPS::Attribute<CPS::Matrix>::Ptr mState, mInputs, mOutputs;
   CPS::Attribute<CPS::Real>::Ptr mIterationAttribute, mResidualAttribute,
-      mInternalStepAttribute, mCouplingErrorAttribute;
+      mInternalStepAttribute, mCouplingErrorAttribute,
+      mEvaluationRequestAttribute, mEvaluationTimeAttribute;
+  CPS::Attribute<CPS::Matrix>::Ptr mNortonConductanceAttribute,
+      mNortonHistoryAttribute, mNortonStateAttribute,
+      mNortonStateCorrectionAttribute, mNortonVoltageAttribute;
   std::vector<CPS::Attribute<CPS::Real>::Ptr> mControls;
   std::vector<std::function<double(double)>> mInputFunctions;
   std::vector<std::vector<double>> mInputEvents;
@@ -74,6 +79,8 @@ class NonlinearSSN final : public CPS::MNASimPowerComp<CPS::Real>,
   double mCouplingError = 0;
   int mIterations = 0;
   int mInternalSteps = 0;
+  std::uint64_t mEvaluationRequestBaseline = 0;
+  double mEvaluationTimeBaseline = 0;
   bool mMultirateStep = false;
   bool mSinglePassStep = false;
   bool mRollbackVerified = false;
@@ -101,11 +108,18 @@ class NonlinearSSN final : public CPS::MNASimPowerComp<CPS::Real>,
   void prepareMultirateIteration();
 
 public:
+  using CPS::SimPowerComp<CPS::Real>::connect;
+
   /// One-call import for the conventional three-phase electrical interface.
   /// Inputs and start values are read from modelDescription.xml.
   static std::shared_ptr<NonlinearSSN>
   importFMU(CPS::String name, const std::string &path,
             ModelExchangeOptions modelOptions = {},
+            NewtonSettings settings = {});
+  /// Import using the model name from modelDescription.xml as the component
+  /// name. This is the shortest form for the conventional abc interface.
+  static std::shared_ptr<NonlinearSSN>
+  importFMU(const std::string &path, ModelExchangeOptions modelOptions = {},
             NewtonSettings settings = {});
   const ModelDescription &modelDescription() const {
     return mModel->description();
@@ -117,6 +131,10 @@ public:
                NewtonSettings settings = {});
   NonlinearSSN(CPS::String name, ModelExchange::Ptr model,
                const ElectricalPort3Ph &port, NewtonSettings settings = {});
+  /// Connect the conventional three-phase terminal to a bus, with the
+  /// negative terminal grounded. Use the inherited two-node connect overload
+  /// for line-to-line or otherwise non-grounded connections.
+  void connect(CPS::SimNode<CPS::Real>::Ptr node);
   CPS::SimPowerComp<CPS::Real>::Ptr clone(CPS::String) override;
   void initialize(CPS::Matrix frequencies) override;
   void initializeFromNodesAndTerminals(CPS::Real) override;
@@ -142,4 +160,15 @@ public:
   bool mnaCheckNonlinearConvergence(const CPS::Matrix &) override;
   void mnaPrepareNonlinearIteration() override;
 };
+
+/// Import a conventional three-phase Model Exchange FMU with its model name.
+/// This is the concise public entry point: `FMI::importFMU(path)`.
+std::shared_ptr<NonlinearSSN> importFMU(const std::string &path);
+std::shared_ptr<NonlinearSSN> importFMU(const std::string &path,
+                                        ModelExchangeOptions modelOptions,
+                                        NewtonSettings settings = {});
+std::shared_ptr<NonlinearSSN> importFMU(CPS::String name,
+                                        const std::string &path,
+                                        ModelExchangeOptions modelOptions = {},
+                                        NewtonSettings settings = {});
 } // namespace DPsim::FMI

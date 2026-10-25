@@ -34,10 +34,10 @@ int main(int argc, char **argv) {
     modelOptions.endpointStateEvents = true;
     FMI::NewtonSettings settings;
     settings.multirateMode = FMI::MultirateMode::SinglePassExplicit;
-    auto firstConverter = FMI::NonlinearSSN::importFMU(
-        "first_converter", argv[1], modelOptions, settings);
-    auto secondConverter = FMI::NonlinearSSN::importFMU(
-        "second_converter", argv[2], modelOptions, settings);
+    auto firstConverter =
+        FMI::importFMU("first_converter", argv[1], modelOptions, settings);
+    auto secondConverter =
+        FMI::importFMU("second_converter", argv[2], modelOptions, settings);
 
     auto gridSource = EMT::Ph3::VoltageSource::make("grid_source");
     MatrixComp phasors(3, 1);
@@ -60,8 +60,8 @@ int main(int argc, char **argv) {
     gridSource->connect({SimNode<Real>::GND, gridNode});
     lineResistor->connect({gridNode, pccNode});
     nativeLoad->connect({SimNode<Real>::GND, pccNode});
-    firstConverter->connect({SimNode<Real>::GND, pccNode});
-    secondConverter->connect({SimNode<Real>::GND, pccNode});
+    firstConverter->connect(pccNode);
+    secondConverter->connect(pccNode);
     SystemTopology system(frequency, {gridNode, pccNode},
                           {gridSource, lineResistor, nativeLoad, firstConverter,
                            secondConverter});

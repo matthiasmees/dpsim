@@ -69,6 +69,34 @@ reference. Discrete updates never run during Newton probes.
 
 ## Public mapping and attributes
 
+For the conventional three-phase interface, the short C++ path is:
+
+```cpp
+auto fmu = FMI::importFMU("converter.fmu");
+fmu->connect(pcc);
+```
+
+This reads the component name and scalar input start values from the FMU and
+infers `v_a/v_b/v_c` (or `u_a/u_b/u_c`) and `i_a/i_b/i_c`. The one-node
+connection grounds the negative terminal. Add the returned component to the
+system's component list as usual. Use the named `importFMU(name, path, ...)`
+overload when you need a chosen component name, or create a `ModelExchange`
+and provide `ElectricalPort3Ph` explicitly for nonstandard ports or current
+polarity. The one-argument convenience import enables endpoint handling for
+FMUs with state events; pass `ModelExchangeOptions` explicitly to control that
+behavior.
+
+The Python binding follows the same pattern:
+
+```python
+fmu = dpsimpy.fmi.import_fmu("converter.fmu")
+fmu.connect(pcc)
+```
+
+It is included in `dpsimpy` when both `WITH_FMI` and `WITH_PYBIND` are enabled.
+Use `import_fmu_with_mapping(...)` for nonstandard abc variable names or
+current polarity. See [the Python examples](examples/python/README.md).
+
 `ModelExchange(path)` discovers continuous scalar Float64 inputs and uses their
 declared start values. `NonlinearSSN(name, model)` recognizes the conventional
 `v_a/v_b/v_c` and `i_a/i_b/i_c` electrical interface with passive-positive

@@ -62,6 +62,12 @@ target_link_libraries(dpsim-fmi
 		${CMAKE_DL_LIBS}
 )
 
+if(WITH_PYBIND AND TARGET dpsimpy)
+	target_sources(dpsimpy PRIVATE src/PythonBindings.cpp)
+	target_link_libraries(dpsimpy PRIVATE dpsim-fmi)
+	target_compile_definitions(dpsimpy PRIVATE DPSIM_WITH_FMI)
+endif()
+
 target_compile_options(dpsim-fmi PRIVATE ${DPSIM_CXX_FLAGS})
 
 install(TARGETS dpsim-fmi dpsim-fmi-zip EXPORT dpsim

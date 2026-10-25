@@ -37,19 +37,55 @@ Matrix jacobian(const Matrix &x) {
   }
   return a;
 }
+
+std::pair<Matrix, Matrix> analyticalNorton(const Matrix &x, const Matrix &u,
+                                           const Matrix &correction, double h) {
+  Matrix b = Matrix::Zero(6, 3), c = Matrix::Zero(3, 6), d = Matrix::Zero(3, 3);
+  for (int p = 0; p < 3; ++p) {
+    b(p, p) = 20 + p;
+    b(p, (p + 1) % 3) = 2;
+    b(3 + p, (p + 2) % 3) = .4;
+    c(p, p) = -1; // NonlinearSSN uses currentSignToPassive = -1 below.
+    d(p, p) = -.02;
+    d(p, (p + 1) % 3) = -.003;
+  }
+  const Matrix sensitivity = (Matrix::Identity(6, 6) - h * jacobian(x) / 2)
+                                 .fullPivLu()
+                                 .solve(h * b / 2);
+  const Matrix w = d + c * sensitivity;
+  Matrix current(3, 1);
+  for (int p = 0; p < 3; ++p)
+    current(p, 0) = -(x(p, 0) + .02 * u(p, 0) + .003 * u((p + 1) % 3, 0));
+  return {w, current - correction.topRows(3) - w * u};
+}
+
+void requireClose(const Matrix &actual, const Matrix &expected,
+                  double tolerance, const char *message) {
+  if (actual.rows() != expected.rows() || actual.cols() != expected.cols() ||
+      (actual - expected).norm() > tolerance * (1 + expected.norm()))
+    throw std::runtime_error(message);
+}
 int main(int argc, char **argv) {
   if (argc < 2 || argc > 3)
     return 2;
   try {
     const bool reuse = argc == 3 && std::string(argv[2]) == "reuse";
-    const bool failure = argc == 3 && !reuse;
+    const bool tight = argc == 3 && std::string(argv[2]) == "tight";
+    const bool failure = argc == 3 && !reuse && !tight;
     std::vector<FMI::ScalarInput> inputs{{"u_c", 13}, {"u_a", 7}, {"u_b", -11}};
     auto model = std::make_shared<FMI::ModelExchange>(argv[1], inputs);
-    auto autoBranch = FMI::NonlinearSSN::importFMU("auto", argv[1]);
+    auto autoBranch = FMI::importFMU(argv[1]);
     require(autoBranch->modelDescription().inputNames.size() == 3,
             "automatic abc input mapping failed");
     FMI::NewtonSettings settings;
     settings.maxJacobianReuseSteps = reuse ? 16 : 0;
+    if (tight) {
+      settings.absoluteStateTolerance *= 0.1;
+      settings.relativeStateTolerance *= 0.1;
+      settings.absoluteCurrentTolerance *= 0.1;
+      settings.relativeCurrentTolerance *= 0.1;
+      settings.relativeJacobianPerturbation *= 0.5;
+    }
     if (failure)
       settings.maxIterations = 1;
     auto branch = FMI::NonlinearSSN::make(
@@ -73,6 +109,9 @@ int main(int argc, char **argv) {
     for (int phase = 0; phase < 3; ++phase)
       initialNodeVoltage[phase] = initialNetworkVoltage(phase, 0);
     auto node = SimNode<Real>::make("bus", PhaseType::ABC, initialNodeVoltage);
+    auto apiNode =
+        SimNode<Real>::make("api_bus", PhaseType::ABC, initialNodeVoltage);
+    autoBranch->connect(apiNode);
     auto source = VoltageBoundary3Ph::make("source", voltage);
     for (auto comp : {std::static_pointer_cast<SimPowerComp<Real>>(branch),
                       std::static_pointer_cast<SimPowerComp<Real>>(second),
@@ -92,6 +131,22 @@ int main(int argc, char **argv) {
     logger->logAttribute("output", branch->attribute("fmi.output.i_a"));
     simulation.addLogger(logger);
     simulation.start();
+    Matrix actualInitialState =
+        branch->attributeTyped<Matrix>("norton_linearization_state")->get();
+    Matrix stateCorrection =
+        branch->attributeTyped<Matrix>("norton_state_correction")->get();
+    require(actualInitialState.rows() == 6 && stateCorrection.rows() == 6,
+            "missing nonlinear Norton linearization diagnostics");
+    Matrix actualInitialVoltage =
+        branch->attributeTyped<Matrix>("norton_linearization_voltage")->get();
+    const auto analytic = analyticalNorton(
+        actualInitialState, actualInitialVoltage, stateCorrection, h);
+    requireClose(branch->attributeTyped<Matrix>("norton_W")->get(),
+                 analytic.first, 2e-5,
+                 "importer Norton W differs from analytical tangent");
+    requireClose(branch->attributeTyped<Matrix>("norton_history")->get(),
+                 analytic.second, 2e-5,
+                 "importer Norton history differs from analytical intercept");
     require(std::abs(branch->attributeTyped<Real>("fmi.input.u_a")->get() -
                      initialNetworkVoltage(0, 0)) < 1e-12,
             "FMU did not adopt the connected initial terminal voltage");
@@ -118,6 +173,9 @@ int main(int argc, char **argv) {
     }
     Matrix previous = voltage(0);
     bool iterated = false;
+    double maximumNewtonIterations = 0, maximumScaledResidual = 0;
+    double maxNortonWError = 0;
+    double maxNortonHistoryError = 0;
     for (int k = 1; k <= 100; ++k) {
       const Matrix u = voltage(k * h), old = expected,
                    f0 = derivative(old, previous);
@@ -131,6 +189,28 @@ int main(int argc, char **argv) {
         expected -= left.fullPivLu().solve(r);
       }
       simulation.step();
+      const Matrix stampState =
+          branch->attributeTyped<Matrix>("norton_linearization_state")->get();
+      const Matrix stampVoltage =
+          branch->attributeTyped<Matrix>("norton_linearization_voltage")->get();
+      const Matrix stampCorrection =
+          branch->attributeTyped<Matrix>("norton_state_correction")->get();
+      const auto stampExpected =
+          analyticalNorton(stampState, stampVoltage, stampCorrection, h);
+      const Matrix stampedW = branch->attributeTyped<Matrix>("norton_W")->get();
+      const Matrix stampedHistory =
+          branch->attributeTyped<Matrix>("norton_history")->get();
+      maxNortonWError =
+          std::max(maxNortonWError, (stampedW - stampExpected.first).norm() /
+                                        (1 + stampExpected.first.norm()));
+      maxNortonHistoryError =
+          std::max(maxNortonHistoryError,
+                   (stampedHistory - stampExpected.second).norm() /
+                       (1 + stampExpected.second.norm()));
+      require(maxNortonWError < 2e-5,
+              "Norton W differs from analytic value at operating point");
+      require(maxNortonHistoryError < 2e-5,
+              "Norton history differs from analytic value at operating point");
       const auto &names = model->description().outputNames;
       if (std::find(names.begin(), names.end(), "evaluation_count") !=
           names.end())
@@ -161,12 +241,32 @@ int main(int argc, char **argv) {
       require(branch->attributeTyped<Real>("newton_residual")->get() <= 1,
               "nonlinear residual not converged");
       iterated |= branch->attributeTyped<Real>("newton_iterations")->get() > 1;
+      maximumNewtonIterations =
+          std::max(maximumNewtonIterations,
+                   branch->attributeTyped<Real>("newton_iterations")->get());
+      maximumScaledResidual =
+          std::max(maximumScaledResidual,
+                   branch->attributeTyped<Real>("newton_residual")->get());
       previous = u;
     }
     require(iterated, "fixture did not exercise repeated Newton iterations");
+    require(branch->attributeTyped<Real>("fmi_evaluation_requests")->get() > 0,
+            "FMI evaluation request counter did not advance");
+    require(branch->attributeTyped<Real>("fmi_evaluation_wall_time_s")->get() >
+                0,
+            "FMI evaluation wall-time counter did not advance");
     simulation.stop();
-    std::cout << "PASS: nonlinear FMI state/Newton residual, shuffled ports, "
-                 "polarity, two instances and MNA KCL\n";
+    std::cout
+        << "PASS: nonlinear FMI; maximum relative Norton W error="
+        << maxNortonWError << ", history error=" << maxNortonHistoryError
+        << "; FMI evaluation requests="
+        << branch->attributeTyped<Real>("fmi_evaluation_requests")->get()
+        << ", evaluation wall time="
+        << branch->attributeTyped<Real>("fmi_evaluation_wall_time_s")->get()
+        << " s; max iterations=" << maximumNewtonIterations
+        << ", max scaled residual=" << maximumScaledResidual
+        << "; state/Newton residual, shuffled ports, "
+           "polarity, two instances and MNA KCL\n";
   } catch (const std::exception &e) {
     std::cerr << e.what() << '\n';
     return 1;

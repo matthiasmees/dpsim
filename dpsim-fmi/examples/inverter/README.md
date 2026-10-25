@@ -74,7 +74,125 @@ Open [`TenSecond_FMI_Results.ipynb`](TenSecond_FMI_Results.ipynb) for voltage,
 current, residual, and internal-step plots from the completed 10-second FMI
 examples.
 
-Sub-microsecond agreement is not an acceptance requirement. Loaded-start
-validation remains the next accuracy check; existing finer MATLAB runs provide
-reference uncertainty information. The executed notebook, plots, metrics,
-configs and logs are under `build-macos-check/fmi-examples/inverter/`.
+## 50 µs gate runs
+
+Loaded-start, balanced weak-grid sag, and unbalanced-sag cases were run for
+20 ms at 50 µs with 50 internal 1 µs FMI steps per macro step. The compact
+full-resolution metrics are in
+`build-fmi/fmi-validation/gate3/gate3_metrics.json`; case logs are alongside
+that file. The sag intervals are 5–10 ms. The table reports sag-window values
+for the disturbances and 10–20 ms recovery values for all cases.
+
+| Case | PCC voltage RMS [V] | Converter current RMS [A] | Mean P [W] | Mean Q [var] | Peak reported lag error [A] |
+|---|---:|---:|---:|---:|---:|
+| Loaded-start, 10–20 ms | 14,431 | 1.746 | 75,557 | 2,414 | 0.047 after 1 ms |
+| Balanced weak-grid sag, 5–10 ms | 10,105 | 1.238 | 37,446 | 2,067 | 0.281 |
+| Unbalanced sag, 5–10 ms | 9,749 | 1.185 | 34,397 | 1,847 | 0.406 |
+
+The stored Gate 3 logs predate the consistent initialization below; their first
+sample has zero line and converter currents and is an initialization artifact.
+The full-window coupling maximum is 1.169 A; after 1 ms it is at most 0.047 A
+in loaded-start. The residual field is a one-macro-step implicit mismatch in
+`single_pass_explicit` mode, not a Newton convergence metric; each macro step
+performs one network pass. Separately, 1 µs MATLAB/Simulink physical
+references were regenerated for matching 0.2 s balanced-load, unbalanced-load,
+and voltage-sag cases. These long cases close the converter breaker at 150 ms
+and apply their load/grid events at 170 ms; they are distinct from the short
+20 ms Gate 3 scenarios. Their aligned comparison metrics are in
+`build-fmi/fmi-validation/gate6-weak-grid/paper/matlab_load_step_metrics.csv`
+and `matlab_voltage_sag_metrics.csv`. In the 170–199.9 ms load-step windows,
+PCC phase-voltage maximum error is at most 0.94 V (0.0046% of phase-peak base),
+converter phase-current maximum error is at most 0.030 A (0.18% of rated-current
+base), the added load-current maximum error is below 0.08 mA, and calculated
+instantaneous P/Q maximum errors are below 0.87 kW/0.91 kvar (0.182% of the
+500 kVA base); Simulink converter current for P/Q is reconstructed by PCC KCL.
+In the
+170–190 ms voltage-sag window, phase-A PCC-voltage maximum/RMS error is
+0.724/0.113 V and converter-current error is 0.0140/0.00669 A. The reference
+model and DPsim cases use coincident 1 µs timestamps; DPsim CSV logging is at
+100 µs intervals. Startup is reported separately: before the 150 ms breaker
+closure, phase-A voltage/current errors stay below 2.1 µV/0.53 µA; from 150 to
+160 ms they stay below 0.49 V/0.0103 A. Thus the zero-valued initial samples
+are the unenergized network state, not evidence of an FMI coupling failure.
+
+### Consistent loaded-start initialization
+
+`sources/consistent_loaded_start_50us.json` exercises the loaded initialization
+explicitly. It converts the three-phase node convention to phase voltages,
+computes the passive R-L/load operating point, and initializes the native load,
+line histories, and FMU terminal voltage before the logger records t=0. The
+initial PCC KCL residual is 0 A; the maximum phase voltage drop from the grid
+to the PCC is 10.10 V. In the earlier initialization, the t=0 logged branch
+currents were zero despite a 1.154 A phase-current magnitude implied by the
+PCC voltage and load. After initialization, the first-step explicit coupling
+lag peaks at 1.169 A and falls below 0.0468 A after 1 ms. The initial KCL
+consistency and the first-step explicit coupling lag are separate quantities.
+The FMU continuous states remain the exported FMI start values; this is a
+phasor-consistent network initialization, not a periodic steady-state solve
+for the converter controller.
+Full-resolution reruns of all three short cases are preserved under
+`build-fmi/fmi-validation/consistent-initialization/cases/`. In the paper
+measurement windows, PCC-voltage and converter-current changes versus the
+previous runs are each at most 1e-6 in their respective units, so the reported
+case metrics remain unchanged at the saved CSV precision.
+
+To reproduce the full-resolution log after building `FMI_EMT_Ph3_Mixed`, run
+it with `sources/consistent_loaded_start_50us.json` from
+`build-fmi/fmi-validation/consistent-initialization/`. The result is written
+to `logs/fmi_mixed.csv` for the notebook comparison.
+
+## Bounded paper validation
+
+Open [Paper_FMI_EMT_Results.ipynb](Paper_FMI_EMT_Results.ipynb) for the
+reproducible result tables and figures, including the per-case multirate
+internal-step and coupling-error logs.
+
+Run `matlab/validation/regenerate_physical_references.m` in MATLAB to regenerate
+the three 0.2 s physical traces under `build-fmi/fmi-validation/`. Then
+`run_paper_validation.py --reuse` regenerates the comparison metrics and
+figures from those traces and the existing DPsim logs. Without the MATLAB CSVs,
+the script still generates the numerical-fixture and timestep results and
+skips the independent physical-reference metrics.
+
+Running `run_paper_validation.py` without `--reuse` reruns the weak-grid sag at
+1, 25, and 50 µs. It generates the comparison metrics and figures under
+`build-fmi/fmi-validation/gate6-weak-grid/paper/`. The 1 µs case is the same
+DPsim/FMU/network at the fine timestep, so this quantifies timestep and
+single-pass sensitivity; it is not an independent physical reference. The
+1 µs case executes ordinary nonlinear Newton at each step. The 25 and 50 µs
+cases use the explicit event-aligned path with 25 or 50 internal 1 µs steps.
+
+For the 5–10 ms sag window, maximum/RMS errors against the 1 µs run are 3.89
+kV/283 V (PCC phase A) and 0.101 A/0.0108 A (converter phase A) at 25 µs;
+they are 4.35 kV/442 V and 0.197 A/0.0230 A at 50 µs. Both maximum PCC
+voltage errors occur at the 5 ms sag-onset sample. The peak coupling lag after
+1 ms is 0.194 A and 0.281 A. These event transients remain visible in the
+generated error plot and should not be interpreted as converged Newton results.
+
+The importer now reports cumulative per-step `fmi_evaluation_requests` and
+`fmi_evaluation_wall_time_s`. These count public importer evaluation requests
+(including cache hits) and time spent in those requests; they exclude FMI event
+handling and total simulator overhead. The 20 ms weak-grid runs used 71,973
+requests and 4.51 s evaluation time at 1 µs, versus 50,082 requests and 4.30 /
+4.33 s at 25 / 50 µs. Measured process times were 7.10, 6.30, and 6.33 s,
+respectively.
+The explicit cases report a large normalized `newton_residual` because that
+field is the mismatch to the implicit residual while the network is intentionally
+solved once; it is not comparable to a converged Newton residual.
+
+The analytical fixture's base and 10× tighter Newton tolerance runs both
+requested 4,000 FMI evaluations across 100 steps, converged in at most two
+iterations, and remained within 2e-9 of the independent trapezoidal state
+recurrence. Maximum relative Norton conductance/history errors were 4.72e-11 /
+3.06e-11 at baseline and 5.89e-11 / 6.83e-11 when tightened. Evaluation time
+was 5.11 / 5.07 ms. Tightening these already strict tolerances did not materially
+change the trajectory or work count for this fixture.
+
+MATLAB/Simulink reference regeneration is available, although MATLAB remains
+alive after writing each output and was stopped after validating the complete
+CSV files. No OpenModelica, Dymola, or standalone FMI export tool is installed.
+Thus a deterministic averaged-GFL FMU and a second independent converter FMU
+could not be produced on this host. The switched FMU's replay failure and
+serialized-state abort remain the external limitation. Keep multirate Newton
+out of the main paper claim/title; retain the fixture validation and identify
+realistic converter operation as explicit event-aligned coupling.

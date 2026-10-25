@@ -48,6 +48,33 @@ NonlinearSSN::importFMU(String name, const std::string &path,
                             std::make_shared<ModelExchange>(path, modelOptions),
                             settings);
 }
+std::shared_ptr<NonlinearSSN>
+NonlinearSSN::importFMU(const std::string &path,
+                        ModelExchangeOptions modelOptions,
+                        NewtonSettings settings) {
+  auto model = std::make_shared<ModelExchange>(path, modelOptions);
+  auto name = model->description().modelName;
+  if (name.empty())
+    name = "fmu";
+  return NonlinearSSN::make(std::move(name), std::move(model), settings);
+}
+std::shared_ptr<NonlinearSSN> importFMU(const std::string &path) {
+  ModelExchangeOptions options;
+  // The convenience path accepts exported state events at EMT step endpoints.
+  // Applications needing exact event localization can configure it separately.
+  options.endpointStateEvents = true;
+  return NonlinearSSN::importFMU(path, options);
+}
+std::shared_ptr<NonlinearSSN> importFMU(const std::string &path,
+                                        ModelExchangeOptions modelOptions,
+                                        NewtonSettings settings) {
+  return NonlinearSSN::importFMU(path, modelOptions, settings);
+}
+std::shared_ptr<NonlinearSSN> importFMU(String name, const std::string &path,
+                                        ModelExchangeOptions modelOptions,
+                                        NewtonSettings settings) {
+  return NonlinearSSN::importFMU(std::move(name), path, modelOptions, settings);
+}
 NonlinearSSN::NonlinearSSN(String name, ModelExchange::Ptr model,
                            NewtonSettings settings)
     : NonlinearSSN(name, model, inferElectricalPort(model), settings) {}
@@ -98,6 +125,18 @@ NonlinearSSN::NonlinearSSN(String name, ModelExchange::Ptr model,
   mResidualAttribute = mAttributes->create<Real>("newton_residual");
   mInternalStepAttribute = mAttributes->create<Real>("fmi_internal_steps");
   mCouplingErrorAttribute = mAttributes->create<Real>("fmi_coupling_error_A");
+  mEvaluationRequestAttribute =
+      mAttributes->create<Real>("fmi_evaluation_requests");
+  mEvaluationTimeAttribute =
+      mAttributes->create<Real>("fmi_evaluation_wall_time_s");
+  mNortonConductanceAttribute = mAttributes->create<Matrix>("norton_W");
+  mNortonHistoryAttribute = mAttributes->create<Matrix>("norton_history");
+  mNortonStateAttribute =
+      mAttributes->create<Matrix>("norton_linearization_state");
+  mNortonStateCorrectionAttribute =
+      mAttributes->create<Matrix>("norton_state_correction");
+  mNortonVoltageAttribute =
+      mAttributes->create<Matrix>("norton_linearization_voltage");
   mControls.resize(d.inputNames.size());
   mInputFunctions.resize(d.inputNames.size());
   mInputEvents.resize(d.inputNames.size());
@@ -121,6 +160,12 @@ NonlinearSSN::NonlinearSSN(String name, ModelExchange::Ptr model,
   mHistory = Matrix::Zero(3, 1);
   initializeValues();
 }
+void NonlinearSSN::connect(SimNode<Real>::Ptr node) {
+  if (!node)
+    throw std::invalid_argument(
+        "cannot connect an FMI component to a null node");
+  SimPowerComp<Real>::connect({SimNode<Real>::GND, std::move(node)});
+}
 void NonlinearSSN::initializeValues() {
   **mState = mModel->description().initialState;
   **mIntfVoltage = mInitialVoltage;
@@ -132,6 +177,13 @@ void NonlinearSSN::initializeValues() {
   **mResidualAttribute = 0;
   **mInternalStepAttribute = 0;
   **mCouplingErrorAttribute = 0;
+  **mEvaluationRequestAttribute = 0;
+  **mEvaluationTimeAttribute = 0;
+  **mNortonConductanceAttribute = mW;
+  **mNortonHistoryAttribute = mHistory;
+  **mNortonStateAttribute = mLinearizationState;
+  **mNortonStateCorrectionAttribute = mCorrection;
+  **mNortonVoltageAttribute = mLinearizationVoltage;
 }
 void NonlinearSSN::initialize(Matrix frequencies) {
   SimPowerComp<Real>::initialize(std::move(frequencies));
@@ -159,7 +211,9 @@ void NonlinearSSN::initializeFromNodesAndTerminals(Real) {
     terminalVoltage -= initialVoltage(0);
   if (terminalVoltage.rows() == 3 && terminalVoltage.cols() == 1 &&
       terminalVoltage.allFinite()) {
-    mInitialVoltage = terminalVoltage.real();
+    // Three-phase EMT node initial values use the line-to-line RMS convention;
+    // convert them to phase peak values before presenting them to the FMU.
+    mInitialVoltage = (RMS3PH_TO_PEAK1PH * terminalVoltage).real();
   }
   initializeValues();
 }
@@ -422,6 +476,12 @@ void NonlinearSSN::prepareMultirateIteration() {
         (2 * perturbation);
   }
   mHistory = base.current - mW * mTrialVoltage;
+  mCorrection = Matrix::Zero(mTrialState.rows(), 1);
+  **mNortonConductanceAttribute = mW;
+  **mNortonHistoryAttribute = mHistory;
+  **mNortonStateAttribute = mTrialState;
+  **mNortonStateCorrectionAttribute = mCorrection;
+  **mNortonVoltageAttribute = mTrialVoltage;
   if (!mW.allFinite() || !mHistory.allFinite())
     throw std::runtime_error("Nonfinite multirate FMI Norton stamp");
   **mRightVector = Matrix::Zero((**mRightVector).rows(), 1);
@@ -457,6 +517,8 @@ void NonlinearSSN::mnaCompInitialize(Real, Real step, Attribute<Matrix>::Ptr) {
   // Initial stamp is only used to establish a complete sparse pattern.
   mTime = 0;
   mnaPrepareNonlinearIteration();
+  mEvaluationRequestBaseline = mModel->evaluationRequests();
+  mEvaluationTimeBaseline = mModel->evaluationWallTime();
 }
 void NonlinearSSN::mnaCompPreStep(Real time, Int) {
   mTime = time;
@@ -483,6 +545,12 @@ void NonlinearSSN::mnaCompPreStep(Real time, Int) {
       mTrialVoltage = **mIntfVoltage;
       mW = Matrix::Zero(3, 3);
       mHistory = currents(mModel->acceptedValues().second);
+      mCorrection = Matrix::Zero(mOldState.rows(), 1);
+      **mNortonConductanceAttribute = mW;
+      **mNortonHistoryAttribute = mHistory;
+      **mNortonStateAttribute = mOldState;
+      **mNortonStateCorrectionAttribute = mCorrection;
+      **mNortonVoltageAttribute = mTrialVoltage;
       **mRightVector = Matrix::Zero((**mRightVector).rows(), 1);
       mnaCompApplyRightSideVectorStamp(**mRightVector);
       return;
@@ -572,10 +640,15 @@ void NonlinearSSN::mnaPrepareNonlinearIteration() {
   }
   mW = d + c * mSensitivity;
   mHistory = currents(mTrialOutputs) + c * mCorrection - mW * mTrialVoltage;
-  if (!mW.allFinite() || !mHistory.allFinite())
-    throw std::runtime_error("Nonfinite nonlinear Norton stamp");
+  **mNortonConductanceAttribute = mW;
+  **mNortonHistoryAttribute = mHistory;
   mLinearizationState = mTrialState;
   mLinearizationVoltage = mTrialVoltage;
+  **mNortonStateAttribute = mLinearizationState;
+  **mNortonStateCorrectionAttribute = mCorrection;
+  **mNortonVoltageAttribute = mLinearizationVoltage;
+  if (!mW.allFinite() || !mHistory.allFinite())
+    throw std::runtime_error("Nonfinite nonlinear Norton stamp");
   **mRightVector = Matrix::Zero((**mRightVector).rows(), 1);
   mnaCompApplyRightSideVectorStamp(**mRightVector);
 }
@@ -691,6 +764,12 @@ void NonlinearSSN::mnaCompPostStep(Real time, Int, Attribute<Matrix>::Ptr &) {
       (!mSinglePassStep && (mStateResidual > 1 || mCurrentResidual > 1)))
     throw std::runtime_error("MNA solver did not converge the nonlinear FMI "
                              "component before post-step");
+  const auto publishEvaluationCounters = [&]() {
+    **mEvaluationRequestAttribute = static_cast<Real>(
+        mModel->evaluationRequests() - mEvaluationRequestBaseline);
+    **mEvaluationTimeAttribute =
+        mModel->evaluationWallTime() - mEvaluationTimeBaseline;
+  };
   if (mSettings.maxJacobianReuseSteps > 0)
     ++mJacobianAge;
   if (mSinglePassStep) {
@@ -704,6 +783,7 @@ void NonlinearSSN::mnaCompPostStep(Real time, Int, Attribute<Matrix>::Ptr &) {
     **mResidualAttribute = std::max(mStateResidual, mCurrentResidual);
     **mInternalStepAttribute = mInternalSteps;
     **mCouplingErrorAttribute = mCouplingError;
+    publishEvaluationCounters();
     mSinglePassStep = false;
     return;
   }
@@ -719,6 +799,7 @@ void NonlinearSSN::mnaCompPostStep(Real time, Int, Attribute<Matrix>::Ptr &) {
     **mResidualAttribute = std::max(mStateResidual, mCurrentResidual);
     **mInternalStepAttribute = mInternalSteps;
     **mCouplingErrorAttribute = mCouplingError;
+    publishEvaluationCounters();
     mMultirateStep = false;
     return;
   }
@@ -753,6 +834,7 @@ void NonlinearSSN::mnaCompPostStep(Real time, Int, Attribute<Matrix>::Ptr &) {
   **mResidualAttribute = std::max(mStateResidual, mCurrentResidual);
   **mInternalStepAttribute = 1;
   **mCouplingErrorAttribute = 0;
+  publishEvaluationCounters();
 }
 void NonlinearSSN::mnaCompAddPreStepDependencies(
     AttributeBase::List &previous, AttributeBase::List &dependencies,
@@ -775,5 +857,7 @@ void NonlinearSSN::mnaCompAddPostStepDependencies(
   modified.push_back(mResidualAttribute);
   modified.push_back(mInternalStepAttribute);
   modified.push_back(mCouplingErrorAttribute);
+  modified.push_back(mEvaluationRequestAttribute);
+  modified.push_back(mEvaluationTimeAttribute);
 }
 } // namespace DPsim::FMI

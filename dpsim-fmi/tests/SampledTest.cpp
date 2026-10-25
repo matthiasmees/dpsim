@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 #include "VoltageBoundary3Ph.h"
+#include <algorithm>
 #include <cmath>
 #include <dpsim-fmi/NonlinearSSN.h>
 #include <dpsim/DataLogger.h>
@@ -97,6 +98,8 @@ int main(int argc, char **argv) {
     double expectedTime = 0;
     double gain = 1;
     int tick = 1;
+    double maxExplicitCouplingError = 0;
+    double maxExplicitKclError = 0;
     const int networkSteps = multirate ? 10 : 20;
     for (int k = 1; k <= networkSteps; ++k) {
       const double endTime = k * h;
@@ -131,12 +134,19 @@ int main(int argc, char **argv) {
               2e-9,
           "sampled controller differs from independent trapezoidal recurrence");
       if (singlePass) {
-        require(std::isfinite(
-                    component->attributeTyped<Real>("fmi_coupling_error_A")
-                        ->get()) &&
-                    component->attributeTyped<Real>("fmi_coupling_error_A")
-                            ->get() >= 0,
+        const double couplingError =
+            component->attributeTyped<Real>("fmi_coupling_error_A")->get();
+        require(std::isfinite(couplingError) && couplingError >= 0,
                 "single-pass coupling error was not reported");
+        maxExplicitCouplingError =
+            std::max(maxExplicitCouplingError, couplingError);
+        const double kclError =
+            (component->attributeTyped<Matrix>("i_intf")->get() +
+             source->attributeTyped<Matrix>("i_intf")->get())
+                .norm();
+        maxExplicitKclError = std::max(maxExplicitKclError, kclError);
+        require(kclError <= std::sqrt(3.0) * couplingError + 1e-8,
+                "explicit baseline KCL defect exceeds its reported lag bound");
       } else {
         require((component->attributeTyped<Matrix>("i_intf")->get() +
                  source->attributeTyped<Matrix>("i_intf")->get())
@@ -151,6 +161,11 @@ int main(int argc, char **argv) {
                 "wrong automatic FMI substep count");
     }
     simulation.stop();
+    std::cout << (singlePass ? "Single-pass baseline" : "Rollback/Newton")
+              << ": 2 ms network step, 1 ms FMI event, max explicit lag="
+              << maxExplicitCouplingError
+              << " A, max post-step KCL defect=" << maxExplicitKclError
+              << " A; independent recurrence state error < 2e-9\n";
     return 0;
   } catch (const std::exception &e) {
     std::cerr << e.what() << '\n';

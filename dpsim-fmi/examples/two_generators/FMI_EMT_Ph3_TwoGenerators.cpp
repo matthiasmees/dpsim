@@ -92,8 +92,8 @@ int main(int argc, char **argv) {
 
     // ----- NODES AND TOPOLOGY -----
     auto pcc = SimNode<Real>::make("pcc", PhaseType::ABC, initialNodeVoltages);
-    firstGenerator->connect({SimNode<Real>::GND, pcc});
-    secondGenerator->connect({SimNode<Real>::GND, pcc});
+    firstGenerator->connect(pcc);
+    secondGenerator->connect(pcc);
     network->connect({SimNode<Real>::GND, pcc});
     SystemTopology system(frequency, {pcc},
                           {firstGenerator, secondGenerator, network});

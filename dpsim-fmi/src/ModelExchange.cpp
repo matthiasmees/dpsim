@@ -6,6 +6,7 @@
 #include <miniz.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdlib>
 #include <filesystem>
@@ -1445,7 +1446,12 @@ const ModelDescription &ModelExchange::description() const {
 std::pair<Matrix, Matrix> ModelExchange::evaluate(const Matrix &state,
                                                   const Matrix &inputs,
                                                   double time) {
-  return mImpl->evaluate(state, inputs, time);
+  const auto start = std::chrono::steady_clock::now();
+  auto result = mImpl->evaluate(state, inputs, time);
+  const auto end = std::chrono::steady_clock::now();
+  ++mEvaluationRequests;
+  mEvaluationWallTime += std::chrono::duration<double>(end - start).count();
+  return result;
 }
 const std::pair<Matrix, Matrix> &ModelExchange::acceptedValues() const {
   return mImpl->acceptedValues();

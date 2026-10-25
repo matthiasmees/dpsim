@@ -70,7 +70,7 @@ int main(int argc, char **argv) {
 
     // ----- TOPOLOGY -----
 
-    branch->connect({SimNode<Real>::GND, node});
+    branch->connect(node);
     source->connect({SimNode<Real>::GND, node});
     SystemTopology system(systemFrequency, {node}, {source, branch});
 

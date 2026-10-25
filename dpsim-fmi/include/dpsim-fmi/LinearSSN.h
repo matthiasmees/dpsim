@@ -16,8 +16,12 @@ class LinearSSN final : public CPS::EMT::VTypeSSNComp,
   CPS::MatrixComp buildInitialInputFromNodes(CPS::Real frequency) override;
 
 public:
+  using CPS::SimPowerComp<CPS::Real>::connect;
+
   LinearSSN(CPS::String name, LinearModel::Ptr model,
             CPS::Logger::Level logLevel = CPS::Logger::Level::off);
+  /// Ground the negative terminal and connect the positive terminal to a node.
+  void connect(CPS::SimNode<CPS::Real>::Ptr node);
   CPS::SimPowerComp<CPS::Real>::Ptr clone(CPS::String name) override;
   const LinearModel &model() const { return *mModel; }
   std::vector<CPS::String> getLocalStateNames() const override;

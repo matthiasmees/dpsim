@@ -86,9 +86,28 @@ int main(int argc, char **argv) {
       }
       return phaseVoltages;
     };
-    const Matrix initialVoltage = gridVoltage(0) * initialVoltageScale;
     const bool initializeLineCurrentFromLoad = config.value(
         "initialize_line_current_from_load", std::abs(initialVoltageScale) > 0);
+    const Matrix initialGridVoltage = gridVoltage(0) * initialVoltageScale;
+    Matrix initialVoltage = initialGridVoltage;
+    Matrix initialLineCurrent = Matrix::Zero(3, 1);
+    Matrix initialResistorVoltage = Matrix::Zero(3, 1);
+    if (initializeLineCurrentFromLoad) {
+      const double omega = 2 * PI * frequency;
+      const Complex lineImpedance(lineResistance, omega * lineInductance);
+      for (int phase = 0; phase < 3; ++phase) {
+        const Complex gridPhasor =
+            std::polar(phaseVoltagePeak * initialVoltageScale,
+                       sourcePhase - phase * 2 * PI / 3);
+        const Complex pccPhasor =
+            gridPhasor * loadResistance / (loadResistance + lineImpedance);
+        const Complex lineCurrentPhasor = -pccPhasor / loadResistance;
+        initialVoltage(phase, 0) = pccPhasor.real();
+        initialLineCurrent(phase, 0) = lineCurrentPhasor.real();
+        initialResistorVoltage(phase, 0) =
+            (lineResistance * lineCurrentPhasor).real();
+      }
+    }
     // ----- IMPORTED CONVERTER -----
 
     // The common v_a/v_b/v_c and i_a/i_b/i_c interface is inferred. An FMU
@@ -144,8 +163,7 @@ int main(int argc, char **argv) {
                                  mapping.value("current_sign_to_passive", 1.0)},
           newtonSettings);
     } else {
-      converter = FMI::NonlinearSSN::importFMU("converter", argv[1], options,
-                                               newtonSettings);
+      converter = FMI::importFMU(argv[1], options, newtonSettings);
     }
 
     // ----- NODES -----
@@ -153,15 +171,18 @@ int main(int argc, char **argv) {
     const auto initialNodeVoltage = [](const Matrix &voltage) {
       std::vector<Complex> result(3);
       for (int phase = 0; phase < 3; ++phase)
-        result[phase] = voltage(phase, 0);
+        // SimNode<Real> converts its three-phase initial phasors to phase
+        // voltages with RMS3PH_TO_PEAK1PH during initialization.
+        result[phase] = voltage(phase, 0) / RMS3PH_TO_PEAK1PH;
       return result;
     };
     auto gridNode = SimNode<Real>::make("grid", PhaseType::ABC,
-                                        initialNodeVoltage(gridVoltage(0)));
+                                        initialNodeVoltage(initialGridVoltage));
     auto pccNode = SimNode<Real>::make("pcc", PhaseType::ABC,
                                        initialNodeVoltage(initialVoltage));
-    auto lineNode = SimNode<Real>::make("line_rl", PhaseType::ABC,
-                                        initialNodeVoltage(initialVoltage));
+    auto lineNode = SimNode<Real>::make(
+        "line_rl", PhaseType::ABC,
+        initialNodeVoltage(initialGridVoltage + initialResistorVoltage));
 
     // ----- NATIVE EMT COMPONENTS -----
 
@@ -187,7 +208,7 @@ int main(int argc, char **argv) {
     gridSource->connect({SimNode<Real>::GND, gridNode});
     lineResistor->connect({gridNode, lineInductance > 0 ? lineNode : pccNode});
     nativeLoad->connect({SimNode<Real>::GND, pccNode});
-    converter->connect({SimNode<Real>::GND, pccNode});
+    converter->connect(pccNode);
 
     SystemTopology system(frequency, {gridNode, pccNode},
                           {gridSource, lineResistor, nativeLoad, converter});
@@ -249,6 +270,10 @@ int main(int argc, char **argv) {
                          converter->attribute("fmi_internal_steps"));
     logger->logAttribute("fmi_coupling_error_A",
                          converter->attribute("fmi_coupling_error_A"));
+    logger->logAttribute("fmi_evaluation_requests",
+                         converter->attribute("fmi_evaluation_requests"));
+    logger->logAttribute("fmi_evaluation_wall_time_s",
+                         converter->attribute("fmi_evaluation_wall_time_s"));
 
     // ----- SIMULATION -----
 
@@ -273,24 +298,45 @@ int main(int argc, char **argv) {
       simulation.addEvent(SwitchEvent3Ph::make(loadStepTime, loadSwitch, true));
     }
 
-    // ----- INITIALIZE NATIVE LINE HISTORY AND RUN -----
+    // ----- CONSISTENTLY INITIALIZE THE LOADED NETWORK AND RUN -----
 
-    // Match the MATLAB zero-current start, rather than a steady-state power
-    // flow.
-    simulation.start();
+    // Initialize components first so that the FMU's initial terminal current
+    // is available. Then seed the line, resistor, and load histories before
+    // Simulation::start logs the t=0 sample. The line current satisfies PCC
+    // KCL for the configured load and the FMU's initialized current.
+    simulation.initialize();
+    **gridSource->attributeTyped<Matrix>("v_intf") = initialGridVoltage;
     if (lineInductor) {
-      **lineInductor->attributeTyped<Matrix>("v_intf") =
-          initialVoltage - gridVoltage(0);
-      Matrix initialLineCurrent = Matrix::Zero(3, 1);
       if (initializeLineCurrentFromLoad) {
         // Interface currents are oriented from terminal 0 to terminal 1.
         // The line therefore carries the opposite of the load and converter
-        // currents at the initial PCC voltage.
-        initialLineCurrent = -initialVoltage / loadResistance;
+        // currents computed at the initialized PCC voltage.
+        const Matrix initialLoadCurrent = initialVoltage / loadResistance;
+        initialLineCurrent = -initialLoadCurrent;
         initialLineCurrent -= **converter->attributeTyped<Matrix>("i_intf");
+        **nativeLoad->attributeTyped<Matrix>("v_intf") = initialVoltage;
+        **nativeLoad->attributeTyped<Matrix>("i_intf") = initialLoadCurrent;
+        const Matrix kclResidual =
+            initialLineCurrent + initialLoadCurrent +
+            **converter->attributeTyped<Matrix>("i_intf");
+        if (!kclResidual.allFinite() ||
+            kclResidual.lpNorm<Eigen::Infinity>() > 1e-10) {
+          throw std::runtime_error(
+              "Loaded-start initialization does not satisfy PCC KCL");
+        }
       }
+      initialResistorVoltage = lineResistance * initialLineCurrent;
+      **gridNode->attributeTyped<Matrix>("v") = initialGridVoltage;
+      **lineNode->attributeTyped<Matrix>("v") =
+          initialGridVoltage + initialResistorVoltage;
+      **pccNode->attributeTyped<Matrix>("v") = initialVoltage;
+      **lineResistor->attributeTyped<Matrix>("v_intf") = initialResistorVoltage;
+      **lineResistor->attributeTyped<Matrix>("i_intf") = initialLineCurrent;
+      **lineInductor->attributeTyped<Matrix>("v_intf") =
+          initialVoltage - initialGridVoltage - initialResistorVoltage;
       **lineInductor->attributeTyped<Matrix>("i_intf") = initialLineCurrent;
     }
+    simulation.start();
     const auto numberOfSteps = std::llround(finalTime / timeStep);
     for (long long step = 0; step < numberOfSteps; ++step) {
       // Native source keeps its continuous base-frequency oscillator. Updating

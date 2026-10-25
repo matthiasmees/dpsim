@@ -198,6 +198,7 @@ add_dependencies(FMI_NonlinearTest fmi_package_nonlinear_threephase)
 
 add_test(NAME fmi_nonlinear_threephase COMMAND FMI_NonlinearTest "${FMU}")
 add_test(NAME fmi_nonlinear_reuse_jacobian COMMAND FMI_NonlinearTest "${FMU}" reuse)
+add_test(NAME fmi_nonlinear_tight_sensitivity COMMAND FMI_NonlinearTest "${FMU}" tight)
 add_test(NAME fmi_nonlinear_reject_unconverged COMMAND FMI_NonlinearTest "${FMU}" fail)
 
 # A completed-step event changes terminal current without reinitializing states.
@@ -392,6 +393,9 @@ add_test(NAME fmi_multirate_requires_rollback
 	COMMAND FMI_SampledTest "${NO_ROLLBACK_FMU}" no_rollback)
 add_test(NAME fmi_multirate_single_pass
 	COMMAND FMI_SampledTest "${NO_ROLLBACK_FMU}" single_pass)
+add_test(NAME fmi_multirate_single_pass_same_fmu
+	COMMAND FMI_SampledTest
+		"${CMAKE_CURRENT_BINARY_DIR}/sampled_threephase.fmu" single_pass)
 
 # Additional runtime lifecycle regressions share the same nonlinear equations.
 function(add_fmi_lifecycle_fixture name)

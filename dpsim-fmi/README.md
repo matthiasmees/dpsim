@@ -4,6 +4,13 @@ Nonlinear three-phase import is available through `ModelExchange` and
 `NonlinearSSN`; see [the nonlinear importer guide](NONLINEAR.md). The sections
 below describe the fixed LTI extraction path and its limitations.
 
+For a conventional three-phase nonlinear FMU, the short C++ form is
+`auto fmu = DPsim::FMI::importFMU("converter.fmu"); fmu->connect(pcc);`.
+The equivalent Python entry point is
+`dpsimpy.fmi.import_fmu("converter.fmu")`, followed by
+`fmu.connect(pcc)`. See the [Python import notebooks](examples/python/README.md)
+for executable examples and explicit mapping options.
+
 `dpsim-fmi` imports a **declared linear, time-invariant** Model Exchange FMU
 from FMI 2.0 or FMI 3.0
 as a two-terminal scalar or three-phase EMT component. Its internal state count and equations

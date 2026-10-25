@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 #include <dpsim-fmi/LinearSSN.h>
 #include <stdexcept>
+#include <utility>
 
 using namespace CPS;
 namespace DPsim::FMI {
@@ -84,6 +85,12 @@ LinearSSN::LinearSSN(String name, LinearModel::Ptr model, Logger::Level level)
                                                   mModel->stateNames[index]);
     state->setReference(mX->deriveCoeff<Real>(index, 0));
   }
+}
+void LinearSSN::connect(SimNode<Real>::Ptr node) {
+  if (!node)
+    throw std::invalid_argument(
+        "cannot connect an FMI component to a null node");
+  SimPowerComp<Real>::connect({SimNode<Real>::GND, std::move(node)});
 }
 
 SimPowerComp<Real>::Ptr LinearSSN::clone(String name) {

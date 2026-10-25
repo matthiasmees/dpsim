@@ -51,7 +51,7 @@ int main(int argc, char **argv) {
 
     // ----- TOPOLOGY -----
 
-    branch->connect({ground, node});
+    branch->connect(node);
     boundary->connect({ground, node});
     SystemTopology system(systemFrequency, {node}, {boundary, branch});
 

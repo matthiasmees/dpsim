@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 #pragma once
+#include <cstdint>
 #include <dpsim-models/Definitions.h>
 #include <memory>
 #include <string>
@@ -44,6 +45,8 @@ public:
 
 private:
   std::unique_ptr<Backend> mImpl;
+  std::uint64_t mEvaluationRequests = 0;
+  double mEvaluationWallTime = 0;
 
 public:
   using Ptr = std::shared_ptr<ModelExchange>;
@@ -59,6 +62,11 @@ public:
   std::pair<CPS::Matrix, CPS::Matrix> evaluate(const CPS::Matrix &state,
                                                const CPS::Matrix &inputs,
                                                double time = 0);
+  /// Number and wall time of public evaluate requests, including requests
+  /// served from the accepted-value cache. These diagnostics exclude event
+  /// handling and accepted-step FMI calls.
+  std::uint64_t evaluationRequests() const { return mEvaluationRequests; }
+  double evaluationWallTime() const { return mEvaluationWallTime; }
   /// Absolute next internal time event, or positive infinity when none.
   double nextTimeEvent() const;
   /// Cached right-side values at the last committed point (no new FMI probes).

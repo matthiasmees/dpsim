@@ -24,6 +24,10 @@ PYBIND11_DECLARE_HOLDER_TYPE(T, CPS::AttributePointer<T>);
 namespace py = pybind11;
 using namespace pybind11::literals;
 
+#ifdef DPSIM_WITH_FMI
+void addFMIBindings(py::module_ root);
+#endif
+
 /// Dispatches a single argument of the deprecated SystemTopology.add
 /// alias to add_node or add_component depending on its type
 static void systemTopologyAddSingle(DPsim::SystemTopology &sys,
@@ -610,6 +614,10 @@ PYBIND11_MODULE(dpsimpy, m) {
 
   py::module mSignal = m.def_submodule("signal", "signal models");
   addSignalComponents(mSignal);
+
+#ifdef DPSIM_WITH_FMI
+  addFMIBindings(m);
+#endif
 
 #ifdef VERSION_INFO
   m.attr("__version__") = VERSION_INFO;

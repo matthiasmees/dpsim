@@ -118,7 +118,7 @@ int main(int argc, char **argv) {
     // ----- NODES AND TOPOLOGY -----
 
     auto bus = SimNode<Real>::make("bus", PhaseType::ABC, initialNodeVoltages);
-    generator->connect({SimNode<Real>::GND, bus});
+    generator->connect(bus);
     network->connect({SimNode<Real>::GND, bus});
     SystemTopology system(frequency, {bus}, {generator, network});
 
