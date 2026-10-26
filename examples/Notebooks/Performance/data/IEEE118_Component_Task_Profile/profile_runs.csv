@@ -1,0 +1,5 @@
+domain,case,mode,simulated_seconds,timestep_s,steps,logged_calculation_s,mean_step_s,task_log,step_log
+DP3Ph,conventional,per_task_profile,1.0,0.001,1000,5.35978,0.00535811,IEEE118_DP3Ph_CPP_DetailedProfile_TaskTimes.csv,IEEE118_DP3Ph_CPP_DetailedProfile_StepTimes.log
+DP3Ph,ssn_network,per_task_profile,1.0,0.001,1000,2.189358,0.002187812,IEEE118_DP3Ph_CPP_SSNLine_SSNLoad_SSNTrafo_DetailedProfile_TaskTimes.csv,IEEE118_DP3Ph_CPP_SSNLine_SSNLoad_SSNTrafo_DetailedProfile_StepTimes.log
+EMT3Ph,conventional,per_task_profile,1.0,0.0005,2000,10.348211,0.005172221,IEEE118_EMT3Ph_CPP_DetailedProfile_TaskTimes.csv,IEEE118_EMT3Ph_CPP_DetailedProfile_StepTimes.log
+EMT3Ph,ssn_network,per_task_profile,1.0,0.0005,2000,3.941885,0.00196946,IEEE118_EMT3Ph_CPP_SSNLine_SSNLoad_SSNTrafo_DetailedProfile_TaskTimes.csv,IEEE118_EMT3Ph_CPP_SSNLine_SSNLoad_SSNTrafo_DetailedProfile_StepTimes.log

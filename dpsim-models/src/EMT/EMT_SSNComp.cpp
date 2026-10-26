@@ -10,7 +10,8 @@ EMT::SSNComp::SSNComp(String uid, String name, Int inputSize, Int outputSize,
     : MNASimPowerComp<Real>(uid, name, true, true, logLevel), mTimeStep(0.0),
       mW(Matrix::Zero(outputSize, inputSize)),
       mYHist(Matrix::Zero(outputSize, 1)), mInputSize(inputSize),
-      mOutputSize(outputSize), mX(mAttributes->create<Matrix>("x")) {
+      mOutputSize(outputSize), mX(mAttributes->create<Matrix>("x")),
+      mPreviousInput(Matrix::Zero(inputSize, 1)) {
   mParametersSet = false;
 }
 

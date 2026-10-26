@@ -31,6 +31,12 @@ public:
   virtual void mnaApplySystemMatrixStamp(SparseMatrixRow &systemMatrix) = 0;
   /// Stamps right side (source) vector
   virtual void mnaApplyRightSideVectorStamp(Matrix &rightVector) = 0;
+  /// Return true when the direct MNA solver can accumulate this component's
+  /// contribution row-wise instead of adding its full-size dense stamp.
+  virtual Bool mnaHasCompactRightSideVectorStamp() const { return false; }
+  /// Add this component's current RHS contribution to the global vector.
+  /// Only called when mnaHasCompactRightSideVectorStamp() is true.
+  virtual void mnaAddCompactRightSideVectorStamp(Matrix &) {}
   /// Update interface voltage from MNA system result
   virtual void mnaUpdateVoltage(const Matrix &leftVector) = 0;
   /// Update interface current from MNA system result

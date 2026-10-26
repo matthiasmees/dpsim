@@ -102,7 +102,7 @@ void DP::Ph3::Resistor::mnaCompPostStep(Real time, Int timeStepCount,
 }
 
 void DP::Ph3::Resistor::mnaCompUpdateVoltage(const Matrix &leftVector) {
-  **mIntfVoltage = MatrixComp::Zero(3, 1);
+  (**mIntfVoltage).setZero();
 
   if (terminalNotGrounded(1)) {
     (**mIntfVoltage)(0, 0) =

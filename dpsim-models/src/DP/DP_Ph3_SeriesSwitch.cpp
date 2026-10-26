@@ -92,7 +92,7 @@ void DP::Ph3::SeriesSwitch::mnaCompPostStep(
 
 void DP::Ph3::SeriesSwitch::mnaCompUpdateVoltage(const Matrix &leftVector) {
   // Voltage across component is defined as V1 - V0
-  **mIntfVoltage = MatrixComp::Zero(3, 1);
+  (**mIntfVoltage).setZero();
   if (terminalNotGrounded(1)) {
     (**mIntfVoltage)(0, 0) =
         Math::complexFromVectorElement(leftVector, matrixNodeIndex(1, 0));

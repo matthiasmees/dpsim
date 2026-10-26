@@ -41,6 +41,8 @@ protected:
   Matrix mdB;
 
   const Attribute<Matrix>::Ptr mX;
+  /// Reused storage for the previous SSN input during post-step updates.
+  Matrix mPreviousInput;
 
   SSNComp(String uid, String name, Int inputSize, Int outputSize,
           Logger::Level logLevel = Logger::Level::off);

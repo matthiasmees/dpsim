@@ -1,0 +1,9 @@
+domain,case,measurement,calculation_s,timestep_s,simulated_seconds
+DP3Ph,conventional,current_build_no_logger,3.636053,0.001,1.0
+DP3Ph,ssn_network,current_build_no_logger,0.268095,0.001,1.0
+EMT3Ph,conventional,current_build_no_logger,6.905830,0.0005,1.0
+EMT3Ph,ssn_network,current_build_no_logger,0.373308,0.0005,1.0
+DP3Ph,conventional,earlier_logged_endpoint,3.439234,0.001,1.0
+DP3Ph,ssn_network,earlier_logged_endpoint,0.163708,0.001,1.0
+EMT3Ph,conventional,earlier_logged_endpoint,6.684139,0.0005,1.0
+EMT3Ph,ssn_network,earlier_logged_endpoint,0.353131,0.0005,1.0

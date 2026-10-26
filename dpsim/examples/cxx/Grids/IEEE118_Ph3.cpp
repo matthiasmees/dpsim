@@ -3,6 +3,16 @@
 // IEEE 118-bus three-phase DP / EMT SG4 example, based on MATPOWER case118.
 #include "IEEE118_Data.h"
 #include <DPsim.h>
+#include <dpsim-models/DP/DP_Ph3_SSN_ImpedanceLoad.h>
+#include <dpsim-models/DP/DP_Ph3_SSN_PiLine.h>
+#include <dpsim-models/DP/DP_Ph3_SSN_SynchronGenerator4Order.h>
+#include <dpsim-models/DP/DP_Ph3_SSN_Transformer.h>
+#include <dpsim-models/EMT/EMT_Ph3_PiLine_NoSub.h>
+#include <dpsim-models/EMT/EMT_Ph3_SSN_ImpedanceLoad.h>
+#include <dpsim-models/EMT/EMT_Ph3_SSN_PiLine.h>
+#include <dpsim-models/EMT/EMT_Ph3_SSN_SynchronGenerator4Order.h>
+#include <dpsim-models/EMT/EMT_Ph3_SSN_Transformer.h>
+#include <dpsim/SequentialScheduler.h>
 
 #include <algorithm>
 #include <cmath>
@@ -39,6 +49,19 @@ Real dynamicMachineBase(const Generator &gen) {
 Matrix parameter3(Real x) { return Math::singlePhaseParameterToThreePhase(x); }
 
 const Bus &busFor(int id) { return buses.at(static_cast<size_t>(id - 1)); }
+Complex powerflowGeneratorPower(const SystemTopology &system,
+                                const Generator &gen) {
+  const String name = "Gen" + std::to_string(gen.bus);
+  for (const auto &object : system.mComponents) {
+    if (object->name() == name) {
+      auto machine =
+          std::dynamic_pointer_cast<SP::Ph1::SynchronGenerator>(object);
+      if (machine)
+        return machine->getApparentPower();
+    }
+  }
+  return Complex(gen.pg, gen.qg) * 1e6;
+}
 PowerflowBusType pfBusType(int type) {
   if (type == 3)
     return PowerflowBusType::VD;
@@ -130,12 +153,25 @@ SystemTopology makePowerflowSystem() {
 
 template <typename NodePtr>
 void addLoadsAndShuntsDP(const std::vector<NodePtr> &nodes,
-                         SystemComponentList &components) {
+                         SystemComponentList &components,
+                         bool useSSNImpedanceLoad) {
   int count = 0;
   for (const auto &bus : buses) {
     const auto &node = nodes.at(bus.id - 1);
     const Real peak = bus.vm * baseV(bus) * dpEnvelopeScale;
     const Real p = bus.pd * 1e6, q = bus.qd * 1e6;
+    const Real g = bus.gs * 1e6 / std::pow(baseV(bus), 2);
+    const Real b = bus.bs * 1e6 / std::pow(baseV(bus), 2);
+    if (useSSNImpedanceLoad) {
+      if (p != 0. || q != 0. || g != 0. || b != 0.) {
+        auto load = DP::Ph3::SSN::ImpedanceLoad::make("ImpedanceLoad" +
+                                                      std::to_string(bus.id));
+        load->setParameters(p, q, bus.vm * baseV(bus), g, b);
+        load->connect({node});
+        components.push_back(load);
+      }
+      continue;
+    }
     if (p > 0.) {
       auto r = DP::Ph3::Resistor::make("Load" + std::to_string(++count) + "_R");
       r->setParameters(parameter3(1.5 * peak * peak / p));
@@ -153,8 +189,6 @@ void addLoadsAndShuntsDP(const std::vector<NodePtr> &nodes,
       c->connect({node, DP::SimNode::GND});
       components.push_back(c);
     }
-    const Real g = bus.gs * 1e6 / std::pow(baseV(bus), 2);
-    const Real b = bus.bs * 1e6 / std::pow(baseV(bus), 2);
     if (g > 0.) {
       auto r = DP::Ph3::Resistor::make("Shunt" + std::to_string(bus.id) + "_R");
       r->setParameters(parameter3(1. / g));
@@ -177,7 +211,9 @@ void addLoadsAndShuntsDP(const std::vector<NodePtr> &nodes,
 }
 
 template <typename Nodes>
-void addBranches(const Nodes &nodes, SystemComponentList &components) {
+void addBranches(const Nodes &nodes, SystemComponentList &components,
+                 bool useSSNPiLine, bool usePiLineNoSub,
+                 bool useSSNTransformer) {
   constexpr bool emt =
       std::is_same_v<typename Nodes::value_type, EMT::SimNode::Ptr>;
   int lines = 0, transformers = 0;
@@ -192,17 +228,41 @@ void addBranches(const Nodes &nodes, SystemComponentList &components) {
       const Real r = branch.r * zTo, l = branch.x * zTo / omega;
       const Real c = branch.b / zTo / omega;
       if constexpr (emt) {
-        auto line = EMT::Ph3::PiLine::make("Line" + std::to_string(++lines));
-        line->setParameters(parameter3(r), parameter3(l), parameter3(c),
-                            parameter3(0.));
-        line->connect({nodes.at(branch.from - 1), nodes.at(branch.to - 1)});
-        components.push_back(line);
+        const auto lineName = "Line" + std::to_string(++lines);
+        if (usePiLineNoSub) {
+          auto line = EMT::Ph3::PiLine_NoSub::make(lineName);
+          line->setParameters(parameter3(r), parameter3(l), parameter3(c),
+                              parameter3(0.));
+          line->connect({nodes.at(branch.from - 1), nodes.at(branch.to - 1)});
+          components.push_back(line);
+        } else if (useSSNPiLine) {
+          auto line = EMT::Ph3::SSN::PiLine::make(lineName);
+          line->setParameters(parameter3(r), parameter3(l), parameter3(c),
+                              parameter3(0.));
+          line->connect({nodes.at(branch.from - 1), nodes.at(branch.to - 1)});
+          components.push_back(line);
+        } else {
+          auto line = EMT::Ph3::PiLine::make(lineName);
+          line->setParameters(parameter3(r), parameter3(l), parameter3(c),
+                              parameter3(0.));
+          line->connect({nodes.at(branch.from - 1), nodes.at(branch.to - 1)});
+          components.push_back(line);
+        }
       } else {
-        auto line = DP::Ph3::PiLine::make("Line" + std::to_string(++lines));
-        line->setParameters(parameter3(r), parameter3(l), parameter3(c),
-                            parameter3(0.));
-        line->connect({nodes.at(branch.from - 1), nodes.at(branch.to - 1)});
-        components.push_back(line);
+        const auto lineName = "Line" + std::to_string(++lines);
+        if (useSSNPiLine) {
+          auto line = DP::Ph3::SSN::PiLine::make(lineName);
+          line->setParameters(parameter3(r), parameter3(l), parameter3(c),
+                              parameter3(0.));
+          line->connect({nodes.at(branch.from - 1), nodes.at(branch.to - 1)});
+          components.push_back(line);
+        } else {
+          auto line = DP::Ph3::PiLine::make(lineName);
+          line->setParameters(parameter3(r), parameter3(l), parameter3(c),
+                              parameter3(0.));
+          line->connect({nodes.at(branch.from - 1), nodes.at(branch.to - 1)});
+          components.push_back(line);
+        }
       }
     } else {
       const Real transformerScale = (vf > vt) ? ratio : tap;
@@ -212,28 +272,66 @@ void addBranches(const Nodes &nodes, SystemComponentList &components) {
       const Real ratedPower =
           branch.rateA > 0. ? branch.rateA * 1e6 : baseMVA * 1e6;
       if constexpr (emt) {
-        auto trafo = EMT::Ph3::Transformer::make(
-            "Trafo" + std::to_string(++transformers));
-        trafo->setParameters(vf, vt, ratedPower, std::abs(ratio),
-                             branch.angle * PI / 180., parameter3(r),
-                             parameter3(l));
-        trafo->connect({nodes.at(branch.from - 1), nodes.at(branch.to - 1)});
-        components.push_back(trafo);
+        const auto name = "Trafo" + std::to_string(++transformers);
+        if (useSSNTransformer) {
+          auto trafo = EMT::Ph3::SSN::Transformer::make(name);
+          trafo->setParameters(vf, vt, ratedPower, std::abs(ratio),
+                               branch.angle * PI / 180., parameter3(r),
+                               parameter3(l));
+          trafo->connect({nodes.at(branch.from - 1), nodes.at(branch.to - 1)});
+          components.push_back(trafo);
+        } else {
+          auto trafo = EMT::Ph3::Transformer::make(name);
+          trafo->setParameters(vf, vt, ratedPower, std::abs(ratio),
+                               branch.angle * PI / 180., parameter3(r),
+                               parameter3(l));
+          trafo->connect({nodes.at(branch.from - 1), nodes.at(branch.to - 1)});
+          components.push_back(trafo);
+        }
       } else {
-        auto trafo = DP::Ph3::Transformer::make("Trafo" +
-                                                std::to_string(++transformers));
-        trafo->setParameters(vf, vt, ratedPower, std::abs(ratio),
-                             branch.angle * PI / 180., parameter3(r),
-                             parameter3(l));
-        trafo->connect({nodes.at(branch.from - 1), nodes.at(branch.to - 1)});
-        components.push_back(trafo);
+        const auto name = "Trafo" + std::to_string(++transformers);
+        if (useSSNTransformer) {
+          auto trafo = DP::Ph3::SSN::Transformer::make(name);
+          trafo->setParameters(vf, vt, ratedPower, std::abs(ratio),
+                               branch.angle * PI / 180., parameter3(r),
+                               parameter3(l));
+          trafo->connect({nodes.at(branch.from - 1), nodes.at(branch.to - 1)});
+          components.push_back(trafo);
+        } else {
+          auto trafo = DP::Ph3::Transformer::make(name);
+          trafo->setParameters(vf, vt, ratedPower, std::abs(ratio),
+                               branch.angle * PI / 180., parameter3(r),
+                               parameter3(l));
+          trafo->connect({nodes.at(branch.from - 1), nodes.at(branch.to - 1)});
+          components.push_back(trafo);
+        }
       }
     }
   }
 }
 
-void runDP(const SystemTopology &systemPF) {
-  const String name = "IEEE118_DP3Ph_CPP";
+String simulationName(const String &domain, bool useSSNPiLine,
+                      bool useSSNImpedanceLoad, bool useSSNTransformer,
+                      bool useSSNGenerator) {
+  String name = "IEEE118_" + domain + "3Ph_CPP";
+  if (useSSNPiLine)
+    name += "_SSNLine";
+  if (useSSNImpedanceLoad)
+    name += "_SSNLoad";
+  if (useSSNTransformer)
+    name += "_SSNTrafo";
+  if (useSSNGenerator)
+    name += "_SSNGen4Order";
+  return name;
+}
+
+void runDP(const SystemTopology &systemPF, bool useSSNPiLine,
+           bool useSSNImpedanceLoad, bool useSSNTransformer,
+           bool useSSNGenerator, bool profile, bool shortRun, bool noLogger) {
+  String name = simulationName("DP", useSSNPiLine, useSSNImpedanceLoad,
+                               useSSNTransformer, useSSNGenerator);
+  if (profile)
+    name += "_DetailedProfile";
   Logger::setLogDir("logs/" + name);
   std::vector<DP::SimNode::Ptr> nodes;
   SystemNodeList systemNodes;
@@ -244,17 +342,32 @@ void runDP(const SystemTopology &systemPF) {
   }
   SystemComponentList components;
   for (const auto &gen : generators) {
-    auto machine = DP::Ph3::SynchronGenerator4OrderVBR::make(
-        "Gen" + std::to_string(gen.bus));
     const auto &bus = busFor(gen.bus);
-    machine->setParametersOperationalPerUnit(
-        dynamicMachineBase(gen), baseV(bus), frequency, 2, 1., Ra, Xd, Xq,
-        XdTransient, XqTransient, Xl, Td0Transient, Tq0Transient, H);
-    machine->connect({nodes.at(gen.bus - 1)});
-    components.push_back(machine);
+    if (useSSNGenerator) {
+      auto machine = DP::Ph3::SSN::SynchronGenerator4Order::make(
+          "Gen" + std::to_string(gen.bus));
+      const Real machineBase = dynamicMachineBase(gen);
+      machine->setParametersOperationalPerUnit(
+          machineBase, baseV(bus), frequency, H, Ra, XdTransient, XqTransient,
+          Xd, Xq, Td0Transient, Tq0Transient);
+      const Complex power = powerflowGeneratorPower(systemPF, gen);
+      machine->setPowerflowInitialValues(power.real() / machineBase,
+                                         power.imag() / machineBase, bus.vm,
+                                         bus.va * PI / 180.);
+      machine->connect({DP::SimNode::GND, nodes.at(gen.bus - 1)});
+      components.push_back(machine);
+    } else {
+      auto machine = DP::Ph3::SynchronGenerator4OrderVBR::make(
+          "Gen" + std::to_string(gen.bus));
+      machine->setParametersOperationalPerUnit(
+          dynamicMachineBase(gen), baseV(bus), frequency, 2, 1., Ra, Xd, Xq,
+          XdTransient, XqTransient, Xl, Td0Transient, Tq0Transient, H);
+      machine->connect({nodes.at(gen.bus - 1)});
+      components.push_back(machine);
+    }
   }
-  addLoadsAndShuntsDP(nodes, components);
-  addBranches(nodes, components);
+  addLoadsAndShuntsDP(nodes, components, useSSNImpedanceLoad);
+  addBranches(nodes, components, useSSNPiLine, false, useSSNTransformer);
   SystemTopology system(frequency, systemNodes, components);
   system.initWithPowerflow(systemPF, Domain::DP);
   auto logger = DataLogger::make(name);
@@ -266,14 +379,39 @@ void runDP(const SystemTopology &systemPF) {
   sim.setDomain(Domain::DP);
   sim.setSolverType(Solver::Type::MNA);
   sim.setTimeStep(1e-3);
-  sim.setFinalTime(30.);
+  sim.setFinalTime(shortRun ? 1. : 30.);
   sim.doInitFromNodesAndTerminals(true);
-  sim.addLogger(logger);
+  sim.setLogStepTimes(profile);
+  if (profile) {
+    sim.setScheduler(std::make_shared<SequentialScheduler>(
+        "logs/" + name + "/" + name + "_TaskTimes.csv", Logger::Level::off));
+  } else if (!noLogger) {
+    sim.addLogger(logger);
+  }
   sim.run();
+  if (profile) {
+    sim.logStepTimes(name + "_StepTimes");
+    sim.logLUTimes();
+  }
 }
 
-void runEMT(const SystemTopology &systemPF) {
-  const String name = "IEEE118_EMT3Ph_CPP";
+void runEMT(const SystemTopology &systemPF, bool useSSNPiLine,
+            bool usePiLineNoSub, bool useSSNImpedanceLoad,
+            bool useSSNTransformer, bool useSSNGenerator, bool profile,
+            bool shortRun, bool noLogger) {
+  String name = simulationName("EMT", useSSNPiLine, useSSNImpedanceLoad,
+                               useSSNTransformer, useSSNGenerator);
+  if (usePiLineNoSub) {
+    name = "IEEE118_EMT3Ph_CPP_NoSubLine";
+    if (useSSNImpedanceLoad)
+      name += "_SSNLoad";
+    if (useSSNTransformer)
+      name += "_SSNTrafo";
+    if (useSSNGenerator)
+      name += "_SSNGen4Order";
+  }
+  if (profile)
+    name += "_DetailedProfile";
   Logger::setLogDir("logs/" + name);
   auto logger = DataLogger::make(name, true, 2);
   std::vector<EMT::SimNode::Ptr> nodes;
@@ -286,23 +424,55 @@ void runEMT(const SystemTopology &systemPF) {
   }
   SystemComponentList components;
   for (const auto &gen : generators) {
-    auto machine = EMT::Ph3::SynchronGenerator4OrderVBR::make(
-        "Gen" + std::to_string(gen.bus));
     const auto &bus = busFor(gen.bus);
-    machine->setOperationalParametersPerUnit(
-        dynamicMachineBase(gen), baseV(bus), frequency, H, Xd, Xq, Xl,
-        XdTransient, XqTransient, Td0Transient, Tq0Transient);
-    if (gen.bus == 10 || gen.bus == 69 || gen.bus == 89) {
-      const auto prefix = "Gen" + std::to_string(gen.bus) + ".";
-      logger->logAttribute(prefix + "w_r", machine->attribute("w_r"));
-      logger->logAttribute(prefix + "Tm", machine->attribute("Tm"));
-      logger->logAttribute(prefix + "Te", machine->attribute("Te"));
+    if (useSSNGenerator) {
+      auto machine = EMT::Ph3::SSN::SynchronGenerator4Order::make(
+          "Gen" + std::to_string(gen.bus));
+      const Real machineBase = dynamicMachineBase(gen);
+      machine->setParametersOperationalPerUnit(
+          machineBase, baseV(bus), frequency, H, Ra, XdTransient, XqTransient,
+          Xd, Xq, Td0Transient, Tq0Transient);
+      const Complex power = powerflowGeneratorPower(systemPF, gen);
+      machine->setPowerflowInitialValues(power.real() / machineBase,
+                                         power.imag() / machineBase, bus.vm,
+                                         bus.va * PI / 180.);
+      if (gen.bus == 10) {
+        logger->logAttribute("Gen10.SSNState", machine->attribute("x"));
+        logger->logAttribute("Gen10.SSNCurrent", machine->attribute("i_intf"));
+      }
+      machine->connect({EMT::SimNode::GND, nodes.at(gen.bus - 1)});
+      components.push_back(machine);
+    } else {
+      auto machine = EMT::Ph3::SynchronGenerator4OrderVBR::make(
+          "Gen" + std::to_string(gen.bus));
+      machine->setOperationalParametersPerUnit(
+          dynamicMachineBase(gen), baseV(bus), frequency, H, Xd, Xq, Xl,
+          XdTransient, XqTransient, Td0Transient, Tq0Transient);
+      if (gen.bus == 10 || gen.bus == 69 || gen.bus == 89) {
+        const auto prefix = "Gen" + std::to_string(gen.bus) + ".";
+        logger->logAttribute(prefix + "w_r", machine->attribute("w_r"));
+        logger->logAttribute(prefix + "Tm", machine->attribute("Tm"));
+        logger->logAttribute(prefix + "Te", machine->attribute("Te"));
+      }
+      machine->connect({nodes.at(gen.bus - 1)});
+      components.push_back(machine);
     }
-    machine->connect({nodes.at(gen.bus - 1)});
-    components.push_back(machine);
   }
   int loadIndex = 0;
   for (const auto &bus : buses) {
+    const Real g = bus.gs * 1e6 / std::pow(baseV(bus), 2);
+    const Real b = bus.bs * 1e6 / std::pow(baseV(bus), 2);
+    if (useSSNImpedanceLoad) {
+      if (bus.pd != 0. || bus.qd != 0. || g != 0. || b != 0.) {
+        auto load = EMT::Ph3::SSN::ImpedanceLoad::make("ImpedanceLoad" +
+                                                       std::to_string(bus.id));
+        load->setParameters(bus.pd * 1e6, bus.qd * 1e6, bus.vm * baseV(bus), g,
+                            b);
+        load->connect({nodes.at(bus.id - 1)});
+        components.push_back(load);
+      }
+      continue;
+    }
     if (bus.pd != 0. || bus.qd != 0.) {
       auto load = EMT::Ph3::RXLoad::make("Load" + std::to_string(++loadIndex));
       load->setParameters(parameter3(bus.pd * 1e6 / 3.),
@@ -310,8 +480,6 @@ void runEMT(const SystemTopology &systemPF) {
       load->connect({nodes.at(bus.id - 1)});
       components.push_back(load);
     }
-    const Real g = bus.gs * 1e6 / std::pow(baseV(bus), 2);
-    const Real b = bus.bs * 1e6 / std::pow(baseV(bus), 2);
     if (g != 0. || b != 0.) {
       auto shunt = EMT::Ph3::Shunt::make("Shunt" + std::to_string(bus.id));
       shunt->setParameters(g, b);
@@ -319,7 +487,8 @@ void runEMT(const SystemTopology &systemPF) {
       components.push_back(shunt);
     }
   }
-  addBranches(nodes, components);
+  addBranches(nodes, components, useSSNPiLine, usePiLineNoSub,
+              useSSNTransformer);
   SystemTopology system(frequency, systemNodes, components);
   system.initWithPowerflow(systemPF, Domain::EMT);
   for (int id : {1, 10, 30, 69, 100, 118})
@@ -330,18 +499,73 @@ void runEMT(const SystemTopology &systemPF) {
   sim.setDomain(Domain::EMT);
   sim.setSolverType(Solver::Type::MNA);
   sim.setTimeStep(5e-4);
-  sim.setFinalTime(30.);
+  sim.setFinalTime(shortRun ? 1. : 30.);
   sim.doInitFromNodesAndTerminals(true);
-  sim.addLogger(logger);
+  sim.setLogStepTimes(profile);
+  if (profile) {
+    sim.setScheduler(std::make_shared<SequentialScheduler>(
+        "logs/" + name + "/" + name + "_TaskTimes.csv", Logger::Level::off));
+  } else if (!noLogger) {
+    sim.addLogger(logger);
+  }
   sim.run();
+  if (profile) {
+    sim.logStepTimes(name + "_StepTimes");
+    sim.logLUTimes();
+  }
 }
 } // namespace
 
 int main(int argc, char **argv) {
-  if (argc != 2 ||
+  if (argc < 2 || argc > 9 ||
       (std::string(argv[1]) != "dp" && std::string(argv[1]) != "emt")) {
-    std::cerr << "Usage: IEEE118_Ph3 dp|emt\n";
+    std::cerr << "Usage: IEEE118_Ph3 dp|emt [allssn|ssn|nosub] [ssnload] "
+                 "[ssntrafo] [ssngen] [short] [nolog] [profile]\n";
     return 2;
+  }
+#ifdef IEEE118_DEFAULT_SSN_MODE
+  bool useSSNPiLine = true;
+  bool useSSNImpedanceLoad = true;
+  bool useSSNTransformer = true;
+#else
+  bool useSSNPiLine = false;
+  bool useSSNImpedanceLoad = false;
+  bool useSSNTransformer = false;
+#endif
+  bool useSSNGenerator = false;
+  bool usePiLineNoSub = false;
+  bool profile = false;
+  bool shortRun = false;
+  bool noLogger = false;
+  for (int arg = 2; arg < argc; ++arg) {
+    const std::string mode(argv[arg]);
+    if (mode == "allssn") {
+      useSSNPiLine = true;
+      useSSNImpedanceLoad = true;
+      useSSNTransformer = true;
+    } else if (mode == "ssn")
+      useSSNPiLine = true;
+    else if (mode == "nosub")
+      usePiLineNoSub = true;
+    else if (mode == "ssnload")
+      useSSNImpedanceLoad = true;
+    else if (mode == "ssntrafo")
+      useSSNTransformer = true;
+    else if (mode == "ssngen")
+      useSSNGenerator = true;
+    else if (mode == "profile") {
+      profile = true;
+      shortRun = true;
+      noLogger = true;
+    } else if (mode == "short")
+      shortRun = true;
+    else if (mode == "nolog")
+      noLogger = true;
+    else {
+      std::cerr << "Optional modes are 'allssn', 'ssn', 'nosub', 'ssnload', "
+                   "'ssntrafo', 'ssngen', 'short', 'nolog', and 'profile'.\n";
+      return 2;
+    }
   }
   auto systemPF = makePowerflowSystem();
   Simulation pf("IEEE118_SP_PF", Logger::Level::off);
@@ -354,8 +578,10 @@ int main(int argc, char **argv) {
   pf.doInitFromNodesAndTerminals(false);
   pf.run();
   if (std::string(argv[1]) == "dp")
-    runDP(systemPF);
+    runDP(systemPF, useSSNPiLine, useSSNImpedanceLoad, useSSNTransformer,
+          useSSNGenerator, profile, shortRun, noLogger);
   else
-    runEMT(systemPF);
+    runEMT(systemPF, useSSNPiLine, usePiLineNoSub, useSSNImpedanceLoad,
+           useSSNTransformer, useSSNGenerator, profile, shortRun, noLogger);
   return 0;
 }

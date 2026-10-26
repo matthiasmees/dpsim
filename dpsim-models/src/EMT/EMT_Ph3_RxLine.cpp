@@ -143,7 +143,7 @@ void EMT::Ph3::RxLine::mnaParentPostStep(Real time, Int timeStepCount,
 
 void EMT::Ph3::RxLine::mnaCompUpdateVoltage(const Matrix &leftVector) {
   // v1 - v0
-  **mIntfVoltage = Matrix::Zero(3, 1);
+  (**mIntfVoltage).setZero();
   if (terminalNotGrounded(1)) {
     (**mIntfVoltage)(0, 0) =
         Math::realFromVectorElement(leftVector, matrixNodeIndex(1, 0));

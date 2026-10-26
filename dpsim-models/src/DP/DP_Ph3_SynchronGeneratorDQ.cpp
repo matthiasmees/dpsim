@@ -189,39 +189,40 @@ Real DP::Ph3::SynchronGeneratorDQ::rotationalSpeed() const {
 
 Real DP::Ph3::SynchronGeneratorDQ::rotorPosition() const { return mThetaMech; }
 
-Matrix DP::Ph3::SynchronGeneratorDQ::abcToDq0Transform(Real theta,
-                                                       MatrixComp &abcVector) {
+MatrixFixedSize<3, 1>
+DP::Ph3::SynchronGeneratorDQ::abcToDq0Transform(Real theta,
+                                                MatrixComp &abcVector) {
   // Balanced case because we do not return the zero sequence component
   Complex alpha(cos(2. / 3. * PI), sin(2. / 3. * PI));
   Complex thetaCompInv(cos(-theta), sin(-theta));
 
-  MatrixComp abcToPnz(3, 3);
+  MatrixFixedSizeComp<3, 3> abcToPnz;
   abcToPnz << 1, 1, 1, 1, alpha, pow(alpha, 2), 1, pow(alpha, 2), alpha;
   abcToPnz = (1. / 3.) * abcToPnz;
 
-  MatrixComp pnzVector(3, 1);
+  MatrixFixedSizeComp<3, 1> pnzVector;
   pnzVector = abcToPnz * abcVector * thetaCompInv;
 
-  Matrix dq0Vector(3, 1);
+  MatrixFixedSize<3, 1> dq0Vector;
   dq0Vector << pnzVector(1, 0).real(), pnzVector(1, 0).imag(), 0;
 
   return dq0Vector;
 }
 
-MatrixComp DP::Ph3::SynchronGeneratorDQ::dq0ToAbcTransform(Real theta,
-                                                           Matrix &dq0) {
+MatrixFixedSizeComp<3, 1> DP::Ph3::SynchronGeneratorDQ::dq0ToAbcTransform(
+    Real theta, const Eigen::Ref<const Matrix> &dq0) {
   // Balanced case because we do not consider the zero sequence component
   Complex alpha(cos(2. / 3. * PI), sin(2. / 3. * PI));
   Complex thetaComp(cos(theta), sin(theta));
   // Matrix to transform from symmetrical components to ABC
-  MatrixComp pnzToAbc(3, 3);
+  MatrixFixedSizeComp<3, 3> pnzToAbc;
   pnzToAbc << 1, 1, 1, 1, pow(alpha, 2), alpha, 1, alpha, pow(alpha, 2);
   // Symmetrical components vector
-  MatrixComp pnzVector(3, 1);
+  MatrixFixedSizeComp<3, 1> pnzVector;
   // Picking only d and q for positive sequence component
   pnzVector << 0, Complex(dq0(0, 0), dq0(1, 0)), 0;
   // ABC vector
-  MatrixComp abcCompVector(3, 1);
+  MatrixFixedSizeComp<3, 1> abcCompVector;
   abcCompVector = pnzToAbc * pnzVector * thetaComp;
 
   return abcCompVector;

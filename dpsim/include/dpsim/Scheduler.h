@@ -106,10 +106,14 @@ protected:
   CPS::Logger::Log mSLog;
 
 private:
-  // TODO more sophisticated measurement method might be necessary for
-  // longer simulations (risk of high memory requirements and integer
-  // overflow)
-  std::unordered_map<CPS::Task *, std::vector<TaskTime>> mMeasurements;
+  // Accumulate compact per-task statistics instead of retaining every sample.
+  struct TaskMeasurement {
+    TaskTime total{};
+    TaskTime minimum{};
+    TaskTime maximum{};
+    std::size_t count = 0;
+  };
+  std::unordered_map<CPS::Task *, TaskMeasurement> mMeasurements;
 };
 
 /// A barrier is used to synchronize threads. Threads running into the barrier

@@ -36,6 +36,9 @@ villas_sent_data.conf
 !examples/Notebooks/**/*.gif
 !examples/Notebooks/**/*.webp
 !examples/Notebooks/**/*.ico
+# Data files required to reproduce the IEEE118 task-time attribution notebook.
+!examples/Notebooks/Performance/data/IEEE118_Component_Task_Profile/*.csv
+!examples/Notebooks/Performance/data/IEEE118_Composite_Optimization/*.csv
 
 # Folders
 Libraries/

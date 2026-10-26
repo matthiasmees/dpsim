@@ -314,7 +314,7 @@ void DP::Ph3::MixedVTypeVariableSSNComp::mnaCompApplyRightSideVectorStamp(
 
 void DP::Ph3::MixedVTypeVariableSSNComp::mnaCompUpdateVoltage(
     const Matrix &leftVector) {
-  **mIntfVoltage = MatrixComp::Zero(mPhaseCount, 1);
+  (**mIntfVoltage).setZero();
 
   if (terminalNotGrounded(1)) {
     for (Int phase = 0; phase < mPhaseCount; ++phase)

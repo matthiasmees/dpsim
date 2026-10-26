@@ -102,6 +102,7 @@
 #include <dpsim-models/DP/DP_Ph3_PiLine.h>
 #include <dpsim-models/DP/DP_Ph3_Resistor.h>
 #include <dpsim-models/DP/DP_Ph3_SSN_Full_Serial_RLC.h>
+#include <dpsim-models/DP/DP_Ph3_SSN_SynchronGenerator4Order.h>
 #include <dpsim-models/DP/DP_Ph3_SeriesResistor.h>
 #include <dpsim-models/DP/DP_Ph3_SeriesSwitch.h>
 #include <dpsim-models/DP/DP_Ph3_Switch.h>
@@ -164,6 +165,7 @@
 #include <dpsim-models/EMT/EMT_Ph3_SSN_GFM.h>
 #include <dpsim-models/EMT/EMT_Ph3_SSN_InductionMotor.h>
 #include <dpsim-models/EMT/EMT_Ph3_SSN_Inductor.h>
+#include <dpsim-models/EMT/EMT_Ph3_SSN_SynchronGenerator4Order.h>
 #include <dpsim-models/EMT/EMT_Ph3_SeriesResistor.h>
 #include <dpsim-models/EMT/EMT_Ph3_SeriesSwitch.h>
 #include <dpsim-models/EMT/EMT_Ph3_SynchronGenerator3OrderVBR.h>
@@ -185,6 +187,7 @@
 #include <dpsim-models/EMT/EMT_Ph3_HalfDecouplingLine.h>
 #include <dpsim-models/EMT/EMT_Ph3_NetworkInjection.h>
 #include <dpsim-models/EMT/EMT_Ph3_PiLine.h>
+#include <dpsim-models/EMT/EMT_Ph3_PiLine_NoSub.h>
 #include <dpsim-models/EMT/EMT_Ph3_PiecewiseLinearInductor.h>
 #include <dpsim-models/EMT/EMT_Ph3_RXLoad.h>
 #include <dpsim-models/EMT/EMT_Ph3_RxLine.h>

@@ -64,7 +64,7 @@ void DP::Ph3::TwoTerminalITypeSSNComp::mnaCompUpdateCurrent(const Matrix &) {
 
 void DP::Ph3::TwoTerminalITypeSSNComp::mnaCompUpdateVoltage(
     const Matrix &leftVector) {
-  **mIntfVoltage = MatrixComp::Zero(3, 1);
+  (**mIntfVoltage).setZero();
 
   if (terminalNotGrounded(1)) {
     for (Int phase = 0; phase < 3; ++phase)

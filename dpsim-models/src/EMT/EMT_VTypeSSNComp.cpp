@@ -51,9 +51,9 @@ void EMT::VTypeSSNComp::mnaCompUpdateCurrent(const Matrix &) {
 
 void EMT::VTypeSSNComp::mnaCompPostStep(Real, Int,
                                         Attribute<Matrix>::Ptr &leftVector) {
-  Matrix uOld = **mIntfVoltage;
+  mPreviousInput = **mIntfVoltage;
   mnaCompUpdateVoltage(**leftVector);
   mnaCompUpdateCurrent(**leftVector);
-  updateState(uOld, **mIntfVoltage);
+  updateState(mPreviousInput, **mIntfVoltage);
   updateLogAttributes(**mIntfVoltage);
 }

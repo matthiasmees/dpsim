@@ -62,6 +62,8 @@ private:
   Real mCurrentQ = 0;
   MatrixComp mAdmittance;
   MatrixComp mInternalVoltage;
+  MatrixComp mNortonCurrent;
+  MatrixComp mVoltageDifference;
 
   void updateCurrentAndStates(Real time);
 };

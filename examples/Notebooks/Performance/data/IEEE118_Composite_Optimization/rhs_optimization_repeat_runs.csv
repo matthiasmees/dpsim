@@ -1,0 +1,11 @@
+case,repetition,logged_calculation_s,mean_step_ms,process_wall_s
+Dense RHS baseline,1,3.821787,1.9094963325,4.2
+Dense RHS baseline,2,3.762255,1.8798136345,4.12
+Dense RHS baseline,3,4.101443,2.0492084095000003,4.47
+Dense RHS baseline,4,3.660641,1.8290395975,4.03
+Dense RHS baseline,5,3.64737,1.8224224145,4.02
+SSN - post optimization,1,4.198943,2.0978426165,4.57
+SSN - post optimization,2,3.818126,1.9076721269999999,4.19
+SSN - post optimization,3,3.767008,1.8821183785,4.13
+SSN - post optimization,4,3.904917,1.9509628715,4.29
+SSN - post optimization,5,3.731368,1.8642381975,4.1

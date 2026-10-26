@@ -14,7 +14,9 @@ DP::Ph3::SynchronGenerator4OrderVBR::SynchronGenerator4OrderVBR(
     String uid, String name, Logger::Level logLevel)
     : SynchronGeneratorDQ(uid, name, logLevel),
       mAdmittance(MatrixComp::Zero(3, 3)),
-      mInternalVoltage(MatrixComp::Zero(3, 1)) {}
+      mInternalVoltage(MatrixComp::Zero(3, 1)),
+      mNortonCurrent(MatrixComp::Zero(3, 1)),
+      mVoltageDifference(MatrixComp::Zero(3, 1)) {}
 
 DP::Ph3::SynchronGenerator4OrderVBR::SynchronGenerator4OrderVBR(
     String name, Logger::Level logLevel)
@@ -80,15 +82,15 @@ void DP::Ph3::SynchronGenerator4OrderVBR::mnaCompApplySystemMatrixStamp(
 
 void DP::Ph3::SynchronGenerator4OrderVBR::mnaCompApplyRightSideVectorStamp(
     Matrix &rightVector) {
-  Matrix dqInternal(3, 1);
+  MatrixFixedSize<3, 1> dqInternal;
   dqInternal << mNortonEd + mEdTransient - mInitialEdTransient,
       mNortonEq + mEqTransient - mInitialEqTransient, 0;
   mInternalVoltage = mBase_V * dq0ToAbcTransform(mThetaMech, dqInternal);
-  const MatrixComp nortonCurrent = mAdmittance * mInternalVoltage;
+  mNortonCurrent.noalias() = mAdmittance * mInternalVoltage;
   if (terminalNotGrounded(0)) {
     for (UInt phase = 0; phase < 3; ++phase)
       Math::setVectorElement(rightVector, matrixNodeIndex(0, phase),
-                             nortonCurrent(phase, 0));
+                             mNortonCurrent(phase, 0));
   }
 }
 
@@ -113,9 +115,12 @@ void DP::Ph3::SynchronGenerator4OrderVBR::mnaCompPostStep(
     // Calibrate mechanical input from the solved initial network port. This
     // makes the first dynamic step torque-balanced even when the machine and
     // MATPOWER use different power bases or the PF voltage has rounding.
-    **mIntfCurrent = mAdmittance * (**mIntfVoltage - mInternalVoltage);
-    Matrix dqVoltage = abcToDq0Transform(mThetaMech, **mIntfVoltage) / mBase_V;
-    Matrix dqCurrent = abcToDq0Transform(mThetaMech, **mIntfCurrent) / mBase_I;
+    mVoltageDifference = **mIntfVoltage - mInternalVoltage;
+    **mIntfCurrent = mAdmittance * mVoltageDifference;
+    MatrixFixedSize<3, 1> dqVoltage =
+        abcToDq0Transform(mThetaMech, **mIntfVoltage) / mBase_V;
+    MatrixFixedSize<3, 1> dqCurrent =
+        abcToDq0Transform(mThetaMech, **mIntfCurrent) / mBase_I;
     mMechanicalPower = -1.5 * (dqVoltage(0, 0) * dqCurrent(0, 0) +
                                dqVoltage(1, 0) * dqCurrent(1, 0));
     // The solved PF port is authoritative. Anchor the transient current
@@ -132,9 +137,12 @@ void DP::Ph3::SynchronGenerator4OrderVBR::mnaCompPostStep(
 void DP::Ph3::SynchronGenerator4OrderVBR::updateCurrentAndStates(Real time) {
   // Reconstruct the component current from the implicit Norton equivalent and
   // transform it into the rotor frame for the machine equations.
-  **mIntfCurrent = mAdmittance * (**mIntfVoltage - mInternalVoltage);
-  Matrix dqVoltage = abcToDq0Transform(mThetaMech, **mIntfVoltage) / mBase_V;
-  Matrix dqCurrent = abcToDq0Transform(mThetaMech, **mIntfCurrent) / mBase_I;
+  mVoltageDifference = **mIntfVoltage - mInternalVoltage;
+  **mIntfCurrent = mAdmittance * mVoltageDifference;
+  MatrixFixedSize<3, 1> dqVoltage =
+      abcToDq0Transform(mThetaMech, **mIntfVoltage) / mBase_V;
+  MatrixFixedSize<3, 1> dqCurrent =
+      abcToDq0Transform(mThetaMech, **mIntfCurrent) / mBase_I;
   mCurrentD = dqCurrent(0, 0);
   mCurrentQ = dqCurrent(1, 0);
 

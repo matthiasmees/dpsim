@@ -179,7 +179,7 @@ void DP::Ph3::PiLine::mnaParentPostStep(Real time, Int timeStepCount,
 
 void DP::Ph3::PiLine::mnaCompUpdateVoltage(const Matrix &leftVector) {
   // v1 - v0
-  **mIntfVoltage = MatrixComp::Zero(3, 1);
+  (**mIntfVoltage).setZero();
   if (terminalNotGrounded(1)) {
     (**mIntfVoltage)(0, 0) =
         Math::complexFromVectorElement(leftVector, matrixNodeIndex(1, 0));

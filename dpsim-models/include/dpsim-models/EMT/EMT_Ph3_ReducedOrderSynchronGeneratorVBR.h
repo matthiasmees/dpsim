@@ -52,9 +52,9 @@ protected:
   ///
   void calculateResistanceMatrix();
   /// Park Transformation according to Kundur
-  Matrix get_parkTransformMatrix() const;
+  MatrixFixedSize<3, 3> get_parkTransformMatrix() const;
   /// Inverse Park Transformation according to Kundur
-  Matrix get_inverseParkTransformMatrix() const;
+  MatrixFixedSize<3, 3> get_inverseParkTransformMatrix() const;
 
   // ### MNA Section ###
   void mnaCompApplySystemMatrixStamp(SparseMatrixRow &systemMatrix) override;

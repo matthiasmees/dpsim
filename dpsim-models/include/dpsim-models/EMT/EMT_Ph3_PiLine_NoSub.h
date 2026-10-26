@@ -1,0 +1,74 @@
+/* SPDX-FileCopyrightText: 2026 Institute for Automation of Complex Power Systems, EONERC, RWTH Aachen University
+ * SPDX-License-Identifier: MPL-2.0
+ */
+
+#pragma once
+
+#include <dpsim-models/Base/Base_Ph3_PiLine.h>
+#include <dpsim-models/MNASimPowerComp.h>
+
+namespace CPS {
+namespace EMT {
+namespace Ph3 {
+
+/// Three-phase EMT Pi line assembled directly by this component, without R/L/C
+/// child components or an internal virtual node.
+class PiLine_NoSub final : public MNASimPowerComp<Real>,
+                           public Base::Ph3::PiLine,
+                           public SharedFactory<PiLine_NoSub> {
+public:
+  using SharedFactory<PiLine_NoSub>::make;
+
+  PiLine_NoSub(String uid, String name,
+               Logger::Level logLevel = Logger::Level::off);
+  PiLine_NoSub(String name, Logger::Level logLevel = Logger::Level::off)
+      : PiLine_NoSub(name, name, logLevel) {}
+
+  SimPowerComp<Real>::Ptr clone(String copySuffix) override;
+
+  void setParameters(const Matrix &seriesResistance,
+                     const Matrix &seriesInductance,
+                     const Matrix &parallelCapacitance = Matrix::Zero(3, 3),
+                     const Matrix &parallelConductance = Matrix::Zero(3, 3));
+
+  void initializeFromNodesAndTerminals(Real frequency) override;
+  void mnaCompInitialize(Real omega, Real timeStep,
+                         Attribute<Matrix>::Ptr leftVector) override;
+  void mnaCompApplySystemMatrixStamp(SparseMatrixRow &systemMatrix) override;
+  void mnaCompApplyRightSideVectorStamp(Matrix &rightVector) override;
+  Bool mnaHasCompactRightSideVectorStamp() const override { return true; }
+  void mnaAddCompactRightSideVectorStamp(Matrix &rightVector) override;
+  void mnaCompUpdateVoltage(const Matrix &leftVector) override;
+  void mnaCompUpdateCurrent(const Matrix &leftVector) override;
+  void mnaCompPreStep(Real time, Int timeStepCount) override;
+  void mnaCompPostStep(Real time, Int timeStepCount,
+                       Attribute<Matrix>::Ptr &leftVector) override;
+  void mnaCompAddPreStepDependencies(
+      AttributeBase::List &prevStepDependencies,
+      AttributeBase::List &attributeDependencies,
+      AttributeBase::List &modifiedAttributes) override;
+  void
+  mnaCompAddPostStepDependencies(AttributeBase::List &prevStepDependencies,
+                                 AttributeBase::List &attributeDependencies,
+                                 AttributeBase::List &modifiedAttributes,
+                                 Attribute<Matrix>::Ptr &leftVector) override;
+
+private:
+  using TerminalVoltage = Eigen::Matrix<Real, 3, 1>;
+
+  Attribute<Matrix>::Ptr mState;
+  Matrix mInductorAdmittance;
+  Matrix mSeriesAdmittance;
+  Matrix mSeriesSystemInverse;
+  Matrix mCapAdmittance;
+  Matrix mSeriesHistory;
+  Matrix mInductorHistory;
+  Matrix mCapHistory0;
+  Matrix mCapHistory1;
+
+  TerminalVoltage terminalVoltage(const Matrix &leftVector, UInt terminal);
+};
+
+} // namespace Ph3
+} // namespace EMT
+} // namespace CPS

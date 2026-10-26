@@ -99,7 +99,7 @@ protected:
   /// (Real) time needed for the timesteps
   std::vector<Real> mStepTimes;
   /// activate collection of step times
-  Bool mLogStepTimes = true;
+  Bool mLogStepTimes = false;
 
   // #### Solver Settings ####
   ///

@@ -16,6 +16,7 @@
 #include <pybind11/stl.h>
 
 #include <DPsim.h>
+#include <dpsim/SequentialScheduler.h>
 
 #include <DPsimPy.h>
 
@@ -246,6 +247,15 @@ PYBIND11_MODULE(dpsimpy, m) {
       .def("set_system", &DPsim::Simulation::setSystem)
       .def("run", &DPsim::Simulation::run)
       .def("set_solver", &DPsim::Simulation::setSolverType)
+      .def(
+          "set_sequential_scheduler",
+          [](DPsim::Simulation &sim, const std::string &measurementFile) {
+            sim.setScheduler(
+                std::make_shared<DPsim::SequentialScheduler>(measurementFile));
+          },
+          "measurement_file"_a = "")
+      .def("set_log_step_times", &DPsim::Simulation::setLogStepTimes)
+      .def("log_step_times", &DPsim::Simulation::logStepTimes)
       .def("set_pf_keep_last_solution",
            &DPsim::Simulation::setPFKeepLastSolution)
       .def("get_pf_keep_last_solution",

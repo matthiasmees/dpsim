@@ -673,7 +673,7 @@ void EMT::Ph3::GFL::mnaCompUpdateVoltage(const Matrix &leftVector) {
   for (auto virtualNode : mVirtualNodes)
     virtualNode->mnaUpdateVoltage(leftVector);
 
-  **mIntfVoltage = Matrix::Zero(3, 1);
+  (**mIntfVoltage).setZero();
 
   if (terminalNotGrounded(0)) {
     (**mIntfVoltage)(0, 0) =

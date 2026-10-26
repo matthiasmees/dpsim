@@ -188,7 +188,7 @@ void EMT::Ph3::PQLoad::mnaCompApplyRightSideVectorStamp(Matrix &rightVector) {
 }
 
 void EMT::Ph3::PQLoad::mnaCompUpdateVoltage(const Matrix &leftVector) {
-  **mIntfVoltage = Matrix::Zero(3, 1);
+  (**mIntfVoltage).setZero();
   if (!terminalNotGrounded(0))
     return;
 

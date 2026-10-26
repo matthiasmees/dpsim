@@ -276,7 +276,7 @@ void EMT::Ph3::RXLoad::mnaParentPostStep(Real time, Int timeStepCount,
 }
 
 void EMT::Ph3::RXLoad::mnaCompUpdateVoltage(const Matrix &leftVector) {
-  **mIntfVoltage = Matrix::Zero(3, 1);
+  (**mIntfVoltage).setZero();
   (**mIntfVoltage)(0, 0) =
       Math::realFromVectorElement(leftVector, matrixNodeIndex(0, 0));
   (**mIntfVoltage)(1, 0) =
@@ -289,7 +289,7 @@ void EMT::Ph3::RXLoad::mnaCompUpdateCurrent(const Matrix &leftVector) {
   if (mReactanceInSeries) {
     **mIntfCurrent = mSubInductor->intfCurrent();
   } else {
-    **mIntfCurrent = Matrix::Zero(3, 1);
+    (**mIntfCurrent).setZero();
     for (auto &subc : mSubComponents) {
       **mIntfCurrent += subc->intfCurrent();
     }

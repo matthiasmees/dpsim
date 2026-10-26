@@ -50,7 +50,7 @@ void EMT::ITypeSSNComp::mnaCompUpdateVoltage(const Matrix &) {}
 
 void EMT::ITypeSSNComp::mnaCompPostStep(Real, Int,
                                         Attribute<Matrix>::Ptr &leftVector) {
-  Matrix uOld = **mIntfCurrent;
+  mPreviousInput = **mIntfCurrent;
 
   // First reconstruct output voltage from the MNA solution.
   mnaCompUpdateVoltage(**leftVector);
@@ -59,6 +59,6 @@ void EMT::ITypeSSNComp::mnaCompPostStep(Real, Int,
   //   v = mW * i + mYHist
   mnaCompUpdateCurrent(**leftVector);
 
-  updateState(uOld, **mIntfCurrent);
+  updateState(mPreviousInput, **mIntfCurrent);
   updateLogAttributes(**mIntfCurrent);
 }

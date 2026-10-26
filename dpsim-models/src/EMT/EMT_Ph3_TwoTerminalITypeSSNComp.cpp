@@ -74,7 +74,7 @@ void EMT::Ph3::TwoTerminalITypeSSNComp::mnaCompUpdateCurrent(const Matrix &) {
 void EMT::Ph3::TwoTerminalITypeSSNComp::mnaCompUpdateVoltage(
     const Matrix &leftVector) {
   // Interface voltage convention: v = v_terminal1 - v_terminal0
-  **mIntfVoltage = Matrix::Zero(3, 1);
+  (**mIntfVoltage).setZero();
 
   if (terminalNotGrounded(1)) {
     for (Int phase = 0; phase < 3; ++phase) {

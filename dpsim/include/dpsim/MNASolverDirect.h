@@ -68,6 +68,13 @@ protected:
   std::unordered_map<std::bitset<SWITCH_NUM>,
                      std::vector<std::shared_ptr<DirectLinearSolver>>>
       mDirectLinearSolvers;
+  /// RHS accumulation operations resolved once during solver setup. Each
+  /// entry either adds a dense stamp or calls its component's compact path.
+  struct RightVectorStamp {
+    const Matrix *dense = nullptr;
+    CPS::MNAInterface *compact = nullptr;
+  };
+  std::vector<RightVectorStamp> mRightVectorStampOperations;
 
   // #### Data structures for system recomputation over time ####
   /// System matrix including all static elements
@@ -116,6 +123,8 @@ protected:
   // #### General
   /// Create system matrix
   void createEmptySystemMatrix() override;
+  void prepareCompactRightVectorStamps();
+  void addRightVectorStamps(Matrix &rightVector);
 
   // #### Methods for precomputed switch matrices (optionally with parallel frequencies) ####
   /// Sets all entries in the matrix with the given switch index to zero

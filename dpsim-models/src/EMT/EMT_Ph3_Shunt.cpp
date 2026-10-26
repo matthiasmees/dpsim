@@ -154,7 +154,7 @@ void EMT::Ph3::Shunt::mnaCompUpdateVoltage(const Matrix &leftVector) {
 }
 
 void EMT::Ph3::Shunt::mnaCompUpdateCurrent(const Matrix &leftVector) {
-  **mIntfCurrent = Matrix::Zero(3, 1);
+  (**mIntfCurrent).setZero();
 
   if (mConductance(0, 0) > 0)
     **mIntfCurrent += mSubResistor->intfCurrent();

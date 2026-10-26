@@ -359,7 +359,7 @@ void EMT::Ph3::Switch::mnaCompPostStep(Real time, Int timeStepCount,
 
 void EMT::Ph3::Switch::mnaCompUpdateVoltage(const Matrix &leftVector) {
   // Voltage across component is defined as V1 - V0.
-  **mIntfVoltage = Matrix::Zero(3, 1);
+  (**mIntfVoltage).setZero();
 
   if (terminalNotGrounded(1)) {
     (**mIntfVoltage)(0, 0) =

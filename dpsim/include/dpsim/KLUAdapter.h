@@ -82,6 +82,9 @@ public:
   /// solution function for a right hand side
   Matrix solve(Matrix &rightSideVector) override;
 
+  /// Solve into caller-owned storage to avoid per-step matrix allocation.
+  void solveInto(Matrix &rightSideVector, Matrix &solution) override;
+
 protected:
   /// Function to print matrix in MatrixMarket's coo format
   void printMatrixMarket(SparseMatrix &systemMatrix, int counter) const;

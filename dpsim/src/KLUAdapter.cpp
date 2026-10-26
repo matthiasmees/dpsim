@@ -168,9 +168,14 @@ void KLUAdapter::partialRefactorize(
 }
 
 Matrix KLUAdapter::solve(Matrix &rightSideVector) {
-  // TODO: this calls malloc, which is not allowed in the simulation loop
-  // We should preallocate this buffer.
-  Matrix x = rightSideVector;
+  Matrix solution = rightSideVector;
+  solveInto(rightSideVector, solution);
+  return solution;
+}
+
+void KLUAdapter::solveInto(Matrix &rightSideVector, Matrix &solution) {
+  if (&rightSideVector != &solution)
+    solution = rightSideVector;
 
   /* Number of right hands sides
    * usually one, KLU can handle multiple right hand sides.
@@ -184,10 +189,7 @@ Matrix KLUAdapter::solve(Matrix &rightSideVector) {
    * KLU operates on compressed column format. This way, the transpose of the matrix is factored.
    * This has to be taken into account only here during right-hand solving.
    */
-  klu_tsolve(mSymbolic, mNumeric, rhsRows, rhsCols,
-             x.const_cast_derived().data(), &mCommon);
-
-  return x;
+  klu_tsolve(mSymbolic, mNumeric, rhsRows, rhsCols, solution.data(), &mCommon);
 }
 
 void KLUAdapter::printMatrixMarket(SparseMatrix &matrix, int counter) const {

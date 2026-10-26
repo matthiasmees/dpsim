@@ -113,8 +113,7 @@ void MnaSolverDirect<VarType>::solveWithSystemMatrixRecomputation(
 
   // Add together the right side vector (computed by the components'
   // pre-step tasks)
-  for (auto stamp : mRightVectorStamps)
-    mRightSideVector += *stamp;
+  addRightVectorStamps(mRightSideVector);
 
   // Get switch and variable comp status and update system matrix and lu factorization accordingly
   mVariableComponentChanged = hasVariableComponentChanged();
@@ -123,8 +122,8 @@ void MnaSolverDirect<VarType>::solveWithSystemMatrixRecomputation(
 
   // Calculate new solution vector
   auto start = std::chrono::steady_clock::now();
-  **mLeftSideVector =
-      mDirectLinearSolverVariableSystemMatrix->solve(mRightSideVector);
+  mDirectLinearSolverVariableSystemMatrix->solveInto(mRightSideVector,
+                                                     **mLeftSideVector);
   auto end = std::chrono::steady_clock::now();
   std::chrono::duration<Real> diff = end - start;
   mSolveTimes.push_back(diff.count());
@@ -224,12 +223,52 @@ template <> void MnaSolverDirect<Complex>::createEmptySystemMatrix() {
 
 template <typename VarType>
 std::shared_ptr<CPS::Task> MnaSolverDirect<VarType>::createSolveTask() {
+  prepareCompactRightVectorStamps();
   return std::make_shared<MnaSolverDirect<VarType>::SolveTask>(*this);
 }
 
 template <typename VarType>
 std::shared_ptr<CPS::Task> MnaSolverDirect<VarType>::createSolveTaskRecomp() {
+  prepareCompactRightVectorStamps();
   return std::make_shared<MnaSolverDirect<VarType>::SolveTaskRecomp>(*this);
+}
+
+template <typename VarType>
+void MnaSolverDirect<VarType>::prepareCompactRightVectorStamps() {
+  std::unordered_map<const Matrix *, CPS::MNAInterface *> compactStamps;
+  auto collect = [&compactStamps](const auto &components) {
+    for (const auto &component : components) {
+      if (!component->mnaHasCompactRightSideVectorStamp())
+        continue;
+      auto stamp = component->getRightVector();
+      if (stamp->get().size() != 0)
+        compactStamps.emplace(&stamp->get(), component.get());
+    }
+  };
+  collect(mMNAComponents);
+  collect(mMNAIntfVariableComps);
+
+  // Resolve compact-vs-dense accumulation once. The solve loop then follows
+  // this ordered list directly instead of hashing every RHS stamp each step.
+  mRightVectorStampOperations.clear();
+  mRightVectorStampOperations.reserve(mRightVectorStamps.size());
+  for (const Matrix *stamp : mRightVectorStamps) {
+    const auto compact = compactStamps.find(stamp);
+    if (compact != compactStamps.end())
+      mRightVectorStampOperations.push_back({nullptr, compact->second});
+    else
+      mRightVectorStampOperations.push_back({stamp, nullptr});
+  }
+}
+
+template <typename VarType>
+void MnaSolverDirect<VarType>::addRightVectorStamps(Matrix &rightVector) {
+  for (const auto &operation : mRightVectorStampOperations) {
+    if (operation.compact)
+      operation.compact->mnaAddCompactRightSideVectorStamp(rightVector);
+    else
+      rightVector += *operation.dense;
+  }
 }
 
 template <typename VarType>
@@ -258,8 +297,7 @@ void MnaSolverDirect<VarType>::solve(Real time, Int timeStepCount) {
   mRightSideVector.setZero();
 
   // Add together the right side vector (computed by the components' pre-step tasks)
-  for (auto stamp : mRightVectorStamps)
-    mRightSideVector += *stamp;
+  addRightVectorStamps(mRightSideVector);
 
   if (!mIsInInitialization)
     MnaSolver<VarType>::updateSwitchStatus();
@@ -269,8 +307,8 @@ void MnaSolverDirect<VarType>::solve(Real time, Int timeStepCount) {
     if (Solver::mLogSolveTimes)
       start = std::chrono::steady_clock::now();
 
-    **mLeftSideVector =
-        mDirectLinearSolvers[mCurrentSwitchStatus][0]->solve(mRightSideVector);
+    mDirectLinearSolvers[mCurrentSwitchStatus][0]->solveInto(mRightSideVector,
+                                                             **mLeftSideVector);
 
     if (Solver::mLogSolveTimes) {
       auto end = std::chrono::steady_clock::now();
@@ -311,14 +349,12 @@ void MnaSolverDirect<VarType>::solve(Real time, Int timeStepCount) {
           syncGen->correctorStep();
 
         // Add together the right side vector (computed by the components' pre-step tasks)
-        for (auto stamp : mRightVectorStamps)
-          mRightSideVector += *stamp;
+        addRightVectorStamps(mRightSideVector);
 
         if (mSwitchedMatrices.size() > 0) {
           auto start = std::chrono::steady_clock::now();
-          **mLeftSideVector =
-              mDirectLinearSolvers[mCurrentSwitchStatus][0]->solve(
-                  mRightSideVector);
+          mDirectLinearSolvers[mCurrentSwitchStatus][0]->solveInto(
+              mRightSideVector, **mLeftSideVector);
           auto end = std::chrono::steady_clock::now();
           std::chrono::duration<Real> diff = end - start;
           mSolveTimes.push_back(diff.count());
@@ -350,9 +386,8 @@ void MnaSolverDirect<VarType>::solveWithHarmonics(Real time, Int timeStepCount,
   for (auto stamp : mRightVectorStamps)
     mRightSideVectorHarm[freqIdx] += stamp->col(freqIdx);
 
-  **mLeftSideVectorHarm[freqIdx] =
-      mDirectLinearSolvers[mCurrentSwitchStatus][freqIdx]->solve(
-          mRightSideVectorHarm[freqIdx]);
+  mDirectLinearSolvers[mCurrentSwitchStatus][freqIdx]->solveInto(
+      mRightSideVectorHarm[freqIdx], **mLeftSideVectorHarm[freqIdx]);
 }
 
 template <typename VarType> void MnaSolverDirect<VarType>::logSystemMatrices() {

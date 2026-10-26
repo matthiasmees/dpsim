@@ -133,7 +133,7 @@ void DP::Ph3::CurrentSource::mnaCompPostStep(
 }
 
 void DP::Ph3::CurrentSource::mnaCompUpdateVoltage(const Matrix &leftVector) {
-  **mIntfVoltage = MatrixComp::Zero(3, 1);
+  (**mIntfVoltage).setZero();
   if (terminalNotGrounded(1)) {
     (**mIntfVoltage)(0, 0) =
         Math::complexFromVectorElement(leftVector, matrixNodeIndex(1, 0));

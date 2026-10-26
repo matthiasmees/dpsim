@@ -1,0 +1,11 @@
+case,component_group,phase,mean_ms_per_step,std_ms_per_step
+Dense RHS baseline,Lines,Post-step,0.2511242,0.01964964906047943
+Dense RHS baseline,Lines,Pre-step,0.2398422,0.013396423224129617
+Dense RHS baseline,Loads + shunts,Post-step,0.12902999999999998,0.003977859851729341
+Dense RHS baseline,Loads + shunts,Pre-step,0.13063639999999999,0.004807654240895476
+SSN - post optimization,Lines,Post-step,0.2668441999999999,0.02285146489177451
+SSN - post optimization,Lines,Pre-step,0.23470280000000004,0.008704681711584861
+SSN - post optimization,Loads + shunts,Post-step,0.13376720000000003,0.006076333985224992
+SSN - post optimization,Loads + shunts,Pre-step,0.1276726,0.004013745981000781
+Dense RHS baseline,Solver task,Solve,0.1019214,0.014534498109669978
+SSN - post optimization,Solver task,Solve,0.1042418,0.01375649214734629

@@ -1,0 +1,5 @@
+domain,case,solve_count,klu_total_s,klu_avg_s,klu_refactor_total_s,lu_factorization_s
+DP3Ph,conventional,1000,0.112446872,0.000112446872,0.0,0.001503762
+DP3Ph,ssn_network,1000,0.048492963,4.8492963e-05,0.0,0.000854793
+EMT3Ph,conventional,2000,0.039383034,1.9691517e-05,0.203646206,0.000301786
+EMT3Ph,ssn_network,2000,0.01542231,7.711155e-06,0.087302234,0.000119709

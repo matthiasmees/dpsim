@@ -336,6 +336,14 @@ foreach(SOURCE
 	target_compile_options(${TARGET} PUBLIC ${DPSIM_CXX_FLAGS})
 endforeach()
 
+# Same IEEE118 case and initialization, with SSN network components selected
+# by default. The standard IEEE118_Ph3 target remains the conventional baseline.
+add_executable(IEEE118_Ph3_SSN Grids/IEEE118_Ph3.cpp)
+target_compile_definitions(IEEE118_Ph3_SSN PRIVATE IEEE118_DEFAULT_SSN_MODE)
+target_link_libraries(IEEE118_Ph3_SSN ${LIBRARIES})
+target_include_directories(IEEE118_Ph3_SSN PRIVATE ${INCLUDE_DIRS})
+target_compile_options(IEEE118_Ph3_SSN PUBLIC ${DPSIM_CXX_FLAGS})
+
 foreach(TEST_SOURCE ${TEST_SOURCES})
 	get_filename_component(TARGET ${TEST_SOURCE} NAME_WE)
 	add_dependencies(tests ${TARGET})
