@@ -105,6 +105,7 @@
 #include <dpsim-models/DP/DP_Ph3_SeriesResistor.h>
 #include <dpsim-models/DP/DP_Ph3_SeriesSwitch.h>
 #include <dpsim-models/DP/DP_Ph3_Switch.h>
+#include <dpsim-models/DP/DP_Ph3_SynchronGenerator4OrderVBR.h>
 #include <dpsim-models/DP/DP_Ph3_SynchronGeneratorDQTrapez.h>
 #include <dpsim-models/DP/DP_Ph3_Transformer.h>
 #include <dpsim-models/DP/DP_Ph3_TwoTerminalITypeSSNComp.h>

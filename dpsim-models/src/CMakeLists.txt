@@ -77,6 +77,7 @@ list(APPEND MODELS_SOURCES
 	DP/DP_Ph3_SeriesSwitch.cpp
 	DP/DP_Ph3_Switch.cpp
 	DP/DP_Ph3_SynchronGeneratorDQ.cpp
+	DP/DP_Ph3_SynchronGenerator4OrderVBR.cpp
 	DP/DP_Ph3_SynchronGeneratorDQTrapez.cpp
 	# DP/DP_Ph3_SynchronGeneratorDQSmpl.cpp
 	# DP/DP_Ph3_SynchronGeneratorVBR.cpp

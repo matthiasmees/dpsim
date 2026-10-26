@@ -524,8 +524,9 @@ void Base::ReducedOrderSynchronGenerator<Complex>::mnaCompPreStep(
   // calculate mechanical variables at t=k+1 with forward euler
   **mElecTorque =
       (**mVdq)(0, 0) * (**mIdq)(0, 0) + (**mVdq)(1, 0) * (**mIdq)(1, 0);
-  **mOmMech = **mOmMech +
-              mTimeStep * (1. / (2. * mH) * (mMechTorque_prev - **mElecTorque));
+  **mOmMech = **mOmMech + mTimeStep * (1. / (2. * mH) *
+                                       (mMechTorque_prev - **mElecTorque -
+                                        mDamping * (**mOmMech - 1.)));
   **mThetaMech = **mThetaMech + mTimeStep * (**mOmMech * mBase_OmMech);
   **mDelta = **mDelta + mTimeStep * (**mOmMech - 1.) * mBase_OmMech;
 
@@ -562,8 +563,9 @@ void Base::ReducedOrderSynchronGenerator<Real>::mnaCompPreStep(
   // calculate mechanical variables at t=k+1 with forward euler
   **mElecTorque =
       ((**mVdq0)(0, 0) * (**mIdq0)(0, 0) + (**mVdq0)(1, 0) * (**mIdq0)(1, 0));
-  **mOmMech = **mOmMech +
-              mTimeStep * (1. / (2. * mH) * (mMechTorque_prev - **mElecTorque));
+  **mOmMech = **mOmMech + mTimeStep * (1. / (2. * mH) *
+                                       (mMechTorque_prev - **mElecTorque -
+                                        mDamping * (**mOmMech - 1.)));
   **mThetaMech = **mThetaMech + mTimeStep * (**mOmMech * mBase_OmMech);
   **mDelta = **mDelta + mTimeStep * (**mOmMech - 1.) * mBase_OmMech;
 

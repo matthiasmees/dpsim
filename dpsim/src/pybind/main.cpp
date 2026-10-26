@@ -422,6 +422,8 @@ PYBIND11_MODULE(dpsimpy, m) {
   py::class_<DPsim::DataLogger, DPsim::DataLoggerInterface,
              std::shared_ptr<DPsim::DataLogger>>(m, "Logger")
       .def(py::init<std::string>())
+      .def(py::init<std::string, CPS::Bool, CPS::UInt>(), "name"_a, "enabled"_a,
+           "downsampling"_a)
       .def_static("set_log_dir", &CPS::Logger::setLogDir)
       .def_static("get_log_dir", &CPS::Logger::logDir)
       .def("log_attribute",

@@ -51,6 +51,7 @@ public:
   Real mMechTorque_prev;
   /// Rotor speed
   const Attribute<Real>::Ptr mOmMech;
+  Real mDamping = 0;
   /// mechanical system angle (between d-axis and stator a-axis)
   const Attribute<Real>::Ptr mThetaMech;
   /// Load angle (between q-axis and stator a-axis)
@@ -67,6 +68,8 @@ public:
   virtual void setModelAsNortonSource(Bool modelAsCurrentSource);
   ///
   void setBaseParameters(Real nomPower, Real nomVolt, Real nomFreq);
+  /// Set per-unit shaft damping used in the swing equation.
+  void setDamping(Real damping) { mDamping = damping; }
   /// Initialization for 3 Order SynGen
   void setOperationalParametersPerUnit(Real nomPower, Real nomVolt,
                                        Real nomFreq, Real H, Real Ld, Real Lq,

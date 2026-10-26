@@ -8,6 +8,8 @@ endif()
 
 # Targets
 set(CIRCUIT_SOURCES
+	Grids/IEEE39_Ph3.cpp
+	Grids/IEEE118_Ph3.cpp
 	# DP examples
 	Circuits/DP_VS_RL1.cpp
 	Circuits/DP_Circuits.cpp

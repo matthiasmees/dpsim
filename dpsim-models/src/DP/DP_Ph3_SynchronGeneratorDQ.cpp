@@ -36,6 +36,8 @@ void DP::Ph3::SynchronGeneratorDQ::initializeFromNodesAndTerminals(
   if (mInitialValuesSet)
     return;
 
+  // SystemTopology stores the generator's total three-phase PF power on the
+  // phase-A terminal record, matching the machine power base.
   const Complex terminalPower = -terminal(0)->singlePower();
   const Complex terminalVoltage = initialSingleVoltage(0);
   const Real terminalVoltagePeak =

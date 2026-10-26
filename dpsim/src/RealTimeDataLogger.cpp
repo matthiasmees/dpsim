@@ -5,6 +5,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+#include <algorithm>
 #include <iomanip>
 #include <memory>
 
@@ -18,13 +19,15 @@ using namespace DPsim;
 RealTimeDataLogger::RealTimeDataLogger(std::filesystem::path &filename,
                                        size_t rowNumber)
     : DataLoggerInterface(), mFilename(filename), mRowNumber(rowNumber),
-      mCurrentRow(0), mCurrentAttribute(0), mAttributeData() {}
+      mCurrentRow(0), mCurrentAttribute(0), mRowsWritten(0), mAttributeData() {}
 
 RealTimeDataLogger::RealTimeDataLogger(std::filesystem::path &filename,
                                        Real finalTime, Real timeStep)
     : DataLoggerInterface(), mFilename(filename),
-      mRowNumber((finalTime / timeStep + 0.5)), mCurrentRow(0),
-      mCurrentAttribute(0), mAttributeData() {}
+      // Include the initial t=0 row and reserve one more row for an endpoint
+      // that can be reached exactly by the simulation's floating-point loop.
+      mRowNumber(static_cast<size_t>(finalTime / timeStep + 0.5) + 1),
+      mCurrentRow(0), mCurrentAttribute(0), mRowsWritten(0), mAttributeData() {}
 
 void RealTimeDataLogger::start() {
   double mb_size =
@@ -72,10 +75,12 @@ void RealTimeDataLogger::stop() {
     mLogFile << ", " << std::right << std::setw(13) << it.first;
   mLogFile << '\n';
 
-  for (auto row : mAttributeData) {
+  for (size_t rowIdx = 0; rowIdx < mRowsWritten; ++rowIdx) {
+    const auto &row = mAttributeData[rowIdx];
     mLogFile << std::scientific << std::right << std::setw(14) << row[0];
     for (size_t i = 1; i < row.size(); ++i)
-      mLogFile << ", " << std::right << std::setw(13) << row[i];
+      mLogFile << ", " << std::fixed << std::setprecision(6) << std::right
+               << std::setw(13) << row[i];
     mLogFile << '\n';
   }
   mLogFile.close();
@@ -84,18 +89,28 @@ void RealTimeDataLogger::stop() {
 }
 
 void RealTimeDataLogger::log(Real time, Int timeStepCount) {
-  mCurrentRow = timeStepCount;
-  if (timeStepCount < 0 || static_cast<size_t>(timeStepCount) >= mRowNumber) {
+  // Simulation::start logs the t=0 state with count 0; the first solved step
+  // also has count 0, but occurs at t=dt. Keep both rows by offsetting all
+  // positive-time samples by one.
+  if (timeStepCount < 0) {
+    throw std::runtime_error(
+        "RealTimeDataLogger: timeStepCount out of bounds. Please verify the "
+        "logger was initialized correctly.");
+  }
+  const size_t row = static_cast<size_t>(timeStepCount) + (time > 0 ? 1 : 0);
+  mCurrentRow = row;
+  if (row >= mRowNumber) {
     throw std::runtime_error(
         "RealTimeDataLogger: timeStepCount out of bounds. Please verify the "
         "logger was initialized correctly.");
   }
   if (mAttributeData.size() != mRowNumber ||
-      mAttributeData[mCurrentRow].size() != mAttributes.size() + 1) {
+      mAttributeData[row].size() != mAttributes.size() + 1) {
     throw std::runtime_error(
         "RealTimeDataLogger: Attribute data size mismatch");
   }
-  mAttributeData[mCurrentRow][0] = time;
+  mAttributeData[row][0] = time;
+  mRowsWritten = std::max(mRowsWritten, row + 1);
   mCurrentAttribute = 1;
 
   for (auto &it : mAttributes) {
@@ -106,13 +121,13 @@ void RealTimeDataLogger::log(Real time, Int timeStepCount) {
       if (!attr) { /* skip */
         continue;
       }
-      mAttributeData[mCurrentRow][mCurrentAttribute++] = attr->get();
+      mAttributeData[row][mCurrentAttribute++] = attr->get();
     } else if (it.second->getType() == typeid(Int)) {
       auto attr = std::dynamic_pointer_cast<CPS::Attribute<Int>>(base);
       if (!attr) { /* skip */
         continue;
       }
-      mAttributeData[mCurrentRow][mCurrentAttribute++] = attr->get();
+      mAttributeData[row][mCurrentAttribute++] = attr->get();
     }
   }
 }

@@ -661,6 +661,20 @@ void addDPPh3Components(py::module_ mDPPh3) {
            "init_mech_power"_a)
       .def("connect", &CPS::DP::Ph3::SynchronGeneratorDQTrapez::connect);
 
+  py::class_<CPS::DP::Ph3::SynchronGenerator4OrderVBR,
+             std::shared_ptr<CPS::DP::Ph3::SynchronGenerator4OrderVBR>,
+             CPS::SimPowerComp<CPS::Complex>>(
+      mDPPh3, "SynchronGenerator4OrderVBR", py::multiple_inheritance())
+      .def(py::init<std::string, CPS::Logger::Level>(), "name"_a,
+           "loglevel"_a = CPS::Logger::Level::off)
+      .def("set_parameters_operational_per_unit",
+           &CPS::DP::Ph3::SynchronGenerator4OrderVBR::
+               setParametersOperationalPerUnit,
+           "nom_power"_a, "nom_volt"_a, "nom_freq"_a, "pole_number"_a,
+           "nom_field_cur"_a, "Rs"_a, "Ld"_a, "Lq"_a, "Ld_t"_a, "Lq_t"_a,
+           "Ll"_a, "Td0_t"_a, "Tq0_t"_a, "inertia"_a)
+      .def("connect", &CPS::DP::Ph3::SynchronGenerator4OrderVBR::connect);
+
   py::class_<CPS::DP::Ph3::SeriesResistor,
              std::shared_ptr<CPS::DP::Ph3::SeriesResistor>,
              CPS::SimPowerComp<CPS::Complex>>(mDPPh3, "SeriesResistor",
