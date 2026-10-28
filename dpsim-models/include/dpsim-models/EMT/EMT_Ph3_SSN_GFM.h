@@ -134,6 +134,8 @@ private:
 
   const Attribute<Real>::Ptr mVoltageReferenceD;
   const Attribute<Real>::Ptr mVoltageReferenceQ;
+  // One scalar logging attribute per state, with unit-bearing, readable names.
+  std::vector<Attribute<Real>::Ptr> mStateLogAttributes;
 
   Matrix getParkTransformMatrix(Real theta) const;
 

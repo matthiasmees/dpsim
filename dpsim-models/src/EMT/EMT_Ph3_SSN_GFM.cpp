@@ -54,6 +54,27 @@ EMT::Ph3::SSN_GFM::SSN_GFM(String uid, String name, Logger::Level logLevel)
 
   **mVoltageReferenceD = 0.0;
   **mVoltageReferenceQ = 0.0;
+
+  const std::vector<String> stateAttributes = {"state_p_filtered_W",
+                                               "state_q_filtered_var",
+                                               "state_omega_rad_per_s",
+                                               "state_theta_rad",
+                                               "state_voltage_magnitude_V",
+                                               "state_voltage_integrator_d_Vs",
+                                               "state_voltage_integrator_q_Vs",
+                                               "state_current_integrator_d_As",
+                                               "state_current_integrator_q_As",
+                                               "state_delay_voltage_d_V",
+                                               "state_delay_voltage_q_V",
+                                               "state_capacitor_voltage_a_V",
+                                               "state_capacitor_voltage_b_V",
+                                               "state_capacitor_voltage_c_V",
+                                               "state_filter_current_a_A",
+                                               "state_filter_current_b_A",
+                                               "state_filter_current_c_A"};
+  mStateLogAttributes.reserve(stateAttributes.size());
+  for (const auto &attributeName : stateAttributes)
+    mStateLogAttributes.push_back(mAttributes->create<Real>(attributeName));
 }
 std::vector<String> EMT::Ph3::SSN_GFM::getLocalStateNames() const {
   return {
@@ -786,6 +807,9 @@ Bool EMT::Ph3::SSN_GFM::updateComponentParameters() {
 void EMT::Ph3::SSN_GFM::updateLogAttributes(const Matrix &u) const {
 
   const Matrix &x = **mX;
+
+  for (Int index = 0; index < x.rows(); ++index)
+    **mStateLogAttributes.at(static_cast<std::size_t>(index)) = x(index, 0);
 
   const Real theta = x(Theta, 0);
 

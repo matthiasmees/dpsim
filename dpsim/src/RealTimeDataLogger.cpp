@@ -6,8 +6,10 @@
  */
 
 #include <algorithm>
+#include <charconv>
 #include <iomanip>
 #include <memory>
+#include <string>
 
 #include <dpsim/RealTimeDataLogger.h>
 
@@ -75,14 +77,38 @@ void RealTimeDataLogger::stop() {
     mLogFile << ", " << std::right << std::setw(13) << it.first;
   mLogFile << '\n';
 
+  constexpr size_t rowsPerWrite = 256;
+  std::string buffer;
+  buffer.reserve(rowsPerWrite * (mAttributes.size() + 1) * 16);
+  auto appendValue = [&buffer](Real value, std::chars_format format,
+                               int precision, size_t width) {
+    char formatted[128];
+    const auto result = std::to_chars(formatted, formatted + sizeof(formatted),
+                                      value, format, precision);
+    if (result.ec != std::errc())
+      throw std::runtime_error("Failed to format real-time logger value.");
+    const size_t length = static_cast<size_t>(result.ptr - formatted);
+    if (length < width)
+      buffer.append(width - length, ' ');
+    buffer.append(formatted, result.ptr);
+  };
+
   for (size_t rowIdx = 0; rowIdx < mRowsWritten; ++rowIdx) {
     const auto &row = mAttributeData[rowIdx];
-    mLogFile << std::scientific << std::right << std::setw(14) << row[0];
-    for (size_t i = 1; i < row.size(); ++i)
-      mLogFile << ", " << std::fixed << std::setprecision(6) << std::right
-               << std::setw(13) << row[i];
-    mLogFile << '\n';
+    appendValue(row[0], std::chars_format::scientific, 6, 14);
+    for (size_t i = 1; i < row.size(); ++i) {
+      buffer.append(", ");
+      appendValue(row[i], std::chars_format::fixed, 6, 13);
+    }
+    buffer.push_back('\n');
+    if ((rowIdx + 1) % rowsPerWrite == 0) {
+      mLogFile.write(buffer.data(),
+                     static_cast<std::streamsize>(buffer.size()));
+      buffer.clear();
+    }
   }
+  if (!buffer.empty())
+    mLogFile.write(buffer.data(), static_cast<std::streamsize>(buffer.size()));
   mLogFile.close();
   SPDLOG_LOGGER_INFO(log, "Finished writing real-time data log to file {}",
                      mFilename.string());
