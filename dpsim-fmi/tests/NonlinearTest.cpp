@@ -107,7 +107,8 @@ int main(int argc, char **argv) {
     const Matrix initialNetworkVoltage = voltage(0);
     std::vector<Complex> initialNodeVoltage(3);
     for (int phase = 0; phase < 3; ++phase)
-      initialNodeVoltage[phase] = initialNetworkVoltage(phase, 0);
+      initialNodeVoltage[phase] =
+          initialNetworkVoltage(phase, 0) / RMS3PH_TO_PEAK1PH;
     auto node = SimNode<Real>::make("bus", PhaseType::ABC, initialNodeVoltage);
     auto apiNode =
         SimNode<Real>::make("api_bus", PhaseType::ABC, initialNodeVoltage);

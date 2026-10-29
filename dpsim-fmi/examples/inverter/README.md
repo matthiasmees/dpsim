@@ -131,10 +131,14 @@ The FMU continuous states remain the exported FMI start values; this is a
 phasor-consistent network initialization, not a periodic steady-state solve
 for the converter controller.
 Full-resolution reruns of all three short cases are preserved under
-`build-fmi/fmi-validation/consistent-initialization/cases/`. In the paper
-measurement windows, PCC-voltage and converter-current changes versus the
-previous runs are each at most 1e-6 in their respective units, so the reported
-case metrics remain unchanged at the saved CSV precision.
+`build-fmi/fmi-validation/consistent-initialization/final-reruns/`. Recreate
+them and refresh the paper metrics with
+`python3 dpsim-fmi/examples/inverter/run_paper_validation.py --reuse --rerun-consistent-start-cases`.
+The measured windows give loaded-start PCC voltage/current RMS of 14.431 kV /
+1.746 A; balanced sag 10.105 kV / 1.238 A; and unbalanced sag 9.749 kV /
+1.185 A. They are 50 µs explicit-coupling results, with one network pass and
+50 FMI internal steps per macro step. These are converter-case metrics, not
+Newton-converged results.
 
 To reproduce the full-resolution log after building `FMI_EMT_Ph3_Mixed`, run
 it with `sources/consistent_loaded_start_50us.json` from
@@ -153,6 +157,10 @@ the three 0.2 s physical traces under `build-fmi/fmi-validation/`. Then
 figures from those traces and the existing DPsim logs. Without the MATLAB CSVs,
 the script still generates the numerical-fixture and timestep results and
 skips the independent physical-reference metrics.
+Those Simulink traces cover the established long load-step and 170–190 ms
+voltage-sag cases. They do not provide an independent physical reference for
+the short 5–10 ms balanced and unbalanced sag cases above; those use DPsim
+time-step refinement as numerical evidence only.
 
 Running `run_paper_validation.py` without `--reuse` reruns the weak-grid sag at
 1, 25, and 50 µs. It generates the comparison metrics and figures under
@@ -188,11 +196,43 @@ recurrence. Maximum relative Norton conductance/history errors were 4.72e-11 /
 was 5.11 / 5.07 ms. Tightening these already strict tolerances did not materially
 change the trajectory or work count for this fixture.
 
+### Finite-impedance Newton versus frozen-current baseline
+
+`FMI_FiniteImpedanceCouplingTest` and `run_paper_validation.py --reuse` provide
+a short, reproducible R-L comparison using the same nonlinear sampled FMI test
+model, zero-current start, 50 Hz source, and grid (5 Ω and 5 mH per phase).
+The 1.5 ms macro-step Newton run iterates the MNA/Norton coupling through
+event-aligned FMI substeps. The explicit baseline solves MNA once per macro
+step using the last accepted FMU terminal current, then advances the FMU over
+the solved PCC-voltage interval. A 50 µs Newton run is the fine-step DPsim
+reference; it is not an independent physical reference. This fixture isolates
+the coupling policy and does not represent the switched inverter.
+
+Metrics and plots are written to
+`build-fmi/fmi-validation/gate6-weak-grid/paper/finite_impedance_metrics.{json,csv}`,
+`finite_impedance_waveforms.png`, and `finite_impedance_errors.png`. The table
+reports both explicit-versus-Newton error at the same macro step and each
+macro-step result versus the 50 µs reference. `fmi_coupling_error_A` is the
+explicit method's lag diagnostic; the explicit run's `newton_residual` is not a
+Newton convergence measure. Newton converges with at most 7 iterations and a
+reported terminal-current coupling lag below 2 µA. The frozen-current run has
+a 0.657 A peak lag; versus Newton at the same 1.5 ms step, its post-start
+maximum phase errors are 4.645 V PCC voltage (4.206 V RMS error) and 0.1723 A
+converter current (0.1254 A RMS error). Against the 50 µs DPsim Newton trace,
+the explicit peak errors rise to 10.604 V and 0.4118 A because that comparison
+also includes macro-step discretization error. The 50 µs trace is a fine-step
+DPsim reference, not an independent physical reference.
+
 MATLAB/Simulink reference regeneration is available, although MATLAB remains
 alive after writing each output and was stopped after validating the complete
-CSV files. No OpenModelica, Dymola, or standalone FMI export tool is installed.
-Thus a deterministic averaged-GFL FMU and a second independent converter FMU
-could not be produced on this host. The switched FMU's replay failure and
-serialized-state abort remain the external limitation. Keep multirate Newton
-out of the main paper claim/title; retain the fixture validation and identify
-realistic converter operation as explicit event-aligned coupling.
+CSV files. MATLAB R2025a exposes `exportToFMU`; a scoped FMI 3.0 Model Exchange
+export of an averaged three-phase R-L output filter with sampled converter
+voltage commands and continuous current states reached code generation, then
+failed because Simulink Coder is not installed. The exporter also rejects
+multi-instance FMI 3.0 Model Exchange export, so that option had to be disabled
+before reaching the missing-toolbox failure. No deterministic averaged-GFL FMU
+or independent second converter FMU was produced. The switched FMU's replay
+failure and serialized-state abort remain the external limitation. Keep
+multirate Newton out of the main paper claim/title; retain the fixture
+validation and identify realistic converter operation as explicit
+event-aligned coupling.

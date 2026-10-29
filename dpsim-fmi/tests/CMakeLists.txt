@@ -303,6 +303,13 @@ string(
 
 file(WRITE "${STAGE}/modelDescription.xml" "${SAMPLED_XML}")
 
+# Finite-RL benchmark used by the paper workflow to compare tightly iterated
+# Norton/Newton coupling with the frozen-current single-pass baseline.
+add_executable(FMI_FiniteImpedanceCouplingTest FiniteImpedanceCouplingTest.cpp)
+target_link_libraries(FMI_FiniteImpedanceCouplingTest PRIVATE dpsim-fmi)
+target_include_directories(FMI_FiniteImpedanceCouplingTest PRIVATE ../examples/common)
+add_dependencies(FMI_FiniteImpedanceCouplingTest fmi_package_sampled_threephase)
+
 add_library(fmi_fixture_sampled_threephase MODULE TestModel3Ph.cpp)
 target_include_directories(fmi_fixture_sampled_threephase PRIVATE ../third_party/fmi3)
 target_compile_definitions(fmi_fixture_sampled_threephase PRIVATE FIXTURE_NONLINEAR=1 FIXTURE_SAMPLED=1 FIXTURE_SNAPSHOTS=1)

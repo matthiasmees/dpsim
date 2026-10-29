@@ -37,6 +37,9 @@ NONLINEAR_TEST = ROOT / "build-fmi/dpsim-fmi/tests/FMI_NonlinearTest"
 NONLINEAR_FMU = ROOT / "build-fmi/dpsim-fmi/tests/nonlinear_threephase.fmu"
 SAMPLED_TEST = ROOT / "build-fmi/dpsim-fmi/tests/FMI_SampledTest"
 SAMPLED_FMU = ROOT / "build-fmi/dpsim-fmi/tests/sampled_threephase.fmu"
+FINITE_IMPEDANCE_TEST = (
+    ROOT / "build-fmi/dpsim-fmi/tests/FMI_FiniteImpedanceCouplingTest"
+)
 
 
 def load_case(step_us: int, rerun: bool) -> tuple[pd.DataFrame, float]:
@@ -167,6 +170,229 @@ def run_fixture_studies(out: pathlib.Path) -> None:
         )
         + "\n"
     )
+
+
+def run_finite_impedance_study(out: pathlib.Path) -> None:
+    """Compare Newton, frozen-current single pass, and fine-step reference."""
+    work = out / "finite_impedance_runs"
+    work.mkdir(parents=True, exist_ok=True)
+    fmu = ROOT / "build-fmi/dpsim-fmi/tests/sampled_threephase.fmu"
+    cases = {
+        "rollback_newton_1500us": ("rollback_newton", 1.5e-3),
+        "single_pass_1500us": ("single_pass", 1.5e-3),
+        "fine_newton_50us": ("rollback_newton", 50e-6),
+    }
+    frames: dict[str, pd.DataFrame] = {}
+    run_rows = []
+    for name, (mode, step) in cases.items():
+        folder = work / name
+        folder.mkdir(parents=True, exist_ok=True)
+        started = time.perf_counter()
+        result = subprocess.run(
+            [str(FINITE_IMPEDANCE_TEST), str(fmu), mode, str(step)],
+            cwd=folder,
+            capture_output=True,
+            text=True,
+        )
+        (folder / "run.log").write_text(result.stdout + result.stderr)
+        if result.returncode:
+            raise RuntimeError(
+                f"Finite-impedance run {name} failed:\n{result.stdout}{result.stderr}"
+            )
+        # DPsim's logger writes beneath logs/ using the logger name.
+        csv_path = folder / "logs" / f"finite_impedance_{mode}.csv"
+        frame = pd.read_csv(csv_path, skipinitialspace=True)
+        frame.columns = frame.columns.str.strip()
+        expected = round(0.003 / step) + 1
+        if len(frame) != expected:
+            raise RuntimeError(f"{name}: expected {expected} rows, found {len(frame)}")
+        frames[name] = frame
+        run_rows.append(
+            {
+                "case": name,
+                "mode": mode,
+                "step_s": step,
+                "wall_time_s": time.perf_counter() - started,
+                "samples": len(frame),
+                "max_newton_iterations": int(frame.newton_iterations.max()),
+                "max_newton_residual": float(frame.newton_residual.max()),
+                "max_reported_coupling_lag_A": float(frame.fmi_coupling_error_A.max()),
+                "internal_steps_per_macro_max": int(
+                    frame.fmi_internal_steps.iloc[1:].max()
+                ),
+            }
+        )
+
+    fine = frames["fine_newton_50us"].copy()
+    fine["time_index"] = np.rint(fine.time.to_numpy() / 50e-6).astype(np.int64)
+    fine = fine.set_index("time_index")
+    coarse_newton = frames["rollback_newton_1500us"].copy()
+    coarse_newton["time_index"] = np.rint(coarse_newton.time.to_numpy() / 50e-6).astype(
+        np.int64
+    )
+    coarse_newton = coarse_newton.set_index("time_index")
+    rows = []
+    for case in ("rollback_newton_1500us", "single_pass_1500us"):
+        coarse = frames[case].copy()
+        indices = np.rint(coarse.time.to_numpy() / 50e-6).astype(np.int64)
+        comparisons = [
+            (
+                "same sampled FMU/network, rollback Newton at 50 us",
+                fine.reindex(indices).reset_index(drop=True),
+            )
+        ]
+        if case == "single_pass_1500us":
+            comparisons.append(
+                (
+                    "same FMU/network, 1.5 ms rollback Newton",
+                    coarse_newton.reindex(indices).reset_index(drop=True),
+                )
+            )
+        for reference_name, reference in comparisons:
+            if reference.isna().any().any():
+                raise RuntimeError(f"{case}: comparison samples do not align")
+            for window, (start, end) in {
+                "full_0_3ms": (0.0, 0.003),
+                "post_start_1_5_3ms": (0.0015, 0.003),
+            }.items():
+                mask = (coarse.time.to_numpy() >= start - 1e-12) & (
+                    coarse.time.to_numpy() <= end + 1e-12
+                )
+                for prefix, base in (
+                    ("pcc_voltage", np.sqrt(2) * 23),
+                    ("converter_current", 1.0),
+                ):
+                    for phase in range(3):
+                        signal = f"{prefix}_{phase}"
+                        actual = coarse[signal].to_numpy()
+                        expected = reference[signal].to_numpy()
+                        error = actual[mask] - expected[mask]
+                        if prefix == "converter_current":
+                            base = max(
+                                1.0,
+                                float(np.max(np.abs(fine[signal].to_numpy()))),
+                            )
+                        rows.append(
+                            {
+                                "case": case,
+                                "reference": reference_name,
+                                "window": window,
+                                "signal": signal,
+                                "max_abs_error": float(np.max(np.abs(error))),
+                                "rms_error": float(np.sqrt(np.mean(error * error))),
+                                "max_error_percent_base": 100
+                                * float(np.max(np.abs(error)))
+                                / base,
+                                "rms_error_percent_base": 100
+                                * float(np.sqrt(np.mean(error * error)))
+                                / base,
+                            }
+                        )
+    result = {
+        "grid": {
+            "source": "23 V phase RMS, 50 Hz balanced",
+            "R_ohm_per_phase": 5.0,
+            "L_H_per_phase": 0.005,
+        },
+        "initialization": "same zero-current network and FMI start state in every run",
+        "frozen_current_definition": (
+            "At each 1.5 ms macro step, solve the native MNA network once with the "
+            "previous accepted FMU terminal current held constant; then advance "
+            "the FMU over the solved PCC-voltage step."
+        ),
+        "runs": run_rows,
+        "errors_against_fine_step": rows,
+    }
+    (out / "finite_impedance_metrics.json").write_text(
+        json.dumps(result, indent=2) + "\n"
+    )
+    pd.DataFrame(rows).to_csv(out / "finite_impedance_metrics.csv", index=False)
+
+    fig, axes = plt.subplots(2, 1, figsize=(9, 6), sharex=True)
+    for ax, signal, label in zip(
+        axes,
+        ("pcc_voltage_0", "converter_current_0"),
+        ("PCC phase-A voltage [V]", "FMU phase-A current [A]"),
+    ):
+        ax.plot(
+            fine.time * 1e3,
+            fine[signal],
+            label="rollback/Newton, 50 µs",
+            linewidth=0.8,
+        )
+        for case, marker, name in (
+            ("rollback_newton_1500us", "o", "rollback/Newton, 1.5 ms"),
+            ("single_pass_1500us", "s", "frozen-current, 1.5 ms"),
+        ):
+            frame = frames[case]
+            ax.plot(
+                frame.time * 1e3,
+                frame[signal],
+                marker=marker,
+                linestyle="--",
+                label=name,
+                linewidth=0.8,
+                markersize=3,
+            )
+        ax.set_ylabel(label)
+        ax.grid(alpha=0.25)
+    axes[0].legend(ncol=2)
+    axes[-1].set_xlabel("Time [ms]")
+    fig.tight_layout()
+    fig.savefig(out / "finite_impedance_waveforms.png", dpi=180)
+    plt.close(fig)
+
+    newton = frames["rollback_newton_1500us"]
+    explicit = frames["single_pass_1500us"]
+    fig, axes = plt.subplots(2, 1, figsize=(8, 5), sharex=True)
+    for ax, signal, label in zip(
+        axes,
+        ("pcc_voltage_0", "converter_current_0"),
+        ("Explicit minus Newton PCC voltage [V]", "Explicit minus Newton current [A]"),
+    ):
+        ax.plot(
+            explicit.time * 1e3,
+            explicit[signal].to_numpy() - newton[signal].to_numpy(),
+            "o-",
+            linewidth=0.9,
+        )
+        ax.axhline(0, color="black", linewidth=0.5)
+        ax.set_ylabel(label)
+        ax.grid(alpha=0.25)
+    axes[-1].set_xlabel("Time [ms]")
+    fig.tight_layout()
+    fig.savefig(out / "finite_impedance_errors.png", dpi=180)
+    plt.close(fig)
+
+
+def rerun_consistent_start_cases() -> None:
+    """Refresh the three short, phasor-consistent converter validation cases."""
+    cases_root = (
+        ROOT / "build-fmi/fmi-validation/consistent-initialization/final-reruns"
+    )
+    configs = {
+        "loaded_start": "consistent_loaded_start_50us.json",
+        "weak_grid_sag": "weak_grid_sag_50us.json",
+        "unbalanced_sag": "unbalanced_sag_50us.json",
+    }
+    for name, config_name in configs.items():
+        folder = cases_root / name
+        folder.mkdir(parents=True, exist_ok=True)
+        config_path = CASE / "sources" / config_name
+        (folder / "config.json").write_text(config_path.read_text())
+        result = subprocess.run(
+            [str(EXE), str(FMU), "config.json"],
+            cwd=folder,
+            capture_output=True,
+            text=True,
+        )
+        (folder / "run.log").write_text(result.stdout + result.stderr)
+        if result.returncode:
+            raise RuntimeError(
+                f"Consistent-start case {name} failed:\n{result.stdout}{result.stderr}"
+            )
+        if not (folder / "logs/fmi_mixed.csv").is_file():
+            raise RuntimeError(f"Consistent-start case {name} produced no CSV log")
 
 
 def compare_matlab_voltage_sag(out: pathlib.Path) -> None:
@@ -546,11 +772,18 @@ def compare_matlab_load_steps(out: pathlib.Path) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--reuse", action="store_true", help="reuse completed CSV runs")
+    parser.add_argument(
+        "--rerun-consistent-start-cases",
+        action="store_true",
+        help="rerun loaded-start and two short sag cases before producing metrics",
+    )
     args = parser.parse_args()
     if not EXE.is_file() or not FMU.is_file():
         raise SystemExit(
             "Build FMI_EMT_Ph3_Mixed and confirm the Linux FMU is present."
         )
+    if args.rerun_consistent_start_cases:
+        rerun_consistent_start_cases()
     runs, runtime = {}, {}
     for step_us in (1, 25, 50):
         runs[step_us], runtime[step_us] = load_case(step_us, not args.reuse)
@@ -630,6 +863,7 @@ def main() -> None:
     out = BUILD / "paper"
     out.mkdir(parents=True, exist_ok=True)
     run_fixture_studies(out)
+    run_finite_impedance_study(out)
     compare_matlab_voltage_sag(out)
     compare_matlab_load_steps(out)
     pd.DataFrame(metrics).to_csv(out / "weak_grid_refinement_metrics.csv", index=False)
@@ -706,7 +940,9 @@ def main() -> None:
 
     case_rows = []
     case_frames = {}
-    gates = ROOT / "build-fmi/fmi-validation/gate3"
+    # Use the final, phasor-consistent initialization reruns for the converter
+    # case table. Earlier case CSVs remain as provenance for the startup study.
+    gates = ROOT / "build-fmi/fmi-validation/consistent-initialization/final-reruns"
     gate3_cases = {
         "loaded_start": (0.010, 0.020),
         "weak_grid_sag": (0.005, 0.010),

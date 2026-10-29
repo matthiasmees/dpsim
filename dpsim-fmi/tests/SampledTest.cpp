@@ -63,8 +63,11 @@ int main(int argc, char **argv) {
         "command", [](double t) { return t >= .002 ? 2.0 : 1.0; }, {.002});
     auto source =
         VoltageBoundary3Ph::make("source", [=](double) -> Matrix { return u; });
-    auto bus = SimNode<Real>::make(
-        "bus", PhaseType::ABC, std::vector<Complex>{u(0, 0), u(1, 0), u(2, 0)});
+    auto bus =
+        SimNode<Real>::make("bus", PhaseType::ABC,
+                            std::vector<Complex>{u(0, 0) / RMS3PH_TO_PEAK1PH,
+                                                 u(1, 0) / RMS3PH_TO_PEAK1PH,
+                                                 u(2, 0) / RMS3PH_TO_PEAK1PH});
     component->connect({SimNode<Real>::GND, bus});
     source->connect({SimNode<Real>::GND, bus});
     SystemTopology system(50, {bus}, {source, component});
