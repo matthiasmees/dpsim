@@ -180,11 +180,11 @@ void EMT::Ph3::RXLoad::initializeParentFromNodesAndTerminals(Real frequency) {
       (**mDirectState).block<3, 1>(6, 0) = voltage.real();
       (**mDirectState).block<3, 1>(9, 0) = (yC * voltage).real();
     }
-    **mIntfCurrent = -(loadG.real() * voltage.real());
+    **mIntfCurrent = loadG.real() * voltage.real();
     if (mDirectHasInductor)
-      **mIntfCurrent -= (**mDirectState).block<3, 1>(3, 0);
+      **mIntfCurrent += (**mDirectState).block<3, 1>(3, 0);
     if (mDirectHasCapacitor)
-      **mIntfCurrent -= (**mDirectState).block<3, 1>(9, 0);
+      **mIntfCurrent += (**mDirectState).block<3, 1>(9, 0);
     return;
   }
 
@@ -355,8 +355,8 @@ void EMT::Ph3::RXLoad::mnaParentPostStep(Real time, Int timeStepCount,
       (**mDirectState).block<3, 1>(6, 0) = voltage;
       (**mDirectState).block<3, 1>(9, 0) = capacitorCurrent;
     }
-    **mIntfCurrent = -(mDirectTotalConductance * voltage + inductorCurrent +
-                       capacitorCurrent);
+    **mIntfCurrent =
+        mDirectTotalConductance * voltage + inductorCurrent + capacitorCurrent;
     return;
   }
   mnaCompUpdateVoltage(**leftVector);
@@ -375,12 +375,12 @@ void EMT::Ph3::RXLoad::mnaCompUpdateVoltage(const Matrix &leftVector) {
 
 void EMT::Ph3::RXLoad::mnaCompUpdateCurrent(const Matrix &leftVector) {
   if (!mUseSubcomponents) {
-    **mIntfCurrent = -mDirectTotalConductance * (**mIntfVoltage);
+    **mIntfCurrent = mDirectTotalConductance * (**mIntfVoltage);
     if (mDirectHasInductor)
-      **mIntfCurrent -=
+      **mIntfCurrent +=
           mDirectInductorAdmittance * (**mIntfVoltage) + mDirectHistoryLoad;
     if (mDirectHasCapacitor)
-      **mIntfCurrent -=
+      **mIntfCurrent +=
           mDirectCapacitorAdmittance * (**mIntfVoltage) + mDirectHistoryShunt;
     return;
   }

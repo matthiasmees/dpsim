@@ -12,6 +12,7 @@
 #include <dpsim-models/CompositePowerComp.h>
 #include <dpsim-models/EMT/EMT_Ph3_Inductor.h>
 #include <dpsim-models/EMT/EMT_Ph3_VoltageSource.h>
+#include <dpsim-models/Signal/SineWaveGenerator.h>
 #include <dpsim-models/Solver/MNAInterface.h>
 
 namespace CPS {
@@ -41,6 +42,14 @@ protected:
   Matrix mStates;
   /// Nominal system angle
   Real mThetaN = 0;
+  /// Keep legacy electrical children unless direct MNA is explicitly selected.
+  Bool mUseSubcomponents = true;
+  Matrix mDirectInductorConductance = Matrix::Zero(3, 3);
+  Matrix mDirectInductorHistory = Matrix::Zero(3, 1);
+  Matrix mDirectInductorVoltage = Matrix::Zero(3, 1);
+  Matrix mDirectInductorCurrent = Matrix::Zero(3, 1);
+  Matrix mDirectSourceVoltage = Matrix::Zero(3, 1);
+  std::shared_ptr<Signal::SineWaveGenerator> mDirectSourceSignal;
   /// True after createSubComponents() runs; prevents double-construction.
 
 public:
@@ -62,10 +71,16 @@ public:
   ///
   SynchronGeneratorTrStab(String uid, String name,
                           Logger::Level logLevel = Logger::Level::off);
+  /// Direct MNA equivalent; the legacy subcomponent constructor remains default.
+  SynchronGeneratorTrStab(String uid, String name, Bool useSubcomponents,
+                          Logger::Level logLevel = Logger::Level::off);
   ///
   SynchronGeneratorTrStab(String name,
                           Logger::Level logLevel = Logger::Level::off)
       : SynchronGeneratorTrStab(name, name, logLevel) {}
+  SynchronGeneratorTrStab(String name, Bool useSubcomponents,
+                          Logger::Level logLevel = Logger::Level::off)
+      : SynchronGeneratorTrStab(name, name, useSubcomponents, logLevel) {}
 
   SimPowerComp<Real>::Ptr clone(String name) override;
 
@@ -99,6 +114,8 @@ public:
   /// Initializes variables of component
   void mnaParentInitialize(Real omega, Real timeStep,
                            Attribute<Matrix>::Ptr leftVector) override;
+  void mnaParentApplySystemMatrixStamp(SparseMatrixRow &systemMatrix) override;
+  void mnaParentApplyRightSideVectorStamp(Matrix &rightVector) override;
   /// Performs with the model of a synchronous generator
   /// to calculate the flux and current from the voltage vector.
   void mnaParentPreStep(Real time, Int timeStepCount) override;

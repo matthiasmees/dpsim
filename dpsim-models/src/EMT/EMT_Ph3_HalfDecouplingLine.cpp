@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 #include <dpsim-models/EMT/EMT_Ph3_HalfDecouplingLine.h>
+#include <dpsim-models/MNAStampUtils.h>
 #include <dpsim-models/MathUtils.h>
 
 using namespace CPS;
@@ -24,6 +25,13 @@ EMT::Ph3::HalfDecouplingLine::HalfDecouplingLine(String uid, String name,
   setTerminalNumber(1);
   **mIntfVoltage = Matrix::Zero(3, 1);
   **mIntfCurrent = Matrix::Zero(3, 1);
+}
+
+EMT::Ph3::HalfDecouplingLine::HalfDecouplingLine(String uid, String name,
+                                                 Bool useSubcomponents,
+                                                 Logger::Level logLevel)
+    : HalfDecouplingLine(uid, name, logLevel) {
+  mUseSubcomponents = useSubcomponents;
 }
 
 void EMT::Ph3::HalfDecouplingLine::setParameters(Matrix resistance,
@@ -52,6 +60,8 @@ void EMT::Ph3::HalfDecouplingLine::setCouplingSource(
 }
 
 void EMT::Ph3::HalfDecouplingLine::createSubComponents() {
+  if (!mUseSubcomponents)
+    return;
   if (mSubCompCreated)
     return;
   mSubCompCreated = true;
@@ -68,6 +78,25 @@ void EMT::Ph3::HalfDecouplingLine::createSubComponents() {
   mSubCtrledCurrentSource->connect({mTerminals[0]->node(), SimNode::GND});
   addMNASubComponent(mSubCtrledCurrentSource, MNA_SUBCOMP_TASK_ORDER::NO_TASK,
                      MNA_SUBCOMP_TASK_ORDER::TASK_BEFORE_PARENT, true);
+}
+
+void EMT::Ph3::HalfDecouplingLine::mnaParentApplySystemMatrixStamp(
+    SparseMatrixRow &systemMatrix) {
+  if (mUseSubcomponents)
+    return;
+  const Matrix conductance = (**mSrcRes).inverse();
+  MNAStampUtils::stampConductanceMatrix(conductance, systemMatrix,
+                                        matrixNodeIndex(0), 0,
+                                        terminalNotGrounded(0), false, mSLog);
+}
+
+void EMT::Ph3::HalfDecouplingLine::mnaParentApplyRightSideVectorStamp(
+    Matrix &rightVector) {
+  if (mUseSubcomponents || !terminalNotGrounded(0))
+    return;
+  for (UInt phase = 0; phase < 3; ++phase)
+    Math::setVectorElement(rightVector, matrixNodeIndex(0, phase),
+                           (**mSrcCtrledCurrent)(phase, 0));
 }
 
 void EMT::Ph3::HalfDecouplingLine::initializeParentFromNodesAndTerminals(
@@ -134,13 +163,19 @@ void EMT::Ph3::HalfDecouplingLine::step(Real time, Int timeStepCount) {
             (voltNear + (mSurgeImpedance - mResistance / 4) * curNear);
   }
 
-  mSubCtrledCurrentSource->mCurrentRef->set(**mSrcCtrledCurrent);
+  if (mUseSubcomponents)
+    mSubCtrledCurrentSource->mCurrentRef->set(**mSrcCtrledCurrent);
 }
 
 void EMT::Ph3::HalfDecouplingLine::postStep() {
-  mVoltBuf.row(mBufIdx) = -mSubRes->intfVoltage().transpose();
-  mCurBuf.row(mBufIdx) =
-      -mSubRes->intfCurrent().transpose() + (**mSrcCtrledCurrent).transpose();
+  if (mUseSubcomponents) {
+    mVoltBuf.row(mBufIdx) = -mSubRes->intfVoltage().transpose();
+    mCurBuf.row(mBufIdx) =
+        -mSubRes->intfCurrent().transpose() + (**mSrcCtrledCurrent).transpose();
+  } else {
+    mVoltBuf.row(mBufIdx) = -(**mIntfVoltage).transpose();
+    mCurBuf.row(mBufIdx) = (**mIntfCurrent).transpose();
+  }
 
   mBufIdx++;
   if (mBufIdx == mBufSize)
@@ -153,7 +188,8 @@ void EMT::Ph3::HalfDecouplingLine::postStep() {
 void EMT::Ph3::HalfDecouplingLine::mnaParentPreStep(Real time,
                                                     Int timeStepCount) {
   step(time, timeStepCount);
-  mSubCtrledCurrentSource->mnaPreStep(time, timeStepCount);
+  if (mUseSubcomponents)
+    mSubCtrledCurrentSource->mnaPreStep(time, timeStepCount);
   mnaCompApplyRightSideVectorStamp(**mRightVector);
 }
 
@@ -176,7 +212,12 @@ void EMT::Ph3::HalfDecouplingLine::mnaCompUpdateVoltage(
 
 void EMT::Ph3::HalfDecouplingLine::mnaCompUpdateCurrent(
     const Matrix &leftVector) {
-  **mIntfCurrent = -mSubRes->intfCurrent() + **mSrcCtrledCurrent;
+  if (mUseSubcomponents) {
+    **mIntfCurrent = -mSubRes->intfCurrent() + **mSrcCtrledCurrent;
+    return;
+  }
+  **mIntfCurrent =
+      -(**mSrcRes).inverse() * **mIntfVoltage + **mSrcCtrledCurrent;
 }
 
 void EMT::Ph3::HalfDecouplingLine::mnaParentAddPreStepDependencies(

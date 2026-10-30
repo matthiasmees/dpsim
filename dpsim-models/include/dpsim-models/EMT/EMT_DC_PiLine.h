@@ -34,6 +34,12 @@ public:
   const Attribute<Real>::Ptr mInitialCurrent;
 
   PiLine(String uid, String name, Logger::Level logLevel = Logger::Level::off);
+  /// Direct companion-model path without electrical child components.
+  PiLine(String uid, String name, Bool useSubcomponents,
+         Logger::Level logLevel = Logger::Level::off);
+  PiLine(String name, Bool useSubcomponents,
+         Logger::Level logLevel = Logger::Level::off)
+      : PiLine(name, name, useSubcomponents, logLevel) {}
   PiLine(String name, Logger::Level logLevel = Logger::Level::off)
       : PiLine(name, name, logLevel) {}
 
@@ -44,6 +50,13 @@ public:
 
   void createSubComponents() override final;
   void initializeParentFromNodesAndTerminals(Real frequency) override final;
+  void mnaParentInitialize(Real omega, Real timeStep,
+                           Attribute<Matrix>::Ptr leftVector) override final;
+  void
+  mnaParentApplySystemMatrixStamp(SparseMatrixRow &systemMatrix) override final;
+  void mnaParentApplyRightSideVectorStamp(Matrix &rightVector) override final;
+  Bool mnaHasCompactRightSideVectorStamp() const override final;
+  void mnaAddCompactRightSideVectorStamp(Matrix &rightVector) override final;
 
   void mnaCompUpdateVoltage(const Matrix &leftVector) override final;
   void mnaCompUpdateCurrent(const Matrix &leftVector) override final;
@@ -61,6 +74,14 @@ public:
       Attribute<Matrix>::Ptr &leftVector) override final;
 
 private:
+  Bool mUseSubcomponents = true;
+  Attribute<Matrix>::Ptr mDirectState;
+  Real mDirectInductorAdmittance = 0.;
+  Real mDirectSeriesAdmittance = 0.;
+  Real mDirectCapAdmittance = 0.;
+  Real mDirectSeriesHistory = 0.;
+  Real mDirectCapHistory0 = 0.;
+  Real mDirectCapHistory1 = 0.;
   std::shared_ptr<Resistor> mSeriesResistor;
   std::shared_ptr<Inductor> mSeriesInductor;
   std::shared_ptr<Resistor> mShuntResistor0;

@@ -2,25 +2,33 @@
 // SPDX-License-Identifier: MPL-2.0
 
 #include <dpsim-models/EMT/EMT_DC_PiLine.h>
+#include <dpsim-models/MNAStampUtils.h>
 
 using namespace CPS;
 
 EMT::DC::PiLine::PiLine(String uid, String name, Logger::Level logLevel)
+    : PiLine(uid, name, true, logLevel) {}
+
+EMT::DC::PiLine::PiLine(String uid, String name, Bool useSubcomponents,
+                        Logger::Level logLevel)
     : CompositePowerComp<Real>(uid, name, true, true, logLevel),
       mSeriesResistance(mAttributes->create<Real>("R_series")),
       mSeriesInductance(mAttributes->create<Real>("L_series")),
       mParallelCapacitance(mAttributes->create<Real>("C_parallel", 0.0)),
       mParallelConductance(mAttributes->create<Real>("G_parallel", 0.0)),
       mInitialCurrent(mAttributes->create<Real>("i_init", 0.0)) {
+  mUseSubcomponents = useSubcomponents;
+  mDirectState = mAttributes->create<Matrix>("direct_state");
+  **mDirectState = Matrix::Zero(6, 1);
   mPhaseType = PhaseType::DC;
-  setVirtualNodeNumber(1);
+  setVirtualNodeNumber(mUseSubcomponents ? 1 : 0);
   setTerminalNumber(2);
   **mIntfVoltage = Matrix::Zero(1, 1);
   **mIntfCurrent = Matrix::Zero(1, 1);
 }
 
 SimPowerComp<Real>::Ptr EMT::DC::PiLine::clone(String name) {
-  auto copy = PiLine::make(name, mLogLevel);
+  auto copy = PiLine::make(name, mUseSubcomponents, mLogLevel);
   copy->setParameters(**mSeriesResistance, **mSeriesInductance,
                       **mParallelCapacitance, **mParallelConductance,
                       **mInitialCurrent);
@@ -76,6 +84,9 @@ void EMT::DC::PiLine::createSubComponents() {
         "setParameters() must be called before pi-line construction.");
   validateDCTerminals();
   mSubCompCreated = true;
+
+  if (!mUseSubcomponents)
+    return;
 
   mSeriesResistor = Resistor::make(**mName + "_series_R", mLogLevel);
   mSeriesResistor->setParameters(**mSeriesResistance);
@@ -142,9 +153,80 @@ void EMT::DC::PiLine::initializeParentFromNodesAndTerminals(Real) {
   (**mIntfVoltage)(0, 0) = voltage1.real() - voltage0.real();
   (**mIntfCurrent)(0, 0) = **mInitialCurrent;
 
-  const Real virtualVoltage =
-      voltage0.real() + **mSeriesResistance * **mInitialCurrent;
-  mVirtualNodes[0]->setInitialVoltage(Complex(virtualVoltage, 0.0));
+  if (!mUseSubcomponents) {
+    (**mDirectState).setZero();
+    (**mDirectState)(0, 0) = **mInitialCurrent;
+    (**mDirectState)(1, 0) = voltage1.real() - voltage0.real() -
+                             **mSeriesResistance * **mInitialCurrent;
+    (**mDirectState)(2, 0) = voltage0.real();
+    (**mDirectState)(4, 0) = voltage1.real();
+  } else {
+    const Real virtualVoltage =
+        voltage0.real() + **mSeriesResistance * **mInitialCurrent;
+    mVirtualNodes[0]->setInitialVoltage(Complex(virtualVoltage, 0.0));
+  }
+}
+
+void EMT::DC::PiLine::mnaParentInitialize(Real, Real timeStep,
+                                          Attribute<Matrix>::Ptr) {
+  if (mUseSubcomponents)
+    return;
+  mDirectInductorAdmittance = timeStep / (2. * **mSeriesInductance);
+  mDirectSeriesAdmittance =
+      mDirectInductorAdmittance /
+      (1. + **mSeriesResistance * mDirectInductorAdmittance);
+  mDirectCapAdmittance = **mParallelCapacitance / timeStep;
+  const Real denominator = 1. + **mSeriesResistance * mDirectInductorAdmittance;
+  mDirectSeriesHistory = (mDirectInductorAdmittance * (**mDirectState)(1, 0) +
+                          (**mDirectState)(0, 0)) /
+                         denominator;
+}
+
+void EMT::DC::PiLine::mnaParentApplySystemMatrixStamp(
+    SparseMatrixRow &systemMatrix) {
+  if (mUseSubcomponents)
+    return;
+  updateMatrixNodeIndices();
+  MNAStampUtils::stampConductance(mDirectSeriesAdmittance, systemMatrix,
+                                  matrixNodeIndex(0), matrixNodeIndex(1),
+                                  terminalNotGrounded(0),
+                                  terminalNotGrounded(1), mSLog);
+  const Real shuntAdmittance =
+      mDirectCapAdmittance + **mParallelConductance / 2.;
+  for (UInt terminal = 0; terminal < 2; ++terminal)
+    MNAStampUtils::stampConductance(
+        shuntAdmittance, systemMatrix, matrixNodeIndex(terminal), 0,
+        terminalNotGrounded(terminal), false, mSLog);
+}
+
+void EMT::DC::PiLine::mnaParentApplyRightSideVectorStamp(Matrix &rightVector) {
+  if (mUseSubcomponents)
+    return;
+  if (terminalNotGrounded(0))
+    Math::setVectorElement(rightVector, matrixNodeIndex(0),
+                           mDirectSeriesHistory - mDirectCapHistory0);
+  if (terminalNotGrounded(1))
+    Math::setVectorElement(rightVector, matrixNodeIndex(1),
+                           -mDirectSeriesHistory - mDirectCapHistory1);
+}
+
+Bool EMT::DC::PiLine::mnaHasCompactRightSideVectorStamp() const {
+  return !mUseSubcomponents ||
+         CompositePowerComp<Real>::mnaHasCompactRightSideVectorStamp();
+}
+
+void EMT::DC::PiLine::mnaAddCompactRightSideVectorStamp(Matrix &rightVector) {
+  if (mUseSubcomponents) {
+    CompositePowerComp<Real>::mnaAddCompactRightSideVectorStamp(rightVector);
+    return;
+  }
+  for (UInt terminal = 0; terminal < 2; ++terminal)
+    if (terminalNotGrounded(terminal)) {
+      const UInt index = matrixNodeIndex(terminal);
+      Math::addToVectorElement(
+          rightVector, index,
+          Math::realFromVectorElement(**mRightVector, index));
+    }
 }
 
 void EMT::DC::PiLine::mnaCompUpdateVoltage(const Matrix &leftVector) {
@@ -161,6 +243,11 @@ void EMT::DC::PiLine::mnaCompUpdateVoltage(const Matrix &leftVector) {
 }
 
 void EMT::DC::PiLine::mnaCompUpdateCurrent(const Matrix &) {
+  if (!mUseSubcomponents) {
+    (**mIntfCurrent)(0, 0) =
+        mDirectSeriesAdmittance * (**mIntfVoltage)(0, 0) + mDirectSeriesHistory;
+    return;
+  }
   **mIntfCurrent = mSeriesInductor->intfCurrent();
   if (!(**mIntfCurrent).allFinite())
     throw std::runtime_error(
@@ -168,6 +255,17 @@ void EMT::DC::PiLine::mnaCompUpdateCurrent(const Matrix &) {
 }
 
 void EMT::DC::PiLine::mnaParentPreStep(Real, Int) {
+  if (!mUseSubcomponents) {
+    const Real denominator =
+        1. + **mSeriesResistance * mDirectInductorAdmittance;
+    mDirectSeriesHistory = (mDirectInductorAdmittance * (**mDirectState)(1, 0) +
+                            (**mDirectState)(0, 0)) /
+                           denominator;
+    mDirectCapHistory0 = -((**mDirectState)(3, 0) +
+                           mDirectCapAdmittance * (**mDirectState)(2, 0));
+    mDirectCapHistory1 = -((**mDirectState)(5, 0) +
+                           mDirectCapAdmittance * (**mDirectState)(4, 0));
+  }
   mnaCompApplyRightSideVectorStamp(**mRightVector);
 }
 
@@ -175,11 +273,32 @@ void EMT::DC::PiLine::mnaParentPostStep(Real, Int,
                                         Attribute<Matrix>::Ptr &leftVector) {
   mnaCompUpdateVoltage(**leftVector);
   mnaCompUpdateCurrent(**leftVector);
+  if (!mUseSubcomponents) {
+    const Real voltage0 =
+        terminalNotGrounded(0)
+            ? Math::realFromVectorElement(**leftVector, matrixNodeIndex(0))
+            : 0.;
+    const Real voltage1 =
+        terminalNotGrounded(1)
+            ? Math::realFromVectorElement(**leftVector, matrixNodeIndex(1))
+            : 0.;
+    (**mDirectState)(0, 0) = (**mIntfCurrent)(0, 0);
+    (**mDirectState)(1, 0) =
+        (**mIntfVoltage)(0, 0) - **mSeriesResistance * (**mIntfCurrent)(0, 0);
+    (**mDirectState)(2, 0) = voltage0;
+    (**mDirectState)(3, 0) =
+        mDirectCapAdmittance * voltage0 + mDirectCapHistory0;
+    (**mDirectState)(4, 0) = voltage1;
+    (**mDirectState)(5, 0) =
+        mDirectCapAdmittance * voltage1 + mDirectCapHistory1;
+  }
 }
 
 void EMT::DC::PiLine::mnaParentAddPreStepDependencies(
-    AttributeBase::List &, AttributeBase::List &,
+    AttributeBase::List &prevStepDependencies, AttributeBase::List &,
     AttributeBase::List &modifiedAttributes) {
+  if (!mUseSubcomponents)
+    prevStepDependencies.push_back(mDirectState);
   modifiedAttributes.push_back(mRightVector);
 }
 
@@ -190,4 +309,6 @@ void EMT::DC::PiLine::mnaParentAddPostStepDependencies(
   attributeDependencies.push_back(leftVector);
   modifiedAttributes.push_back(mIntfVoltage);
   modifiedAttributes.push_back(mIntfCurrent);
+  if (!mUseSubcomponents)
+    modifiedAttributes.push_back(mDirectState);
 }

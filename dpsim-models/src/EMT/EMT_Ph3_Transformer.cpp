@@ -272,7 +272,11 @@ void EMT::Ph3::Transformer::initializeParentFromNodesAndTerminals(
       (**mDirectState).block<3, 1>(15, 0) = imag.real();
     }
     **mIntfVoltage = (v1 - v0).real();
-    **mIntfCurrent = mOrientationSign * i0.real();
+    // Match the legacy parent trace at t=0. The direct companion states above
+    // retain the initialized branch currents and are used by the first MNA
+    // step; the legacy composite does not publish a terminal current until its
+    // first post-step.
+    **mIntfCurrent = Matrix::Zero(3, 1);
     return;
   }
   // Set initial voltage of virtual node in between

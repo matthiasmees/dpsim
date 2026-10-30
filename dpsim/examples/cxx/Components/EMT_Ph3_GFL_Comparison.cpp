@@ -92,10 +92,13 @@ public:
     const auto systemPF = runPowerFlow(baseName + "_PF", pPccRef, qPccRef);
 
     std::vector<TimingResult> timings;
-    timings.reserve(4);
+    timings.reserve(5);
 
     // New composite GFL runs first.
-    timings.push_back(runGFL(baseName + "_GFL", systemPF, pPccRef, qPccRef));
+    timings.push_back(
+        runGFL(baseName + "_GFL", systemPF, pPccRef, qPccRef, true));
+    timings.push_back(
+        runGFL(baseName + "_GFL_Direct", systemPF, pPccRef, qPccRef, false));
 
     timings.push_back(runSSNGFL(baseName + "_SSN_GFL", systemPF));
 
@@ -243,7 +246,7 @@ private:
   // CASE 1: New EMT::Ph3::GFL
   // =========================================================================
   TimingResult runGFL(const String &simName, const SystemTopology &systemPF,
-                      Real pPccRef, Real qPccRef) const {
+                      Real pPccRef, Real qPccRef, Bool useSubcomponents) const {
 
     Logger::setLogDir("logs/" + simName);
 
@@ -265,7 +268,8 @@ private:
     gridInductor->setParameters(
         Math::singlePhaseParameterToThreePhase(mGridInductance));
 
-    auto inverter = EMT::Ph3::GFL::make("INV_GFL", Logger::Level::off);
+    auto inverter =
+        EMT::Ph3::GFL::make("INV_GFL", useSubcomponents, Logger::Level::off);
 
     // No Rc in this model: regulate the common PCC operating point directly.
     inverter->setParameters(mSystemOmega, mGridVoltageRMSLineToLine, pPccRef,
@@ -569,6 +573,8 @@ private:
     logger->logAttribute("v_pcc", nPcc->attribute("v"));
 
     logger->logAttribute("i_inv", inverter->attribute("i_intf"));
+    logger->logAttribute("v_source", inverter->mVs);
+    logger->logAttribute("v_source_ref", inverter->mVsref);
 
     logger->logAttribute("vc_d", inverter->mVcd);
     logger->logAttribute("vc_q", inverter->mVcq);
