@@ -3,6 +3,8 @@
 
 #include <dpsim-models/EMT/EMT_SSNComp.h>
 
+#include <algorithm>
+
 using namespace CPS;
 
 EMT::SSNComp::SSNComp(String uid, String name, Int inputSize, Int outputSize,
@@ -66,8 +68,8 @@ void EMT::SSNComp::setParameters(const Matrix &A, const Matrix &B,
   mParametersSet = true;
 }
 
-Matrix EMT::SSNComp::calculateHistoryVector() const {
-  return mC * (mdA * (**mX) + mdB * (**inputAttribute()));
+void EMT::SSNComp::calculateHistoryVector(Matrix &history) const {
+  history = mC * (mdA * stateValue() + mdB * inputValue());
 }
 
 MatrixComp
@@ -105,16 +107,44 @@ void EMT::SSNComp::updateStateSpaceModel() {
 }
 
 void EMT::SSNComp::mnaCompInitialize(Real, Real timeStep,
-                                     Attribute<Matrix>::Ptr) {
+                                     Attribute<Matrix>::Ptr leftVector) {
   if (!mParametersSet)
     throw std::logic_error(
         "setParameters() must be called before initialization.");
 
   mTimeStep = timeStep;
+  mXValue = &mX->get();
+  mInputValue = &inputAttribute()->get();
   updateMatrixNodeIndices();
 
+  mRightVectorAffectedIndices.clear();
+  for (UInt terminal = 0; terminal < terminalNumberConnected(); ++terminal) {
+    if (terminalNotGrounded(terminal)) {
+      for (UInt index : matrixNodeIndices(terminal))
+        if (index < static_cast<UInt>(leftVector->get().rows()))
+          mRightVectorAffectedIndices.push_back(index);
+    }
+  }
+  for (UInt virtualNode = 0; virtualNode < virtualNodesNumber();
+       ++virtualNode) {
+    for (UInt index : virtualMatrixNodeIndices(virtualNode))
+      if (index < static_cast<UInt>(leftVector->get().rows()))
+        mRightVectorAffectedIndices.push_back(index);
+  }
+  std::sort(mRightVectorAffectedIndices.begin(),
+            mRightVectorAffectedIndices.end());
+  mRightVectorAffectedIndices.erase(
+      std::unique(mRightVectorAffectedIndices.begin(),
+                  mRightVectorAffectedIndices.end()),
+      mRightVectorAffectedIndices.end());
+
   recomputeDiscreteModel();
-  mYHist = calculateHistoryVector();
+  calculateHistoryVector(mYHist);
+}
+
+void EMT::SSNComp::mnaAddCompactRightSideVectorStamp(Matrix &rightVector) {
+  for (UInt index : mRightVectorAffectedIndices)
+    rightVector(index, 0) += (*mRightVectorValue)(index, 0);
 }
 
 void EMT::SSNComp::mnaCompAddPreStepDependencies(
@@ -128,8 +158,8 @@ void EMT::SSNComp::mnaCompAddPreStepDependencies(
 
 void EMT::SSNComp::mnaCompPreStep(Real time, Int timeStepCount) {
   updateStateSpaceModel();
-  mYHist = calculateHistoryVector();
-  mnaCompApplyRightSideVectorStamp(**mRightVector);
+  calculateHistoryVector(mYHist);
+  mnaCompApplyRightSideVectorStamp(*mRightVectorValue);
 }
 
 void EMT::SSNComp::mnaCompAddPostStepDependencies(

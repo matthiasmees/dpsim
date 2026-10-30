@@ -499,7 +499,7 @@ void EMT::Ph3::SSN_InductionMotor::initializeFromNodesAndTerminals(
   **mIntfVoltage = initialVoltageAbc;
 
   updateStateSpaceModel();
-  mYHist = calculateHistoryVector();
+  calculateHistoryVector(mYHist);
   **mIntfCurrent = mW * (**mIntfVoltage) + mYHist;
   updateLogAttributes(**mIntfVoltage);
 

@@ -19,7 +19,7 @@ constexpr Int kCapCurrent1 = 15;
 EMT::Ph3::SSN::PiLine::PiLine(String uid, String name, Logger::Level logLevel)
     : MNASimPowerComp<Real>(uid, name, true, true, logLevel),
       Base::Ph3::PiLine(mAttributes),
-      mState(mAttributes->create<Matrix>("state")),
+      mState(mAttributes->create<Matrix>("state")), mStateValue(&mState->get()),
       mInductorAdmittance(Matrix::Zero(3, 3)),
       mSeriesAdmittance(Matrix::Zero(3, 3)),
       mSeriesSystemInverse(Matrix::Identity(3, 3)),
@@ -28,9 +28,9 @@ EMT::Ph3::SSN::PiLine::PiLine(String uid, String name, Logger::Level logLevel)
       mCapHistory1(Matrix::Zero(3, 1)) {
   mPhaseType = PhaseType::ABC;
   setTerminalNumber(2);
-  **mIntfVoltage = Matrix::Zero(3, 1);
-  **mIntfCurrent = Matrix::Zero(3, 1);
-  **mState = Matrix::Zero(18, 1);
+  *mIntfVoltageValue = Matrix::Zero(3, 1);
+  *mIntfCurrentValue = Matrix::Zero(3, 1);
+  *mStateValue = Matrix::Zero(18, 1);
 }
 
 SimPowerComp<Real>::Ptr EMT::Ph3::SSN::PiLine::clone(String copySuffix) {
@@ -80,16 +80,44 @@ void EMT::Ph3::SSN::PiLine::initializeFromNodesAndTerminals(Real frequency) {
   const MatrixComp capCurrent0 = Complex(0., omega) * capHalf * v0Phasor;
   const MatrixComp capCurrent1 = Complex(0., omega) * capHalf * v1Phasor;
 
-  **mIntfVoltage = voltagePhasor.real();
-  **mIntfCurrent = currentPhasor.real();
-  (**mState).setZero();
-  (**mState).block<3, 1>(kSeriesCurrent, 0) = currentPhasor.real();
-  (**mState).block<3, 1>(kSeriesInductorVoltage, 0) =
+  *mIntfVoltageValue = voltagePhasor.real();
+  *mIntfCurrentValue = currentPhasor.real();
+  mStateValue->setZero();
+  mStateValue->block<3, 1>(kSeriesCurrent, 0) = currentPhasor.real();
+  mStateValue->block<3, 1>(kSeriesInductorVoltage, 0) =
       inductorVoltagePhasor.real();
-  (**mState).block<3, 1>(kCapVoltage0, 0) = v0Phasor.real();
-  (**mState).block<3, 1>(kCapCurrent0, 0) = capCurrent0.real();
-  (**mState).block<3, 1>(kCapVoltage1, 0) = v1Phasor.real();
-  (**mState).block<3, 1>(kCapCurrent1, 0) = capCurrent1.real();
+  mStateValue->block<3, 1>(kCapVoltage0, 0) = v0Phasor.real();
+  mStateValue->block<3, 1>(kCapCurrent0, 0) = capCurrent0.real();
+  mStateValue->block<3, 1>(kCapVoltage1, 0) = v1Phasor.real();
+  mStateValue->block<3, 1>(kCapCurrent1, 0) = capCurrent1.real();
+}
+
+void EMT::Ph3::SSN::PiLine::exportFusedModel(LinearSSNModel &model) {
+  model = LinearSSNModel{};
+  model.kind = LinearSSNModel::Kind::PiLine;
+  model.terminalCount = 2;
+  for (UInt terminal = 0; terminal < 2; ++terminal) {
+    model.grounded[terminal] = !terminalNotGrounded(terminal);
+    for (UInt phase = 0; phase < 3; ++phase)
+      model.nodeIndices[terminal * 3 + phase] =
+          matrixNodeIndex(terminal, phase);
+    for (UInt phase = 0; phase < 3; ++phase)
+      model.nodeNames[terminal * 3 + phase] = node(terminal)->name();
+  }
+  model.state = *mStateValue;
+  model.seriesResistance = **mSeriesRes;
+  model.inductorAdmittance = mInductorAdmittance;
+  model.seriesSystemInverse = mSeriesSystemInverse;
+  model.seriesAdmittance = mSeriesAdmittance;
+  model.capAdmittance = mCapAdmittance;
+  model.parallelConductance = **mParallelCond;
+  model.portAdmittance = Matrix::Zero(6, 6);
+  model.portAdmittance.block<3, 3>(0, 0) =
+      mSeriesAdmittance + mCapAdmittance + **mParallelCond / 2.;
+  model.portAdmittance.block<3, 3>(0, 3) = -mSeriesAdmittance;
+  model.portAdmittance.block<3, 3>(3, 0) = -mSeriesAdmittance;
+  model.portAdmittance.block<3, 3>(3, 3) =
+      mSeriesAdmittance + mCapAdmittance + **mParallelCond / 2.;
 }
 
 void EMT::Ph3::SSN::PiLine::mnaCompInitialize(Real, Real timeStep,
@@ -117,13 +145,13 @@ void EMT::Ph3::SSN::PiLine::mnaCompApplySystemMatrixStamp(
 
 void EMT::Ph3::SSN::PiLine::mnaCompPreStep(Real, Int) {
   mInductorHistory.noalias() =
-      mInductorAdmittance * (**mState).block<3, 1>(kSeriesInductorVoltage, 0);
-  mInductorHistory += (**mState).block<3, 1>(kSeriesCurrent, 0);
+      mInductorAdmittance * mStateValue->block<3, 1>(kSeriesInductorVoltage, 0);
+  mInductorHistory += mStateValue->block<3, 1>(kSeriesCurrent, 0);
   mSeriesHistory.noalias() = mSeriesSystemInverse * mInductorHistory;
-  mCapHistory0 = -(**mState).block<3, 1>(kCapCurrent0, 0) -
-                 mCapAdmittance * (**mState).block<3, 1>(kCapVoltage0, 0);
-  mCapHistory1 = -(**mState).block<3, 1>(kCapCurrent1, 0) -
-                 mCapAdmittance * (**mState).block<3, 1>(kCapVoltage1, 0);
+  mCapHistory0 = -mStateValue->block<3, 1>(kCapCurrent0, 0) -
+                 mCapAdmittance * mStateValue->block<3, 1>(kCapVoltage0, 0);
+  mCapHistory1 = -mStateValue->block<3, 1>(kCapCurrent1, 0) -
+                 mCapAdmittance * mStateValue->block<3, 1>(kCapVoltage1, 0);
 }
 
 void EMT::Ph3::SSN::PiLine::mnaCompApplyRightSideVectorStamp(
@@ -170,12 +198,13 @@ EMT::Ph3::SSN::PiLine::terminalVoltage(const Matrix &leftVector,
 }
 
 void EMT::Ph3::SSN::PiLine::mnaCompUpdateVoltage(const Matrix &leftVector) {
-  **mIntfVoltage =
+  *mIntfVoltageValue =
       terminalVoltage(leftVector, 1) - terminalVoltage(leftVector, 0);
 }
 
 void EMT::Ph3::SSN::PiLine::mnaCompUpdateCurrent(const Matrix &) {
-  **mIntfCurrent = mSeriesAdmittance * (**mIntfVoltage) + mSeriesHistory;
+  *mIntfCurrentValue =
+      mSeriesAdmittance * (*mIntfVoltageValue) + mSeriesHistory;
 }
 
 void EMT::Ph3::SSN::PiLine::mnaCompPostStep(
@@ -185,20 +214,20 @@ void EMT::Ph3::SSN::PiLine::mnaCompPostStep(
   const TerminalVoltage v0 = terminalVoltage(**leftVector, 0);
   const TerminalVoltage v1 = terminalVoltage(**leftVector, 1);
   const TerminalVoltage interfaceVoltage = v1 - v0;
-  **mIntfVoltage = interfaceVoltage;
-  (**mIntfCurrent).noalias() = mSeriesAdmittance * interfaceVoltage;
-  **mIntfCurrent += mSeriesHistory;
+  *mIntfVoltageValue = interfaceVoltage;
+  mIntfCurrentValue->noalias() = mSeriesAdmittance * interfaceVoltage;
+  *mIntfCurrentValue += mSeriesHistory;
   const TerminalVoltage inductorVoltage =
-      interfaceVoltage - **mSeriesRes * (**mIntfCurrent);
+      interfaceVoltage - **mSeriesRes * (*mIntfCurrentValue);
   const TerminalVoltage capCurrent0 = mCapAdmittance * v0 + mCapHistory0;
   const TerminalVoltage capCurrent1 = mCapAdmittance * v1 + mCapHistory1;
 
-  (**mState).block<3, 1>(kSeriesCurrent, 0) = **mIntfCurrent;
-  (**mState).block<3, 1>(kSeriesInductorVoltage, 0) = inductorVoltage;
-  (**mState).block<3, 1>(kCapVoltage0, 0) = v0;
-  (**mState).block<3, 1>(kCapCurrent0, 0) = capCurrent0;
-  (**mState).block<3, 1>(kCapVoltage1, 0) = v1;
-  (**mState).block<3, 1>(kCapCurrent1, 0) = capCurrent1;
+  mStateValue->block<3, 1>(kSeriesCurrent, 0) = *mIntfCurrentValue;
+  mStateValue->block<3, 1>(kSeriesInductorVoltage, 0) = inductorVoltage;
+  mStateValue->block<3, 1>(kCapVoltage0, 0) = v0;
+  mStateValue->block<3, 1>(kCapCurrent0, 0) = capCurrent0;
+  mStateValue->block<3, 1>(kCapVoltage1, 0) = v1;
+  mStateValue->block<3, 1>(kCapCurrent1, 0) = capCurrent1;
 }
 
 void EMT::Ph3::SSN::PiLine::mnaCompAddPreStepDependencies(

@@ -47,10 +47,13 @@ void EMT::Ph3::SynchronGenerator4OrderVBR::specificInitialization() {
 
 void EMT::Ph3::SynchronGenerator4OrderVBR::stepInPerUnit() {
 
+  const Matrix &idq0 = *mIdq0Value;
+  const Matrix &vdq0 = *mVdq0Value;
+
   if (mSimTime > 0.0) {
     // calculate Edq_t at t=k
-    (**mEdq0_t)(0, 0) = -(**mIdq0)(1, 0) * mLq_t + (**mVdq0)(0, 0);
-    (**mEdq0_t)(1, 0) = (**mIdq0)(0, 0) * mLd_t + (**mVdq0)(1, 0);
+    (**mEdq0_t)(0, 0) = -idq0(1, 0) * mLq_t + vdq0(0, 0);
+    (**mEdq0_t)(1, 0) = idq0(0, 0) * mLd_t + vdq0(1, 0);
     (**mEdq0_t)(2, 0) = 0.0;
   }
 
@@ -62,9 +65,9 @@ void EMT::Ph3::SynchronGenerator4OrderVBR::stepInPerUnit() {
   calculateResistanceMatrix();
 
   // VBR history voltage
-  mEhs_vbr(0, 0) = mAd_t * (**mIdq0)(1, 0) + mBd_t * (**mEdq0_t)(0, 0);
-  mEhs_vbr(1, 0) = mAq_t * (**mIdq0)(0, 0) + mBq_t * (**mEdq0_t)(1, 0) +
-                   mDq_t * mEf_prev + mDq_t * (**mEf);
+  mEhs_vbr(0, 0) = mAd_t * idq0(1, 0) + mBd_t * (**mEdq0_t)(0, 0);
+  mEhs_vbr(1, 0) = mAq_t * idq0(0, 0) + mBq_t * (**mEdq0_t)(1, 0) +
+                   mDq_t * mEf_prev + mDq_t * *mEfValue;
   mEhs_vbr(2, 0) = 0.0;
 
   // convert Edq_t into the abc reference frame

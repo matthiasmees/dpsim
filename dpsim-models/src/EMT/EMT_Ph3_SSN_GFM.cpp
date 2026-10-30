@@ -1052,7 +1052,7 @@ void EMT::Ph3::SSN_GFM::initializeFromNodesAndTerminals(Real frequency) {
 
   // The MNA right-side-vector stamp uses mYHist. It must therefore already
   // be valid before the first network solution.
-  mYHist = calculateHistoryVector();
+  calculateHistoryVector(mYHist);
 
   // Use the same Norton-equivalent equation as the SSN network stamp:
   //

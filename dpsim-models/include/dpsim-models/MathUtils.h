@@ -99,6 +99,9 @@ public:
   static void addToMatrixElement(SparseMatrixRow &mat, std::vector<UInt> rows,
                                  std::vector<UInt> columns, Real value);
 
+  static void prepareSparseMatrixValueCache(SparseMatrixRow &mat);
+  static void clearSparseMatrixValueCache(SparseMatrixRow &mat);
+
   static void invertMatrix(const Matrix &mat, Matrix &matInv);
 
   // #### Integration Methods ####

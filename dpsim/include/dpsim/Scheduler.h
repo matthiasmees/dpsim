@@ -18,6 +18,7 @@
 #include <condition_variable>
 #include <deque>
 #include <mutex>
+#include <thread>
 #include <unordered_map>
 
 namespace DPsim {
@@ -215,8 +216,11 @@ public:
   void inc() { mValue.fetch_add(1, std::memory_order_release); }
 
   void wait(Int value) {
-    while (mValue.load(std::memory_order_acquire) != value)
-      ;
+    for (Int spin = 0; mValue.load(std::memory_order_acquire) != value;
+         ++spin) {
+      if ((spin & 63) == 63)
+        std::this_thread::yield();
+    }
   }
 
 private:

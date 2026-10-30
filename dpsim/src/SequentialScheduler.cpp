@@ -33,13 +33,13 @@ void SequentialScheduler::step(Real time, Int timeStepCount) {
   if (mOutMeasurementFile.size() != 0) {
     for (const auto &task : mSchedule) {
       auto start = std::chrono::steady_clock::now();
-      task->execute(time, timeStepCount);
+      task->executeFast(time, timeStepCount);
       auto end = std::chrono::steady_clock::now();
       updateMeasurement(task.get(), end - start);
     }
   } else {
     for (const auto &task : mSchedule) {
-      task->execute(time, timeStepCount);
+      task->executeFast(time, timeStepCount);
     }
   }
 }

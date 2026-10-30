@@ -22,6 +22,15 @@
 namespace DPsim {
 class DenseLUAdapter : public DirectLinearSolver {
   Eigen::PartialPivLU<Matrix> LUFactorized;
+  Matrix mReferenceMatrix;
+  Matrix mCurrentMatrix;
+  Matrix mResidual;
+  Matrix mCorrection;
+  std::vector<std::pair<UInt, UInt>> mVariableEntries;
+  Bool mUseStaticPreconditioner = false;
+  Bool mStaticPreconditionerActive = false;
+
+  void applyConfiguration() override;
 
 public:
   /// Constructor with logging
@@ -48,5 +57,6 @@ public:
 
   /// solution function for a right hand side
   Matrix solve(Matrix &rightSideVector) override;
+  void solveInto(Matrix &rightSideVector, Matrix &solution) override;
 };
 } // namespace DPsim

@@ -34,7 +34,7 @@ EMT::Ph3::SSN::Transformer::Transformer(String uid, String name,
                                         Bool withResistiveLosses)
     : MNASimPowerComp<Real>(uid, name, true, true, logLevel),
       Base::Ph3::Transformer(mAttributes),
-      mState(mAttributes->create<Matrix>("state")),
+      mState(mAttributes->create<Matrix>("state")), mStateValue(&mState->get()),
       mSeriesResistanceHalf(Matrix::Zero(3, 3)),
       mSeriesInductanceHalf(Matrix::Zero(3, 3)),
       mInductorAdmittance(Matrix::Zero(3, 3)),
@@ -48,14 +48,16 @@ EMT::Ph3::SSN::Transformer::Transformer(String uid, String name,
       mPortAdmittance10(Matrix::Zero(3, 3)),
       mPortAdmittance11(Matrix::Zero(3, 3)), mHistory0(Matrix::Zero(3, 1)),
       mHistory1(Matrix::Zero(3, 1)), mHistoryMagnetizing(Matrix::Zero(3, 1)),
+      mMidpointHistory(Matrix::Zero(3, 1)), mMidpointSource(Matrix::Zero(3, 1)),
+      mSource0(Matrix::Zero(3, 1)), mSource1(Matrix::Zero(3, 1)),
       mMagnetizingResistance(Matrix::Zero(3, 3)),
       mMagnetizingInductance(Matrix::Zero(3, 3)),
       mWithResistiveLosses(withResistiveLosses) {
   mPhaseType = PhaseType::ABC;
   setTerminalNumber(2);
-  **mIntfVoltage = Matrix::Zero(3, 1);
-  **mIntfCurrent = Matrix::Zero(3, 1);
-  **mState = Matrix::Zero(18, 1);
+  *mIntfVoltageValue = Matrix::Zero(3, 1);
+  *mIntfCurrentValue = Matrix::Zero(3, 1);
+  *mStateValue = Matrix::Zero(18, 1);
 }
 
 SimPowerComp<Real>::Ptr EMT::Ph3::SSN::Transformer::clone(String copySuffix) {
@@ -182,14 +184,51 @@ void EMT::Ph3::SSN::Transformer::initializeFromNodesAndTerminals(
   const PhaseVectorComp voltageLMag = Complex(0., omega) *
                                       mMagnetizingInductance.cast<Complex>() *
                                       currentMagnetizing;
-  (**mState).block<3, 1>(kVoltage0, 0) = voltageL0.real();
-  (**mState).block<3, 1>(kCurrent0, 0) = current0.real();
-  (**mState).block<3, 1>(kVoltage1, 0) = voltageL1.real();
-  (**mState).block<3, 1>(kCurrent1, 0) = current1.real();
-  (**mState).block<3, 1>(kVoltageMag, 0) = voltageLMag.real();
-  (**mState).block<3, 1>(kCurrentMag, 0) = currentMagnetizing.real();
-  **mIntfVoltage = (voltage1 - voltage0).real();
-  **mIntfCurrent = mOrientationSign * current0.real();
+  mStateValue->block<3, 1>(kVoltage0, 0) = voltageL0.real();
+  mStateValue->block<3, 1>(kCurrent0, 0) = current0.real();
+  mStateValue->block<3, 1>(kVoltage1, 0) = voltageL1.real();
+  mStateValue->block<3, 1>(kCurrent1, 0) = current1.real();
+  mStateValue->block<3, 1>(kVoltageMag, 0) = voltageLMag.real();
+  mStateValue->block<3, 1>(kCurrentMag, 0) = currentMagnetizing.real();
+  *mIntfVoltageValue = (voltage1 - voltage0).real();
+  *mIntfCurrentValue = mOrientationSign * current0.real();
+}
+
+void EMT::Ph3::SSN::Transformer::exportFusedModel(LinearSSNModel &model) {
+  model = LinearSSNModel{};
+  model.kind = LinearSSNModel::Kind::Transformer;
+  model.terminalCount = 2;
+  for (UInt terminal = 0; terminal < 2; ++terminal) {
+    model.grounded[terminal] = !terminalNotGrounded(terminal);
+    for (UInt phase = 0; phase < 3; ++phase)
+      model.nodeIndices[terminal * 3 + phase] =
+          matrixNodeIndex(terminal, phase);
+    for (UInt phase = 0; phase < 3; ++phase)
+      model.nodeNames[terminal * 3 + phase] = node(terminal)->name();
+  }
+  model.state = *mStateValue;
+  model.seriesResistanceHalf = mSeriesResistanceHalf;
+  model.seriesSystemInverse = mSeriesSystemInverse;
+  model.inductorAdmittance = mInductorAdmittance;
+  model.seriesAdmittance = mSeriesAdmittance;
+  model.magnetizingInductorAdmittance = mMagnetizingInductorAdmittance;
+  model.magnetizingConductance = mMagnetizingConductance;
+  model.midpointInverse = mMidpointInverse;
+  model.referenceTerminal = mReferenceTerminal;
+  model.ratioFromReference = mRatioFromReference.real();
+  model.orientationSign = mOrientationSign;
+  model.portAdmittance = Matrix::Zero(6, 6);
+  if (mReferenceTerminal == 0) {
+    model.portAdmittance.block<3, 3>(0, 0) = mPortAdmittance00;
+    model.portAdmittance.block<3, 3>(0, 3) = mPortAdmittance01;
+    model.portAdmittance.block<3, 3>(3, 0) = mPortAdmittance10;
+    model.portAdmittance.block<3, 3>(3, 3) = mPortAdmittance11;
+  } else {
+    model.portAdmittance.block<3, 3>(0, 0) = mPortAdmittance11;
+    model.portAdmittance.block<3, 3>(0, 3) = mPortAdmittance10;
+    model.portAdmittance.block<3, 3>(3, 0) = mPortAdmittance01;
+    model.portAdmittance.block<3, 3>(3, 3) = mPortAdmittance00;
+  }
 }
 
 void EMT::Ph3::SSN::Transformer::mnaCompInitialize(Real, Real timeStep,
@@ -238,7 +277,7 @@ void EMT::Ph3::SSN::Transformer::mnaCompApplySystemMatrixStamp(
 }
 
 void EMT::Ph3::SSN::Transformer::updateHistory() {
-  const auto &state = **mState;
+  const auto &state = *mStateValue;
   mHistory0 = mSeriesSystemInverse *
               (mInductorAdmittance * state.block<3, 1>(kVoltage0, 0) +
                state.block<3, 1>(kCurrent0, 0));
@@ -252,27 +291,43 @@ void EMT::Ph3::SSN::Transformer::updateHistory() {
 
 void EMT::Ph3::SSN::Transformer::mnaCompApplyRightSideVectorStamp(
     Matrix &rightVector) {
-  const Matrix midpointHistory = -mHistory0 + mHistory1 + mHistoryMagnetizing;
-  const Matrix midpointSource = mMidpointInverse * midpointHistory;
-  const Matrix source0 = mHistory0 + mSeriesAdmittance * midpointSource;
-  const Matrix source1 = mRatioFromReference.real() *
-                         (mSeriesAdmittance * midpointSource - mHistory1);
+  mMidpointHistory = -mHistory0 + mHistory1 + mHistoryMagnetizing;
+  mMidpointSource = mMidpointInverse * mMidpointHistory;
+  mSource0 = mHistory0 + mSeriesAdmittance * mMidpointSource;
+  mSource1 = mRatioFromReference.real() *
+             (mSeriesAdmittance * mMidpointSource - mHistory1);
   const UInt referenceTerminal = mReferenceTerminal;
   const UInt otherTerminal = nonReferenceTerminal();
   if (terminalNotGrounded(referenceTerminal))
     for (UInt phase = 0; phase < 3; ++phase)
       Math::setVectorElement(rightVector,
                              matrixNodeIndex(referenceTerminal, phase),
-                             source0(phase, 0));
+                             mSource0(phase, 0));
   if (terminalNotGrounded(otherTerminal))
     for (UInt phase = 0; phase < 3; ++phase)
       Math::setVectorElement(rightVector, matrixNodeIndex(otherTerminal, phase),
-                             source1(phase, 0));
+                             mSource1(phase, 0));
+}
+
+void EMT::Ph3::SSN::Transformer::mnaAddCompactRightSideVectorStamp(
+    Matrix &rightVector) {
+  const UInt referenceTerminal = mReferenceTerminal;
+  const UInt otherTerminal = nonReferenceTerminal();
+  if (terminalNotGrounded(referenceTerminal))
+    for (UInt phase = 0; phase < 3; ++phase)
+      Math::addToVectorElement(rightVector,
+                               matrixNodeIndex(referenceTerminal, phase),
+                               mSource0(phase, 0));
+  if (terminalNotGrounded(otherTerminal))
+    for (UInt phase = 0; phase < 3; ++phase)
+      Math::addToVectorElement(rightVector,
+                               matrixNodeIndex(otherTerminal, phase),
+                               mSource1(phase, 0));
 }
 
 void EMT::Ph3::SSN::Transformer::mnaCompPreStep(Real, Int) {
   updateHistory();
-  mnaCompApplyRightSideVectorStamp(**mRightVector);
+  mnaCompApplyRightSideVectorStamp(*mRightVectorValue);
 }
 
 EMT::Ph3::SSN::Transformer::PhaseVector
@@ -315,14 +370,14 @@ void EMT::Ph3::SSN::Transformer::mnaCompPostStep(
   const PhaseVector currentMagnetizing =
       mMagnetizingInductorAdmittance * voltageLMag + mHistoryMagnetizing;
 
-  (**mState).block<3, 1>(kVoltage0, 0) = voltageL0;
-  (**mState).block<3, 1>(kCurrent0, 0) = current0;
-  (**mState).block<3, 1>(kVoltage1, 0) = voltageL1;
-  (**mState).block<3, 1>(kCurrent1, 0) = current1;
-  (**mState).block<3, 1>(kVoltageMag, 0) = voltageLMag;
-  (**mState).block<3, 1>(kCurrentMag, 0) = currentMagnetizing;
-  **mIntfVoltage = voltage1 - voltage0;
-  **mIntfCurrent = mOrientationSign * current0;
+  mStateValue->block<3, 1>(kVoltage0, 0) = voltageL0;
+  mStateValue->block<3, 1>(kCurrent0, 0) = current0;
+  mStateValue->block<3, 1>(kVoltage1, 0) = voltageL1;
+  mStateValue->block<3, 1>(kCurrent1, 0) = current1;
+  mStateValue->block<3, 1>(kVoltageMag, 0) = voltageLMag;
+  mStateValue->block<3, 1>(kCurrentMag, 0) = currentMagnetizing;
+  *mIntfVoltageValue = voltage1 - voltage0;
+  *mIntfCurrentValue = mOrientationSign * current0;
 }
 
 void EMT::Ph3::SSN::Transformer::mnaCompAddPreStepDependencies(

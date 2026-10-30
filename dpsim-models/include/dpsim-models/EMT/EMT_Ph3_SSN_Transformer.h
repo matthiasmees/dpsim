@@ -5,6 +5,7 @@
 #pragma once
 
 #include <dpsim-models/Base/Base_Ph3_Transformer.h>
+#include <dpsim-models/EMT/EMT_LinearSSNModel.h>
 #include <dpsim-models/MNASimPowerComp.h>
 
 namespace CPS::EMT::Ph3::SSN {
@@ -33,10 +34,13 @@ public:
   void setReferenceWinding(WindingReference referenceWinding);
 
   void initializeFromNodesAndTerminals(Real frequency) override;
+  void exportFusedModel(LinearSSNModel &model);
   void mnaCompInitialize(Real omega, Real timeStep,
                          Attribute<Matrix>::Ptr leftVector) override;
   void mnaCompApplySystemMatrixStamp(SparseMatrixRow &systemMatrix) override;
   void mnaCompApplyRightSideVectorStamp(Matrix &rightVector) override;
+  Bool mnaHasCompactRightSideVectorStamp() const override { return true; }
+  void mnaAddCompactRightSideVectorStamp(Matrix &rightVector) override;
   void mnaCompPreStep(Real time, Int timeStepCount) override;
   void mnaCompPostStep(Real time, Int timeStepCount,
                        Attribute<Matrix>::Ptr &leftVector) override;
@@ -54,6 +58,7 @@ private:
   using PhaseVector = Eigen::Matrix<Real, 3, 1>;
 
   Attribute<Matrix>::Ptr mState;
+  Matrix *mStateValue;
   Matrix mSeriesResistanceHalf;
   Matrix mSeriesInductanceHalf;
   Matrix mInductorAdmittance;
@@ -69,6 +74,10 @@ private:
   Matrix mHistory0;
   Matrix mHistory1;
   Matrix mHistoryMagnetizing;
+  Matrix mMidpointHistory;
+  Matrix mMidpointSource;
+  Matrix mSource0;
+  Matrix mSource1;
   Matrix mMagnetizingResistance;
   Matrix mMagnetizingInductance;
   Real mNoLoadCurrent = 0.01;

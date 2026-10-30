@@ -13,6 +13,9 @@ using namespace CPS;
 EMT::Ph3::ReducedOrderSynchronGeneratorVBR::ReducedOrderSynchronGeneratorVBR(
     const String &uid, const String &name, Logger::Level logLevel)
     : Base::ReducedOrderSynchronGenerator<Real>(uid, name, logLevel) {
+  mVdq0Value = &mVdq0->get();
+  mIdq0Value = &mIdq0->get();
+  mEfValue = &mEf->get();
 
   mPhaseType = PhaseType::ABC;
   setTerminalNumber(1);

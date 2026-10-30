@@ -84,7 +84,7 @@ protected:
                                         const Matrix &measurement,
                                         Matrix &output) const = 0;
 
-  Matrix calculateHistoryVector() const override final;
+  void calculateHistoryVector(Matrix &history) const override final;
   void updateState(const Matrix &uOld, const Matrix &uNew) override final;
   void recomputeDiscreteModel() override final;
 

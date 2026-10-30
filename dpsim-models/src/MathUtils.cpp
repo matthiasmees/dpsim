@@ -12,8 +12,31 @@
 #include <cstdint>
 #include <cstring>
 #include <stdexcept>
+#include <unordered_map>
 
 using namespace CPS;
+
+namespace {
+using SparseCache = std::unordered_map<std::uint64_t, Eigen::Index>;
+std::unordered_map<const CPS::SparseMatrixRow *, SparseCache>
+    gSparseMatrixValueCaches;
+
+std::uint64_t sparseKey(Eigen::Index row, Eigen::Index column) {
+  return (static_cast<std::uint64_t>(row) << 32) |
+         static_cast<std::uint64_t>(column);
+}
+
+Real *cachedSparseValue(CPS::SparseMatrixRow &mat, Eigen::Index row,
+                        Eigen::Index column) {
+  auto cacheIt = gSparseMatrixValueCaches.find(&mat);
+  if (cacheIt == gSparseMatrixValueCaches.end())
+    return nullptr;
+  auto valueIt = cacheIt->second.find(sparseKey(row, column));
+  if (valueIt == cacheIt->second.end())
+    return nullptr;
+  return mat.valuePtr() + valueIt->second;
+}
+} // namespace
 
 // #### Angular Operations ####
 Real Math::radtoDeg(Real rad) { return rad * 180 / PI; }
@@ -121,10 +144,16 @@ void Math::setMatrixElement(SparseMatrixRow &mat, Matrix::Index row,
   Eigen::Index harmRow = row + harmonicOffset * freqIdx;
   Eigen::Index harmCol = column + harmonicOffset * freqIdx;
 
-  mat.coeffRef(harmRow, harmCol) = value.real();
-  mat.coeffRef(harmRow + complexOffset, harmCol + complexOffset) = value.real();
-  mat.coeffRef(harmRow, harmCol + complexOffset) = -value.imag();
-  mat.coeffRef(harmRow + complexOffset, harmCol) = value.imag();
+  auto set = [&mat](Eigen::Index r, Eigen::Index c, Real v) {
+    if (Real *cached = cachedSparseValue(mat, r, c))
+      *cached = v;
+    else
+      mat.coeffRef(r, c) = v;
+  };
+  set(harmRow, harmCol, value.real());
+  set(harmRow + complexOffset, harmCol + complexOffset, value.real());
+  set(harmRow, harmCol + complexOffset, -value.imag());
+  set(harmRow + complexOffset, harmCol, value.imag());
 }
 
 void Math::addToMatrixElement(SparseMatrixRow &mat, Matrix::Index row,
@@ -136,11 +165,16 @@ void Math::addToMatrixElement(SparseMatrixRow &mat, Matrix::Index row,
   Eigen::Index harmRow = row + harmonicOffset * freqIdx;
   Eigen::Index harmCol = column + harmonicOffset * freqIdx;
 
-  mat.coeffRef(harmRow, harmCol) += value.real();
-  mat.coeffRef(harmRow + complexOffset, harmCol + complexOffset) +=
-      value.real();
-  mat.coeffRef(harmRow, harmCol + complexOffset) -= value.imag();
-  mat.coeffRef(harmRow + complexOffset, harmCol) += value.imag();
+  auto add = [&mat](Eigen::Index r, Eigen::Index c, Real v) {
+    if (Real *cached = cachedSparseValue(mat, r, c))
+      *cached += v;
+    else
+      mat.coeffRef(r, c) += v;
+  };
+  add(harmRow, harmCol, value.real());
+  add(harmRow + complexOffset, harmCol + complexOffset, value.real());
+  add(harmRow, harmCol + complexOffset, -value.imag());
+  add(harmRow + complexOffset, harmCol, value.imag());
 }
 
 void Math::addToMatrixElement(SparseMatrixRow &mat, Matrix::Index row,
@@ -152,15 +186,24 @@ void Math::addToMatrixElement(SparseMatrixRow &mat, Matrix::Index row,
   Eigen::Index harmRow = row + harmonicOffset * freqIdx;
   Eigen::Index harmCol = column + harmonicOffset * freqIdx;
 
-  mat.coeffRef(harmRow, harmCol) += value(0, 0);
-  mat.coeffRef(harmRow + complexOffset, harmCol + complexOffset) += value(1, 1);
-  mat.coeffRef(harmRow, harmCol + complexOffset) += value(0, 1);
-  mat.coeffRef(harmRow + complexOffset, harmCol) += value(1, 0);
+  auto add = [&mat](Eigen::Index r, Eigen::Index c, Real v) {
+    if (Real *cached = cachedSparseValue(mat, r, c))
+      *cached += v;
+    else
+      mat.coeffRef(r, c) += v;
+  };
+  add(harmRow, harmCol, value(0, 0));
+  add(harmRow + complexOffset, harmCol + complexOffset, value(1, 1));
+  add(harmRow, harmCol + complexOffset, value(0, 1));
+  add(harmRow + complexOffset, harmCol, value(1, 0));
 }
 
 void Math::setMatrixElement(SparseMatrixRow &mat, Matrix::Index row,
                             Matrix::Index column, Real value) {
-  mat.coeffRef(row, column) = value;
+  if (Real *cached = cachedSparseValue(mat, row, column))
+    *cached = value;
+  else
+    mat.coeffRef(row, column) = value;
 }
 
 void Math::addToMatrixElement(SparseMatrixRow &mat, std::vector<UInt> rows,
@@ -171,7 +214,26 @@ void Math::addToMatrixElement(SparseMatrixRow &mat, std::vector<UInt> rows,
 
 void Math::addToMatrixElement(SparseMatrixRow &mat, Matrix::Index row,
                               Matrix::Index column, Real value) {
-  mat.coeffRef(row, column) = mat.coeff(row, column) + value;
+  if (Real *cached = cachedSparseValue(mat, row, column))
+    *cached += value;
+  else
+    mat.coeffRef(row, column) = mat.coeff(row, column) + value;
+}
+
+void Math::prepareSparseMatrixValueCache(SparseMatrixRow &mat) {
+  SparseCache cache;
+  cache.reserve(static_cast<std::size_t>(mat.nonZeros()));
+  for (Eigen::Index row = 0; row < mat.outerSize(); ++row) {
+    for (SparseMatrixRow::InnerIterator it(mat, row); it; ++it) {
+      cache.emplace(sparseKey(it.row(), it.col()),
+                    &it.valueRef() - mat.valuePtr());
+    }
+  }
+  gSparseMatrixValueCaches[&mat] = std::move(cache);
+}
+
+void Math::clearSparseMatrixValueCache(SparseMatrixRow &mat) {
+  gSparseMatrixValueCaches.erase(&mat);
 }
 
 void Math::addToMatrixElement(SparseMatrixRow &mat, std::vector<UInt> rows,

@@ -126,6 +126,8 @@ protected:
   Matrix mDVqd = Matrix::Zero(2, 1);
   /// Equivalent VBR Stator Resistance
   MatrixFixedSize<3, 3> R_eq_vbr = MatrixFixedSize<3, 3>::Zero(3, 3);
+  /// Inverse of the equivalent VBR stator resistance, reused by pre/post-step.
+  MatrixFixedSize<3, 3> mR_eq_vbr_inv = MatrixFixedSize<3, 3>::Zero(3, 3);
   /// Equivalent VBR Stator Voltage Source
   Matrix E_eq_vbr = Matrix::Zero(3, 1);
   /// Park Transformation Matrix
@@ -238,10 +240,11 @@ public:
   void stepInPerUnit();
 
   /// Park transform as described in Krause
-  Matrix parkTransform(Real theta, Real a, Real b, Real c);
+  MatrixFixedSize<3, 1> parkTransform(Real theta, Real a, Real b, Real c);
 
   /// Inverse Park transform as described in Krause
-  Matrix inverseParkTransform(Real theta, Real q, Real d, Real zero);
+  MatrixFixedSize<3, 1> inverseParkTransform(Real theta, Real q, Real d,
+                                             Real zero);
 
   /// Calculate inductance Matrix L and its derivative
   void CalculateL();
@@ -279,6 +282,7 @@ public:
                                  Attribute<Matrix>::Ptr &leftVector) override;
   /// Mark that parameter changes so that system matrix is updated
   Bool hasParameterChanged() override { return true; }
+  Bool hasContinuouslyChangingSystemMatrix() const override { return true; }
 };
 } // namespace Ph3
 } // namespace EMT

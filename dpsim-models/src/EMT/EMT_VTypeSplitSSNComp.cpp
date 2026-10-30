@@ -181,9 +181,9 @@ void EMT::VTypeSplitSSNComp::recomputeDiscreteModel() {
   rebuildSplitDiscreteModel(mControllerBd);
 }
 
-Matrix EMT::VTypeSplitSSNComp::calculateHistoryVector() const {
-  return mC * (mdA * (**mX) + mdB * (**mIntfVoltage) +
-               2.0 * mdBControllerOutput * mDelayedControllerOutput);
+void EMT::VTypeSplitSSNComp::calculateHistoryVector(Matrix &history) const {
+  history = mC * (mdA * (**mX) + mdB * (**mIntfVoltage) +
+                  2.0 * mdBControllerOutput * mDelayedControllerOutput);
 }
 
 void EMT::VTypeSplitSSNComp::updateState(const Matrix &uOld,

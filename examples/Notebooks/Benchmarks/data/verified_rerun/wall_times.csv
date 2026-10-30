@@ -1,0 +1,17 @@
+configuration,run,wall_s
+ssn,1,81.48
+ssn,2,83.15
+ssn,3,82.95
+ssn,4,79.29
+ssn,5,80.57
+conventional,1,248.06
+aggregate,1,69.20
+aggregate,2,68.96
+aggregate,3,68.18
+aggregate,4,68.37
+aggregate,5,71.52
+grouped_passive_huge_ssn,1,85.76
+grouped_passive_huge_ssn,2,85.54
+grouped_passive_huge_ssn,3,85.17
+grouped_passive_huge_ssn,4,85.45
+grouped_passive_huge_ssn,5,85.39

@@ -34,7 +34,7 @@ protected:
   VTypeVariableSSNComp(String uid, String name, Int inputSize, Int outputSize,
                        Logger::Level logLevel = Logger::Level::off);
 
-  Matrix calculateHistoryVector() const override final;
+  void calculateHistoryVector(Matrix &history) const override final;
   MatrixComp calculateSteadyStateStateFromInput(const MatrixComp &u,
                                                 Real frequency) const override;
   MatrixComp

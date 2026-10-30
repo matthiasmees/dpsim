@@ -5,6 +5,7 @@
 #pragma once
 
 #include <dpsim-models/Base/Base_Ph3_PiLine.h>
+#include <dpsim-models/EMT/EMT_LinearSSNModel.h>
 #include <dpsim-models/MNASimPowerComp.h>
 
 namespace CPS {
@@ -34,6 +35,7 @@ public:
                      const Matrix &parallelConductance = Matrix::Zero(3, 3));
 
   void initializeFromNodesAndTerminals(Real frequency) override;
+  void exportFusedModel(LinearSSNModel &model);
   void mnaCompInitialize(Real omega, Real timeStep,
                          Attribute<Matrix>::Ptr leftVector) override;
   void mnaCompApplySystemMatrixStamp(SparseMatrixRow &systemMatrix) override;
@@ -59,6 +61,7 @@ private:
   using TerminalVoltage = Eigen::Matrix<Real, 3, 1>;
 
   Attribute<Matrix>::Ptr mState;
+  Matrix *mStateValue;
   Matrix mInductorAdmittance;
   Matrix mSeriesAdmittance;
   Matrix mSeriesSystemInverse;

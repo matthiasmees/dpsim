@@ -100,6 +100,7 @@ protected:
   using MnaSolver<VarType>::mMNAIntfVariableComps;
   using MnaSolver<VarType>::mRightSideVector;
   using MnaSolver<VarType>::mLeftSideVector;
+  using MnaSolver<VarType>::mLeftSideVectorValue;
   using MnaSolver<VarType>::mCurrentSwitchStatus;
   using MnaSolver<VarType>::mRightVectorStamps;
   using MnaSolver<VarType>::mNumNetNodes;
@@ -205,6 +206,7 @@ public:
   public:
     SolveTask(MnaSolverDirect<VarType> &solver)
         : Task(solver.mName + ".Solve"), mSolver(solver) {
+      setFastExecutor<SolveTask, &SolveTask::executeFastImpl>(this);
 
       for (auto it : solver.mMNAComponents) {
         if (it->getRightVector()->get().size() != 0)
@@ -219,6 +221,9 @@ public:
     void execute(Real time, Int timeStepCount) {
       mSolver.solve(time, timeStepCount);
     }
+    void executeFastImpl(Real time, Int timeStepCount) {
+      mSolver.solve(time, timeStepCount);
+    }
 
   private:
     MnaSolverDirect<VarType> &mSolver;
@@ -229,6 +234,7 @@ public:
   public:
     SolveTaskHarm(MnaSolverDirect<VarType> &solver, UInt freqIdx)
         : Task(solver.mName + ".Solve"), mSolver(solver), mFreqIdx(freqIdx) {
+      setFastExecutor<SolveTaskHarm, &SolveTaskHarm::executeFastImpl>(this);
 
       for (auto it : solver.mMNAComponents) {
         if (it->getRightVector()->get().size() != 0)
@@ -245,6 +251,9 @@ public:
     void execute(Real time, Int timeStepCount) {
       mSolver.solveWithHarmonics(time, timeStepCount, mFreqIdx);
     }
+    void executeFastImpl(Real time, Int timeStepCount) {
+      mSolver.solveWithHarmonics(time, timeStepCount, mFreqIdx);
+    }
 
   private:
     MnaSolverDirect<VarType> &mSolver;
@@ -256,6 +265,7 @@ public:
   public:
     SolveTaskRecomp(MnaSolverDirect<VarType> &solver)
         : Task(solver.mName + ".Solve"), mSolver(solver) {
+      setFastExecutor<SolveTaskRecomp, &SolveTaskRecomp::executeFastImpl>(this);
 
       for (auto it : solver.mMNAComponents) {
         if (it->getRightVector()->get().size() != 0)
@@ -275,6 +285,10 @@ public:
       mSolver.solveWithSystemMatrixRecomputation(time, timeStepCount);
       mSolver.log(time, timeStepCount);
     }
+    void executeFastImpl(Real time, Int timeStepCount) {
+      mSolver.solveWithSystemMatrixRecomputation(time, timeStepCount);
+      mSolver.log(time, timeStepCount);
+    }
 
   private:
     MnaSolverDirect<VarType> &mSolver;
@@ -285,6 +299,8 @@ public:
   public:
     StateSpaceExtractionTask(MnaSolverDirect<VarType> &solver)
         : Task(solver.mName + ".StateSpaceExtraction"), mSolver(solver) {
+      setFastExecutor<StateSpaceExtractionTask,
+                      &StateSpaceExtractionTask::executeFastImpl>(this);
       mAttributeDependencies.push_back(solver.mLeftSideVector);
       if (solver.mStateSpaceExtractor) {
         // Some contributors update their matrices in post-step;
@@ -299,6 +315,9 @@ public:
     void execute(Real time, Int timeStepCount) {
       mSolver.extractStateSpace(time);
     }
+    void executeFastImpl(Real time, Int timeStepCount) {
+      mSolver.extractStateSpace(time);
+    }
 
   private:
     MnaSolverDirect<VarType> &mSolver;
@@ -309,11 +328,15 @@ public:
   public:
     LogTask(MnaSolverDirect<VarType> &solver)
         : Task(solver.mName + ".Log"), mSolver(solver) {
+      setFastExecutor<LogTask, &LogTask::executeFastImpl>(this);
       mAttributeDependencies.push_back(solver.mLeftSideVector);
       mModifiedAttributes.push_back(Scheduler::external);
     }
 
     void execute(Real time, Int timeStepCount) {
+      mSolver.log(time, timeStepCount);
+    }
+    void executeFastImpl(Real time, Int timeStepCount) {
       mSolver.log(time, timeStepCount);
     }
 

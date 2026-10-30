@@ -27,6 +27,10 @@ public:
   Matrix mIvbr;
 
 protected:
+  Matrix *mVdq0Value = nullptr;
+  Matrix *mIdq0Value = nullptr;
+  Real *mEfValue = nullptr;
+
   /// Resistance matrix in dq0 reference frame
   MatrixFixedSize<3, 3> mResistanceMatrixDq0;
 
@@ -66,6 +70,7 @@ protected:
 public:
   /// Mark that parameter changes so that system matrix is updated
   Bool hasParameterChanged() override { return true; };
+  Bool hasContinuouslyChangingSystemMatrix() const override { return true; };
 };
 } // namespace Ph3
 } // namespace EMT

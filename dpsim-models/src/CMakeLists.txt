@@ -96,6 +96,9 @@ list(APPEND MODELS_SOURCES
 	DP/DP_Ph3_GenericTwoTerminalITypeSSN.cpp
 
 	EMT/EMT_SSNComp.cpp
+	EMT/EMT_LinearSSNAggregate.cpp
+	EMT/EMT_LinearSSNFused.cpp
+	EMT/EMT_LinearSSNGroup.cpp
 	EMT/EMT_VTypeSSNComp.cpp
 	EMT/EMT_VTypeSplitSSNComp.cpp
 	EMT/EMT_VTypeVariableSSNComp.cpp

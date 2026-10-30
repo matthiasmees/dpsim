@@ -67,6 +67,7 @@ template <typename VarType> void MnaSolver<VarType>::initialize() {
     }
   } else {
     mLeftSideVector = AttributeStatic<Matrix>::make();
+    mLeftSideVectorValue = &mLeftSideVector->get();
   }
 
   SPDLOG_LOGGER_INFO(mSLog, "-- Process topology");
@@ -401,8 +402,9 @@ void MnaSolver<VarType>::initializeStateSpaceExtractor() {
 
 template <typename VarType>
 Bool MnaSolver<VarType>::hasVariableComponentChanged() {
-  for (auto varElem : mVariableComps) {
-    if (varElem->hasParameterChanged()) {
+  for (UInt i = 0; i < mVariableComps.size(); ++i) {
+    auto &varElem = mVariableComps[i];
+    if (mVariableCompAlwaysDirty[i] || varElem->hasParameterChanged()) {
       auto idObj = std::dynamic_pointer_cast<IdentifiedObject>(varElem);
       SPDLOG_LOGGER_DEBUG(
           mSLog, "Component ({:s} {:s}) value changed -> Update System Matrix",
@@ -504,6 +506,8 @@ template <typename VarType> void MnaSolver<VarType>::identifyTopologyObjects() {
         std::dynamic_pointer_cast<CPS::MNAVariableCompInterface>(comp);
     if (varComp) {
       mVariableComps.push_back(varComp);
+      mVariableCompAlwaysDirty.push_back(
+          varComp->hasContinuouslyChangingSystemMatrix());
       auto mnaComp = std::dynamic_pointer_cast<CPS::MNAInterface>(varComp);
       if (mnaComp)
         mMNAIntfVariableComps.push_back(mnaComp);
@@ -779,12 +783,12 @@ template <typename VarType> Task::List MnaSolver<VarType>::getTasks() {
     for (auto task : node->mnaTasks())
       l.push_back(task);
   }
-  // TODO signal components should be moved out of MNA solver
   for (auto comp : mSimSignalComps) {
     for (auto task : comp->getTasks()) {
       l.push_back(task);
     }
   }
+
   if (mFrequencyParallel) {
     for (UInt i = 0; i < mSystem.mFrequencies.size(); ++i)
       l.push_back(createSolveTaskHarm(i));

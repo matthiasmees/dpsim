@@ -7,6 +7,9 @@
 #include <dpsim-models/DP/DP_Ph3_SSN_PiLine.h>
 #include <dpsim-models/DP/DP_Ph3_SSN_SynchronGenerator4Order.h>
 #include <dpsim-models/DP/DP_Ph3_SSN_Transformer.h>
+#include <dpsim-models/EMT/EMT_LinearSSNAggregate.h>
+#include <dpsim-models/EMT/EMT_LinearSSNFused.h>
+#include <dpsim-models/EMT/EMT_LinearSSNGroup.h>
 #include <dpsim-models/EMT/EMT_Ph3_PiLine_NoSub.h>
 #include <dpsim-models/EMT/EMT_Ph3_SSN_ImpedanceLoad.h>
 #include <dpsim-models/EMT/EMT_Ph3_SSN_PiLine.h>
@@ -374,7 +377,7 @@ void runDP(const SystemTopology &systemPF, bool useSSNPiLine,
   for (int id : {1, 10, 30, 69, 100, 118})
     logger->logAttribute("N" + std::to_string(id) + ".V",
                          nodes.at(id - 1)->attribute("v"));
-  Simulation sim(name);
+  Simulation sim(name, noLogger ? Logger::Level::off : Logger::Level::info);
   sim.setSystem(system);
   sim.setDomain(Domain::DP);
   sim.setSolverType(Solver::Type::MNA);
@@ -398,7 +401,8 @@ void runDP(const SystemTopology &systemPF, bool useSSNPiLine,
 void runEMT(const SystemTopology &systemPF, bool useSSNPiLine,
             bool usePiLineNoSub, bool useSSNImpedanceLoad,
             bool useSSNTransformer, bool useSSNGenerator, bool profile,
-            bool shortRun, bool noLogger) {
+            bool shortRun, bool noLogger, bool useKluPartial, bool use50usStep,
+            bool useLinearAggregate, bool usePaperSSNGroup) {
   String name = simulationName("EMT", useSSNPiLine, useSSNImpedanceLoad,
                                useSSNTransformer, useSSNGenerator);
   if (usePiLineNoSub) {
@@ -412,6 +416,10 @@ void runEMT(const SystemTopology &systemPF, bool useSSNPiLine,
   }
   if (profile)
     name += "_DetailedProfile";
+  if (useLinearAggregate)
+    name += "_LinearAggregate";
+  if (usePaperSSNGroup)
+    name += "_SSNGroup";
   Logger::setLogDir("logs/" + name);
   auto logger = DataLogger::make(name, true, 2);
   std::vector<EMT::SimNode::Ptr> nodes;
@@ -420,8 +428,34 @@ void runEMT(const SystemTopology &systemPF, bool useSSNPiLine,
     auto node =
         EMT::SimNode::make("N" + std::to_string(bus.id), PhaseType::ABC);
     nodes.push_back(node);
-    systemNodes.push_back(node);
   }
+  std::unordered_map<int, EMT::SimNode::Ptr> retainedByBus;
+  if (usePaperSSNGroup) {
+    for (const auto &gen : generators)
+      retainedByBus.emplace(
+          gen.bus,
+          EMT::SimNode::make("N" + std::to_string(gen.bus), PhaseType::ABC));
+    for (const auto &entry : retainedByBus)
+      systemNodes.push_back(entry.second);
+    for (const auto &bus : buses) {
+      const auto pfNode =
+          const_cast<SystemTopology &>(systemPF).node<SP::SimNode>(
+              "N" + std::to_string(bus.id));
+      if (!pfNode)
+        throw std::runtime_error("Missing power-flow node for paper SSN group");
+      // Use the exact complex PF voltage copied by SystemTopology for EMT
+      // initialization, including its RMS-to-peak scaling and angle.
+      nodes.at(bus.id - 1)->setInitialVoltage(pfNode->singleVoltage());
+    }
+  } else {
+    for (const auto &node : nodes)
+      systemNodes.push_back(node);
+  }
+  auto simulationNode = [&](int bus) -> EMT::SimNode::Ptr {
+    if (usePaperSSNGroup)
+      return retainedByBus.at(bus);
+    return nodes.at(bus - 1);
+  };
   SystemComponentList components;
   for (const auto &gen : generators) {
     const auto &bus = busFor(gen.bus);
@@ -440,7 +474,7 @@ void runEMT(const SystemTopology &systemPF, bool useSSNPiLine,
         logger->logAttribute("Gen10.SSNState", machine->attribute("x"));
         logger->logAttribute("Gen10.SSNCurrent", machine->attribute("i_intf"));
       }
-      machine->connect({EMT::SimNode::GND, nodes.at(gen.bus - 1)});
+      machine->connect({EMT::SimNode::GND, simulationNode(gen.bus)});
       components.push_back(machine);
     } else {
       auto machine = EMT::Ph3::SynchronGenerator4OrderVBR::make(
@@ -454,11 +488,14 @@ void runEMT(const SystemTopology &systemPF, bool useSSNPiLine,
         logger->logAttribute(prefix + "Tm", machine->attribute("Tm"));
         logger->logAttribute(prefix + "Te", machine->attribute("Te"));
       }
-      machine->connect({nodes.at(gen.bus - 1)});
+      machine->connect({simulationNode(gen.bus)});
       components.push_back(machine);
     }
   }
   int loadIndex = 0;
+  SystemComponentList linearComponents;
+  auto &linearTarget =
+      (useLinearAggregate || usePaperSSNGroup) ? linearComponents : components;
   for (const auto &bus : buses) {
     const Real g = bus.gs * 1e6 / std::pow(baseV(bus), 2);
     const Real b = bus.bs * 1e6 / std::pow(baseV(bus), 2);
@@ -469,7 +506,7 @@ void runEMT(const SystemTopology &systemPF, bool useSSNPiLine,
         load->setParameters(bus.pd * 1e6, bus.qd * 1e6, bus.vm * baseV(bus), g,
                             b);
         load->connect({nodes.at(bus.id - 1)});
-        components.push_back(load);
+        linearTarget.push_back(load);
       }
       continue;
     }
@@ -478,27 +515,69 @@ void runEMT(const SystemTopology &systemPF, bool useSSNPiLine,
       load->setParameters(parameter3(bus.pd * 1e6 / 3.),
                           parameter3(bus.qd * 1e6 / 3.), bus.vm * baseV(bus));
       load->connect({nodes.at(bus.id - 1)});
-      components.push_back(load);
+      linearTarget.push_back(load);
     }
     if (g != 0. || b != 0.) {
       auto shunt = EMT::Ph3::Shunt::make("Shunt" + std::to_string(bus.id));
       shunt->setParameters(g, b);
       shunt->connect({nodes.at(bus.id - 1)});
-      components.push_back(shunt);
+      linearTarget.push_back(shunt);
     }
   }
-  addBranches(nodes, components, useSSNPiLine, usePiLineNoSub,
+  addBranches(nodes, linearTarget, useSSNPiLine, usePiLineNoSub,
               useSSNTransformer);
+  if (useLinearAggregate) {
+    EMT::LinearSSNAggregate::ComponentList aggregateComponents;
+    aggregateComponents.reserve(linearComponents.size());
+    for (const auto &component : linearComponents)
+      aggregateComponents.push_back(
+          std::dynamic_pointer_cast<EMT::LinearSSNAggregate::Component>(
+              component));
+    components.push_back(EMT::LinearSSNFused::make(
+        "LinearNetwork", std::move(aggregateComponents), nodes));
+  } else if (usePaperSSNGroup) {
+    EMT::LinearSSNGroup::ComponentList groupComponents;
+    groupComponents.reserve(linearComponents.size());
+    for (const auto &component : linearComponents)
+      groupComponents.push_back(
+          std::dynamic_pointer_cast<EMT::LinearSSNGroup::Component>(component));
+    EMT::SimNode::List retainedNodes;
+    retainedNodes.reserve(retainedByBus.size());
+    for (const auto &gen : generators)
+      retainedNodes.push_back(retainedByBus.at(gen.bus));
+    components.push_back(EMT::LinearSSNGroup::make(
+        "LinearNetworkGroup", std::move(groupComponents), nodes,
+        std::move(retainedNodes)));
+  }
   SystemTopology system(frequency, systemNodes, components);
   system.initWithPowerflow(systemPF, Domain::EMT);
-  for (int id : {1, 10, 30, 69, 100, 118})
-    logger->logAttribute("N" + std::to_string(id) + ".V",
-                         nodes.at(id - 1)->attribute("v"));
-  Simulation sim(name);
+  for (int id : {1, 10, 30, 69, 100, 118}) {
+    if (!usePaperSSNGroup || retainedByBus.count(id) != 0)
+      logger->logAttribute("N" + std::to_string(id) + ".V",
+                           usePaperSSNGroup
+                               ? retainedByBus.at(id)->attribute("v")
+                               : nodes.at(id - 1)->attribute("v"));
+  }
+  Simulation sim(name, noLogger ? Logger::Level::off : Logger::Level::info);
   sim.setSystem(system);
   sim.setDomain(Domain::EMT);
   sim.setSolverType(Solver::Type::MNA);
-  sim.setTimeStep(5e-4);
+  if (usePaperSSNGroup) {
+    // The paper reduction produces a dense Schur-complement block on the
+    // retained generator buses. DenseLU is substantially faster than KLU for
+    // this reduced system; the ordinary and fused paths remain on KLU.
+    sim.setDirectLinearSolverImplementation(DirectLinearSolverImpl::DenseLU);
+    DirectLinearSolverConfiguration denseConfig;
+    denseConfig.setStaticPreconditioner(true);
+    sim.setDirectLinearSolverConfiguration(denseConfig);
+  } else if (useKluPartial) {
+    DirectLinearSolverConfiguration kluConfig;
+    kluConfig.setPartialRefactorizationMethod(
+        PARTIAL_REFACTORIZATION_METHOD::FACTORIZATION_PATH);
+    kluConfig.setFillInReductionMethod(FILL_IN_REDUCTION_METHOD::AMD_NV);
+    sim.setDirectLinearSolverConfiguration(kluConfig);
+  }
+  sim.setTimeStep(use50usStep ? 5e-5 : 5e-4);
   sim.setFinalTime(shortRun ? 1. : 30.);
   sim.doInitFromNodesAndTerminals(true);
   sim.setLogStepTimes(profile);
@@ -517,10 +596,11 @@ void runEMT(const SystemTopology &systemPF, bool useSSNPiLine,
 } // namespace
 
 int main(int argc, char **argv) {
-  if (argc < 2 || argc > 9 ||
+  if (argc < 2 || argc > 11 ||
       (std::string(argv[1]) != "dp" && std::string(argv[1]) != "emt")) {
     std::cerr << "Usage: IEEE118_Ph3 dp|emt [allssn|ssn|nosub] [ssnload] "
-                 "[ssntrafo] [ssngen] [short] [nolog] [profile]\n";
+                 "[ssntrafo] [ssngen] [conventional] [short] [nolog] "
+                 "[profile] [dt50us] [aggregate]\n";
     return 2;
   }
 #ifdef IEEE118_DEFAULT_SSN_MODE
@@ -537,6 +617,11 @@ int main(int argc, char **argv) {
   bool profile = false;
   bool shortRun = false;
   bool noLogger = false;
+  bool useKluPartial = false;
+  bool use50usStep = false;
+  bool forceConventional = false;
+  bool useLinearAggregate = false;
+  bool usePaperSSNGroup = false;
   for (int arg = 2; arg < argc; ++arg) {
     const std::string mode(argv[arg]);
     if (mode == "allssn") {
@@ -553,19 +638,49 @@ int main(int argc, char **argv) {
       useSSNTransformer = true;
     else if (mode == "ssngen")
       useSSNGenerator = true;
+    else if (mode == "conventional")
+      forceConventional = true;
     else if (mode == "profile") {
       profile = true;
-      shortRun = true;
       noLogger = true;
     } else if (mode == "short")
       shortRun = true;
     else if (mode == "nolog")
       noLogger = true;
+    else if (mode == "klupartial")
+      useKluPartial = true;
+    else if (mode == "dt50us")
+      use50usStep = true;
+    else if (mode == "aggregate")
+      useLinearAggregate = true;
+    else if (mode == "paper")
+      usePaperSSNGroup = true;
     else {
       std::cerr << "Optional modes are 'allssn', 'ssn', 'nosub', 'ssnload', "
-                   "'ssntrafo', 'ssngen', 'short', 'nolog', and 'profile'.\n";
+                   "'ssntrafo', 'ssngen', 'short', 'nolog', 'klupartial', "
+                   "'profile', 'dt50us', 'aggregate', 'paper', and "
+                   "'conventional'.\n";
       return 2;
     }
+  }
+  if (forceConventional) {
+    useSSNPiLine = false;
+    useSSNImpedanceLoad = false;
+    useSSNTransformer = false;
+    useSSNGenerator = false;
+  }
+  if (useLinearAggregate && (!useSSNPiLine || !useSSNImpedanceLoad ||
+                             !useSSNTransformer || usePiLineNoSub)) {
+    std::cerr << "aggregate requires allssn and cannot be combined with "
+                 "nosub or conventional.\n";
+    return 2;
+  }
+  if (usePaperSSNGroup &&
+      (!useSSNPiLine || !useSSNImpedanceLoad || !useSSNTransformer ||
+       usePiLineNoSub || useLinearAggregate)) {
+    std::cerr << "paper requires allssn and cannot be combined with nosub or "
+                 "aggregate.\n";
+    return 2;
   }
   auto systemPF = makePowerflowSystem();
   Simulation pf("IEEE118_SP_PF", Logger::Level::off);
@@ -582,6 +697,7 @@ int main(int argc, char **argv) {
           useSSNGenerator, profile, shortRun, noLogger);
   else
     runEMT(systemPF, useSSNPiLine, usePiLineNoSub, useSSNImpedanceLoad,
-           useSSNTransformer, useSSNGenerator, profile, shortRun, noLogger);
+           useSSNTransformer, useSSNGenerator, profile, shortRun, noLogger,
+           useKluPartial, use50usStep, useLinearAggregate, usePaperSSNGroup);
   return 0;
 }

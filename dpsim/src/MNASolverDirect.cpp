@@ -7,7 +7,11 @@
  *********************************************************************************/
 
 #include <dpsim/MNASolverDirect.h>
+
+#include <dpsim-models/MathUtils.h>
 #include <dpsim/SequentialScheduler.h>
+
+#include <algorithm>
 
 using namespace DPsim;
 using namespace CPS;
@@ -97,6 +101,7 @@ void MnaSolverDirect<VarType>::stampVariableSystemMatrix() {
   // Calculate factorization of current matrix
   mDirectLinearSolverVariableSystemMatrix->preprocessing(
       mVariableSystemMatrix, mListVariableSystemMatrixEntries);
+  CPS::Math::prepareSparseMatrixValueCache(mVariableSystemMatrix);
 
   auto start = std::chrono::steady_clock::now();
   mDirectLinearSolverVariableSystemMatrix->factorize(mVariableSystemMatrix);
@@ -123,22 +128,25 @@ void MnaSolverDirect<VarType>::solveWithSystemMatrixRecomputation(
   // Calculate new solution vector
   auto start = std::chrono::steady_clock::now();
   mDirectLinearSolverVariableSystemMatrix->solveInto(mRightSideVector,
-                                                     **mLeftSideVector);
+                                                     *mLeftSideVectorValue);
   auto end = std::chrono::steady_clock::now();
   std::chrono::duration<Real> diff = end - start;
   mSolveTimes.push_back(diff.count());
 
   // TODO split into separate task? (dependent on x, updating all v attributes)
   for (UInt nodeIdx = 0; nodeIdx < mNumNetNodes; ++nodeIdx)
-    mNodes[nodeIdx]->mnaUpdateVoltage(**mLeftSideVector);
+    mNodes[nodeIdx]->mnaUpdateVoltage(*mLeftSideVectorValue);
 
   // Components' states will be updated by the post-step tasks
 }
 
 template <typename VarType>
 void MnaSolverDirect<VarType>::recomputeSystemMatrix(Real time) {
-  // Start from base matrix
-  mVariableSystemMatrix = mBaseSystemMatrix;
+  // The sparse structure is fixed after initialization. Reset only the
+  // coefficient values instead of copying/reallocating the full sparse
+  // matrix on every timestep.
+  std::copy_n(mBaseSystemMatrix.valuePtr(), mBaseSystemMatrix.nonZeros(),
+              mVariableSystemMatrix.valuePtr());
 
   // Now stamp variable elements and switches into matrix
   for (auto comp : mMNAIntfVariableComps)
@@ -307,8 +315,8 @@ void MnaSolverDirect<VarType>::solve(Real time, Int timeStepCount) {
     if (Solver::mLogSolveTimes)
       start = std::chrono::steady_clock::now();
 
-    mDirectLinearSolvers[mCurrentSwitchStatus][0]->solveInto(mRightSideVector,
-                                                             **mLeftSideVector);
+    mDirectLinearSolvers[mCurrentSwitchStatus][0]->solveInto(
+        mRightSideVector, *mLeftSideVectorValue);
 
     if (Solver::mLogSolveTimes) {
       auto end = std::chrono::steady_clock::now();
@@ -320,7 +328,7 @@ void MnaSolverDirect<VarType>::solve(Real time, Int timeStepCount) {
   // CHECK: Is this really required? Or can operations actually become part of
   // correctorStep and mnaPostStep?
   for (auto syncGen : mSyncGen)
-    syncGen->updateVoltage(**mLeftSideVector);
+    syncGen->updateVoltage(*mLeftSideVectorValue);
 
   // Reset number of iterations
   mIter = 0;
@@ -354,7 +362,7 @@ void MnaSolverDirect<VarType>::solve(Real time, Int timeStepCount) {
         if (mSwitchedMatrices.size() > 0) {
           auto start = std::chrono::steady_clock::now();
           mDirectLinearSolvers[mCurrentSwitchStatus][0]->solveInto(
-              mRightSideVector, **mLeftSideVector);
+              mRightSideVector, *mLeftSideVectorValue);
           auto end = std::chrono::steady_clock::now();
           std::chrono::duration<Real> diff = end - start;
           mSolveTimes.push_back(diff.count());
@@ -363,7 +371,7 @@ void MnaSolverDirect<VarType>::solve(Real time, Int timeStepCount) {
         // CHECK: Is this really required? Or can operations actually become part of
         // correctorStep and mnaPostStep?
         for (auto syncGen : mSyncGen)
-          syncGen->updateVoltage(**mLeftSideVector);
+          syncGen->updateVoltage(*mLeftSideVectorValue);
       }
     } while (numCompsRequireIter > 0);
   }
@@ -372,7 +380,7 @@ void MnaSolverDirect<VarType>::solve(Real time, Int timeStepCount) {
 
   // TODO split into separate task? (dependent on x, updating all v attributes)
   for (UInt nodeIdx = 0; nodeIdx < mNumNetNodes; ++nodeIdx)
-    mNodes[nodeIdx]->mnaUpdateVoltage(**mLeftSideVector);
+    mNodes[nodeIdx]->mnaUpdateVoltage(*mLeftSideVectorValue);
 
   // Components' states will be updated by the post-step tasks
 }

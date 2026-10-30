@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <dpsim-models/EMT/EMT_LinearSSNModel.h>
 #include <dpsim-models/MNASimPowerComp.h>
 
 namespace CPS {
@@ -30,6 +31,7 @@ public:
                      Real shuntConductance = 0., Real shuntSusceptance = 0.);
 
   void initializeFromNodesAndTerminals(Real frequency) override;
+  void exportFusedModel(LinearSSNModel &model);
   void mnaCompInitialize(Real omega, Real timeStep,
                          Attribute<Matrix>::Ptr leftVector) override;
   void mnaCompApplySystemMatrixStamp(SparseMatrixRow &systemMatrix) override;
@@ -55,6 +57,7 @@ private:
   using PhaseVector = Eigen::Matrix<Real, 3, 1>;
 
   Attribute<Matrix>::Ptr mState;
+  Matrix *mStateValue;
   Real mActivePower = 0.;
   Real mReactivePower = 0.;
   Real mNominalVoltage = 0.;

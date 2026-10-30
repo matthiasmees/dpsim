@@ -103,32 +103,80 @@ void EMT::Ph3::SSN::SynchronGenerator4Order::linearize(const Matrix &x,
                                                        Matrix &A, Matrix &B,
                                                        Matrix &C,
                                                        Matrix &D) const {
+  // This model used to be linearized with 14 finite-difference evaluations of
+  // evaluate() per timestep and generator.  Besides the repeated arithmetic,
+  // that path rebuilt the Park transforms and several temporary Eigen
+  // matrices for every perturbation.  The equations below are the exact
+  // analytical Jacobian of evaluate(), avoiding that hot-path overhead.
   A.setZero(4, 4);
   B.setZero(4, 3);
   C.setZero(3, 4);
   D.setZero(3, 3);
-  Matrix xp = x, xm = x, up = u, um = u, fp, fm, yp, ym;
-  for (Int j = 0; j < 4; ++j) {
-    const Real h = 1e-6 * std::max(1., std::abs(x(j, 0)));
-    xp = x;
-    xm = x;
-    xp(j, 0) += h;
-    xm(j, 0) -= h;
-    evaluate(xp, u, fp, yp);
-    evaluate(xm, u, fm, ym);
-    A.col(j) = (fp - fm) / (2 * h);
-    C.col(j) = (yp - ym) / (2 * h);
+  const Real theta = x(kTheta, 0);
+  const Real thetaStep = 2. * PI / 3.;
+  Real vd = 0., vq = 0.;
+  Real dVdDu[3], dVqDu[3];
+  Real cosPhase[3], sinPhase[3];
+  for (Int p = 0; p < 3; ++p) {
+    const Real angle = theta - thetaStep * p;
+    cosPhase[p] = std::cos(angle);
+    sinPhase[p] = std::sin(angle);
+    vd += (2. / 3.) * cosPhase[p] * u(p, 0) / mBaseV;
+    vq -= (2. / 3.) * sinPhase[p] * u(p, 0) / mBaseV;
+    dVdDu[p] = (2. / 3.) * cosPhase[p] / mBaseV;
+    dVqDu[p] = -(2. / 3.) * sinPhase[p] / mBaseV;
   }
-  for (Int j = 0; j < 3; ++j) {
-    const Real h = 1e-6 * std::max(1., std::abs(u(j, 0)));
-    up = u;
-    um = u;
-    up(j, 0) += h;
-    um(j, 0) -= h;
-    evaluate(x, up, fp, yp);
-    evaluate(x, um, fm, ym);
-    B.col(j) = (fp - fm) / (2 * h);
-    D.col(j) = (yp - ym) / (2 * h);
+
+  const Real det = mRa * mRa + mXdp * mXqp;
+  const Real id = (mRa * (vd - x(kEd, 0)) + mXqp * (vq - x(kEq, 0))) / det;
+  const Real iq = (-mXdp * (vd - x(kEd, 0)) + mRa * (vq - x(kEq, 0))) / det;
+  const Real idVd = mRa / det;
+  const Real idVq = mXqp / det;
+  const Real iqVd = -mXdp / det;
+  const Real iqVq = mRa / det;
+  const Real idEd = -idVd, idEq = -idVq;
+  const Real iqEd = -iqVd, iqEq = -iqVq;
+  const Real vdTheta = vq;
+  const Real vqTheta = -vd;
+  const Real idTheta = idVd * vdTheta + idVq * vqTheta;
+  const Real iqTheta = iqVd * vdTheta + iqVq * vqTheta;
+  const Real edScale = -(mXq - mXqp) / mTq0p;
+  const Real eqScale = (mXd - mXdp) / mTd0p;
+  const Real powerScale = 1. / (2. * mH);
+
+  A(0, 0) = -1. / mTq0p + edScale * iqEd;
+  A(0, 1) = edScale * iqEq;
+  A(0, 3) = edScale * iqTheta;
+  A(1, 0) = eqScale * idEd;
+  A(1, 1) = -1. / mTd0p + eqScale * idEq;
+  A(1, 3) = eqScale * idTheta;
+  A(2, 0) = powerScale * (vd * idEd + vq * iqEd);
+  A(2, 1) = powerScale * (vd * idEq + vq * iqEq);
+  A(2, 2) = -mDamping * powerScale;
+  A(2, 3) =
+      powerScale * (vdTheta * id + vd * idTheta + vqTheta * iq + vq * iqTheta);
+  A(3, 2) = mOmega;
+
+  for (Int p = 0; p < 3; ++p) {
+    B(0, p) = edScale * (iqVd * dVdDu[p] + iqVq * dVqDu[p]);
+    B(1, p) = eqScale * (idVd * dVdDu[p] + idVq * dVqDu[p]);
+    B(2, p) = powerScale * (vd * (idVd * dVdDu[p] + idVq * dVqDu[p]) +
+                            vq * (iqVd * dVdDu[p] + iqVq * dVqDu[p]));
+  }
+
+  for (Int p = 0; p < 3; ++p) {
+    const Real rD = cosPhase[p];
+    const Real rQ = -sinPhase[p];
+    const Real drD = -sinPhase[p];
+    const Real drQ = -cosPhase[p];
+    C(p, 0) = mBaseI * (rD * idEd + rQ * iqEd);
+    C(p, 1) = mBaseI * (rD * idEq + rQ * iqEq);
+    C(p, 3) = mBaseI * (drD * id + drQ * iq + rD * idTheta + rQ * iqTheta);
+    for (Int j = 0; j < 3; ++j) {
+      const Real idU = idVd * dVdDu[j] + idVq * dVqDu[j];
+      const Real iqU = iqVd * dVdDu[j] + iqVq * dVqDu[j];
+      D(p, j) = mBaseI * (rD * idU + rQ * iqU);
+    }
   }
 }
 
