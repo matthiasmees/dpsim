@@ -5,9 +5,11 @@
 #include <DPsim.h>
 #include <dpsim-models/EMT/EMT_Ph1_PiLine.h>
 #include <dpsim-models/EMT/EMT_Ph1_VoltageSourceRamp.h>
+#include <dpsim-models/EMT/EMT_Ph3_AvVoltageSourceInverterDQ.h>
 #include <dpsim-models/EMT/EMT_Ph3_HalfDecouplingLine.h>
 #include <dpsim-models/EMT/EMT_Ph3_SynchronGeneratorIdeal.h>
 #include <dpsim-models/EMT/EMT_Ph3_SynchronGeneratorTrStab.h>
+#include <dpsim-models/EMT/EMT_Ph3_VSIVoltageControlVCO.h>
 #include <dpsim-models/SP/SP_Ph1_NetworkInjection.h>
 #include <dpsim-models/SP/SP_Ph1_PiLine.h>
 #include <dpsim-models/SP/SP_Ph1_SynchronGenerator.h>
@@ -56,6 +58,90 @@ static Real runCase(const String &suffix, Bool useSubcomponents) {
   simulation.setFinalTime(finalTime);
   simulation.addLogger(logger);
 
+  const auto start = std::chrono::steady_clock::now();
+  simulation.run();
+  return std::chrono::duration<Real>(std::chrono::steady_clock::now() - start)
+      .count();
+}
+
+static Real runAvInverter(const String &suffix, Bool useSubcomponents) {
+  constexpr Real timeStep = 50e-6;
+  constexpr Real finalTime = 0.5;
+  const String simName = "EMT_AvVSI_Direct_" + suffix;
+  const std::vector<Complex> initialVoltage{
+      Complex(100e3, 0), Complex(100e3, 0), Complex(100e3, 0)};
+  auto gridNode = SimNode::make("grid", PhaseType::ABC, initialVoltage);
+  auto pccNode = SimNode::make("pcc", PhaseType::ABC, initialVoltage);
+  auto source = VoltageSource::make("grid_source");
+  source->setParameters(CPS::Math::singlePhaseVariableToThreePhase(
+                            Complex(100e3 * PEAK1PH_TO_RMS3PH, 0)),
+                        50.);
+  auto line = Resistor::make("grid_resistance");
+  line->setParameters(Matrix::Identity(3, 3) * 5.);
+  auto inverter = AvVoltageSourceInverterDQ::make("inverter", useSubcomponents);
+  inverter->setParameters(2. * PI * 50., 100e3, 0., 0.);
+  inverter->setControllerParameters(0.25, 2., 0.001, 0.08, 3.77, 1400.,
+                                    2. * PI * 50.);
+  inverter->setFilterParameters(0.16, 10e-6, 5., 100.);
+  inverter->withControl(false);
+  source->connect({SimNode::GND, gridNode});
+  line->connect({gridNode, pccNode});
+  inverter->connect({pccNode});
+  SystemTopology system(50., {gridNode, pccNode}, {source, line, inverter});
+  const String logName = "logs/" + simName;
+  Logger::setLogDir(logName);
+  auto logger = DataLogger::make(simName);
+  logger->logAttribute("pcc_voltage", pccNode->attribute("v"));
+  logger->logAttribute("inverter_voltage", inverter->attribute("v_intf"));
+  logger->logAttribute("inverter_current", inverter->attribute("i_intf"));
+  logger->logAttribute("source_voltage", inverter->mVs);
+  Simulation simulation(simName, Logger::Level::off);
+  simulation.setSystem(system);
+  simulation.setDomain(Domain::EMT);
+  simulation.setTimeStep(timeStep);
+  simulation.setFinalTime(finalTime);
+  simulation.addLogger(logger);
+  const auto start = std::chrono::steady_clock::now();
+  simulation.run();
+  return std::chrono::duration<Real>(std::chrono::steady_clock::now() - start)
+      .count();
+}
+
+static Real runVcoInverter(const String &suffix, Bool useSubcomponents) {
+  constexpr Real timeStep = 50e-6;
+  constexpr Real finalTime = 0.5;
+  const String simName = "EMT_VCO_VSI_Direct_" + suffix;
+  const std::vector<Complex> initialVoltage{
+      Complex(100e3, 0), Complex(100e3, 0), Complex(100e3, 0)};
+  auto gridNode = SimNode::make("grid", PhaseType::ABC, initialVoltage);
+  auto pccNode = SimNode::make("pcc", PhaseType::ABC, initialVoltage);
+  auto source = VoltageSource::make("grid_source");
+  source->setParameters(CPS::Math::singlePhaseVariableToThreePhase(
+                            Complex(100e3 * PEAK1PH_TO_RMS3PH, 0)),
+                        50.);
+  auto line = Resistor::make("grid_resistance");
+  line->setParameters(Matrix::Identity(3, 3) * 5.);
+  auto inverter = VSIVoltageControlVCO::make("inverter", useSubcomponents);
+  inverter->setParameters(2. * PI * 50., 100e3, 0.);
+  inverter->setControllerParameters(0.001, 0.08, 3.77, 1400., 2. * PI * 50.);
+  inverter->setFilterParameters(0.16, 10e-6, 5., 100.);
+  inverter->withControl(false);
+  source->connect({SimNode::GND, gridNode});
+  line->connect({gridNode, pccNode});
+  inverter->connect({pccNode});
+  SystemTopology system(50., {gridNode, pccNode}, {source, line, inverter});
+  Logger::setLogDir("logs/" + simName);
+  auto logger = DataLogger::make(simName);
+  logger->logAttribute("pcc_voltage", pccNode->attribute("v"));
+  logger->logAttribute("inverter_voltage", inverter->attribute("v_intf"));
+  logger->logAttribute("inverter_current", inverter->attribute("i_intf"));
+  logger->logAttribute("source_voltage", inverter->mVs);
+  Simulation simulation(simName, Logger::Level::off);
+  simulation.setSystem(system);
+  simulation.setDomain(Domain::EMT);
+  simulation.setTimeStep(timeStep);
+  simulation.setFinalTime(finalTime);
+  simulation.addLogger(logger);
   const auto start = std::chrono::steady_clock::now();
   simulation.run();
   return std::chrono::duration<Real>(std::chrono::steady_clock::now() - start)
@@ -592,5 +678,13 @@ int main() {
   const Real directTrStabTime = runTransientGenerator("Direct", false);
   fmt::print("trstab_legacy_wall_s={:.9f}\ntrstab_direct_wall_s={:.9f}\n",
              legacyTrStabTime, directTrStabTime);
+  const Real avLegacy = runAvInverter("Legacy", true);
+  const Real avDirect = runAvInverter("Direct", false);
+  fmt::print("av_vsi_legacy_wall_s={:.9f}\nav_vsi_direct_wall_s={:.9f}\n",
+             avLegacy, avDirect);
+  const Real vcoLegacy = runVcoInverter("Legacy", true);
+  const Real vcoDirect = runVcoInverter("Direct", false);
+  fmt::print("vco_vsi_legacy_wall_s={:.9f}\nvco_vsi_direct_wall_s={:.9f}\n",
+             vcoLegacy, vcoDirect);
   return 0;
 }
