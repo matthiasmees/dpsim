@@ -7,6 +7,7 @@
 #include <iomanip>
 #include <iostream>
 #include <stdexcept>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -107,6 +108,27 @@ public:
     timings.push_back(runAvVoltStateSpace(
         baseName + "_AvVoltSourceInverterStateSpace", systemPF));
 
+    printTimingSummary(timings);
+  }
+
+  void runDirectPairRepetitions(UInt repetitions) const {
+    if (repetitions == 0)
+      throw std::invalid_argument("repetitions must be positive");
+
+    const String baseName = "EMT_Ph3_GFL_DirectPair";
+    const auto [pPccRef, qPccRef] =
+        pccPowerFromFilterPowerReference(mPrefFilter, mQrefFilter);
+    const auto systemPF = runPowerFlow(baseName + "_PF", pPccRef, qPccRef);
+
+    std::vector<TimingResult> timings;
+    timings.reserve(2 * repetitions);
+    for (UInt runIndex = 0; runIndex < repetitions; ++runIndex) {
+      const String runSuffix = "_run" + std::to_string(runIndex + 1);
+      timings.push_back(runGFL(baseName + "_Legacy" + runSuffix, systemPF,
+                               pPccRef, qPccRef, true));
+      timings.push_back(runGFL(baseName + "_Direct" + runSuffix, systemPF,
+                               pPccRef, qPccRef, false));
+    }
     printTimingSummary(timings);
   }
 
@@ -763,6 +785,11 @@ private:
 
 int main(int argc, char *argv[]) {
   Example_GFL_Four_Model_BreakerLoadStep example;
+  if (argc == 3 && String(argv[1]) == "--direct-pair-repetitions") {
+    const auto repetitions = static_cast<UInt>(std::stoul(argv[2]));
+    example.runDirectPairRepetitions(repetitions);
+    return 0;
+  }
   example.run();
   return 0;
 }

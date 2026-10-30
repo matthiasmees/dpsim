@@ -428,7 +428,10 @@ void EMT::Ph3::GFL::initializeParentFromNodesAndTerminals(Real frequency) {
     mDirectInductorCurrent = -iF.real();
     mDirectCapacitorCurrent = -iCf.real();
     mDirectSourceVoltage = vSource.real();
-    mDirectSourceVoltageAttr->set(mDirectSourceVoltage);
+    // Match the legacy controlled voltage-source attribute at t=0: its
+    // interface voltage is still zero until its first pre-step. The direct
+    // source attribute is populated in mnaParentPreStep before the first
+    // solve, while the branch value already carries the initialized command.
   }
 
   // Subcomponents are initialized recursively by CompositePowerComp.
@@ -757,14 +760,24 @@ void EMT::Ph3::GFL::mnaCompUpdateCurrent(const Matrix &leftVector) {
   }
 
   const UInt filterNode = mVirtualNodes[1]->matrixNodeIndex(PhaseType::A);
-  mDirectInductorVoltage = **mIntfVoltage;
+  Matrix terminalVoltage = Matrix::Zero(3, 1);
+  if (terminalNotGrounded(0))
+    for (UInt phase = 0; phase < 3; ++phase)
+      terminalVoltage(phase, 0) =
+          Math::realFromVectorElement(leftVector, matrixNodeIndex(0, phase));
+
+  // The legacy inductor/capacitor children update their terminal voltages
+  // from the solved vector before updating their histories.  The parent
+  // interface attribute still contains the previous step's value here, so
+  // using it would introduce an unintended one-step delay in direct mode.
+  mDirectInductorVoltage = terminalVoltage;
   for (UInt phase = 0; phase < 3; ++phase)
     mDirectInductorVoltage(phase, 0) -=
         Math::realFromVectorElement(leftVector, filterNode + phase);
   mDirectInductorCurrent = mDirectInductorConductance * mDirectInductorVoltage +
                            mDirectInductorHistory;
   mDirectCapacitorCurrent =
-      -mDirectCapacitorConductance * (**mIntfVoltage) + mDirectCapacitorHistory;
+      -mDirectCapacitorConductance * terminalVoltage + mDirectCapacitorHistory;
   **mIntfCurrent = mDirectInductorCurrent - mDirectCapacitorCurrent;
 }
 
