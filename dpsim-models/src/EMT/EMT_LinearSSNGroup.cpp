@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MPL-2.0
 #include <dpsim-models/EMT/EMT_LinearSSNGroup.h>
 
+#include <chrono>
+#include <cmath>
+
 #include <dpsim-models/EMT/EMT_Ph3_SSN_ImpedanceLoad.h>
 #include <dpsim-models/EMT/EMT_Ph3_SSN_PiLine.h>
 #include <dpsim-models/EMT/EMT_Ph3_SSN_Transformer.h>
@@ -327,6 +330,31 @@ void EMT::LinearSSNGroup::buildRealization(Real omega, Real timeStep,
   }
   Eigen::PartialPivLU<Matrix> factor(Gii);
   mInternalFactor = std::move(factor);
+  if (!mInternalIndices.empty()) {
+    // Q is needed for the terminal Schur complement in either runtime mode.
+    mInternalInputMap = mInternalFactor.solve(Gin);
+    mInternalInputMapSparse = mInternalInputMap.sparseView(0., 0.);
+    if (mUsePrecomputedInternalMaps) {
+      // Form both reduced response maps with the already-computed LU factors.
+      // Do not form an explicit inverse: these are multiple-right-hand-side
+      // solves, and P*x is reused by both the history and state-update paths.
+      const Matrix denseHi = Hi;
+      const Matrix denseStateMap = mInternalFactor.solve(denseHi);
+      mInternalStateMap = denseStateMap.sparseView(0., 0.);
+      mInternalStateMap.makeCompressed();
+    } else {
+      const Matrix identity =
+          Matrix::Identity(mInternalIndices.size(), mInternalIndices.size());
+      mInternalHistoryInverse = mInternalFactor.solve(identity);
+      const Real inverseResidual =
+          (Gii * mInternalHistoryInverse - identity).cwiseAbs().maxCoeff();
+      // Use the cached response only when its factorization residual satisfies
+      // the same absolute scale as the solver's refinement acceptance check.
+      // Ill-conditioned realizations safely retain the original LU solve path.
+      mUseCachedInternalHistoryInverse =
+          std::isfinite(inverseResidual) && inverseResidual <= 1e-12;
+    }
+  }
   mF = F.sparseView();
   mBi = Bi.sparseView();
   mBn = Bn.sparseView();
@@ -334,7 +362,26 @@ void EMT::LinearSSNGroup::buildRealization(Real omega, Real timeStep,
   mHn = Hn.sparseView();
   mGin = Gin.sparseView();
   mGni = Gni.sparseView();
-  mDd = mInternalIndices.empty() ? Gnn : Gnn - Gni * mInternalFactor.solve(Gin);
+  mDd = mInternalIndices.empty() ? Gnn : Gnn - Gni * mInternalInputMap;
+  if (mUseFullyReducedInternalMaps) {
+    if (mInternalIndices.empty()) {
+      mReducedHistoryMap = mHn;
+      mReducedStateMap = mF;
+      mReducedInputMap = mBn;
+    } else {
+      // Complete the Kron/state elimination during initialization. All
+      // products remain sparse; no reduced dense state-space matrix is formed.
+      const SparseMatrixRow eliminatedHistory = mGni * mInternalStateMap;
+      const SparseMatrixRow eliminatedState = mBi * mInternalStateMap;
+      const SparseMatrixRow eliminatedInput = mBi * mInternalInputMapSparse;
+      mReducedHistoryMap = mHn - eliminatedHistory;
+      mReducedStateMap = mF + eliminatedState;
+      mReducedInputMap = mBn - eliminatedInput;
+    }
+    mReducedHistoryMap.makeCompressed();
+    mReducedStateMap.makeCompressed();
+    mReducedInputMap.makeCompressed();
+  }
   mFullHistoryScratch = Matrix::Zero(localNodeCount, 1);
   mInternalHistoryScratch = Matrix::Zero(mInternalIndices.size(), 1);
   mInternalVoltageScratch = Matrix::Zero(mInternalIndices.size(), 1);
@@ -367,18 +414,55 @@ void EMT::LinearSSNGroup::assembleFullHistory(Matrix &fullHistory) const {
 }
 
 void EMT::LinearSSNGroup::currentHistory(Matrix &result) const {
+  using Clock = std::chrono::steady_clock;
+  ++mHistoryCalls;
   if (mInternalIndices.empty()) {
+    const auto start = Clock::now();
     result = mHn * mState->get();
+    mHistoryMultiplyTime +=
+        std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() -
+                                                             start);
+    return;
+  }
+
+  if (mUseFullyReducedInternalMaps) {
+    const auto start = Clock::now();
+    result.noalias() = mReducedHistoryMap * mState->get();
+    mHistoryMultiplyTime +=
+        std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() -
+                                                             start);
     return;
   }
 
   // H was assembled from the component history maps during realization.
   // Evaluate the precomputed maps directly instead of rebuilding every
   // component history and scattering through the full network vector.
-  mInternalHistoryScratch = mHi * mState->get();
-  mInternalVoltageScratch = mInternalFactor.solve(mInternalHistoryScratch);
+  auto start = Clock::now();
+  if (mUsePrecomputedInternalMaps) {
+    mInternalVoltageScratch.noalias() = mInternalStateMap * mState->get();
+    mInternalStateResponseReady = true;
+    mHistoryMultiplyTime +=
+        std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() -
+                                                             start);
+  } else {
+    mInternalHistoryScratch = mHi * mState->get();
+    mHistoryMultiplyTime +=
+        std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() -
+                                                             start);
+    start = Clock::now();
+    if (mUseCachedInternalHistoryInverse)
+      mInternalVoltageScratch.noalias() =
+          mInternalHistoryInverse * mInternalHistoryScratch;
+    else
+      mInternalVoltageScratch = mInternalFactor.solve(mInternalHistoryScratch);
+    mInternalSolveTime += std::chrono::duration_cast<std::chrono::nanoseconds>(
+        Clock::now() - start);
+  }
+  start = Clock::now();
   result = mHn * mState->get();
   result -= mGni * mInternalVoltageScratch;
+  mReducedHistoryTime += std::chrono::duration_cast<std::chrono::nanoseconds>(
+      Clock::now() - start);
 }
 
 Matrix EMT::LinearSSNGroup::terminalVoltage(const Matrix &leftVector) {
@@ -409,25 +493,90 @@ void EMT::LinearSSNGroup::mnaCompApplyRightSideVectorStamp(
 
 void EMT::LinearSSNGroup::mnaAddCompactRightSideVectorStamp(
     Matrix &rightVector) {
+  using Clock = std::chrono::steady_clock;
   updateMatrixNodeIndices();
   currentHistory(mTerminalHistoryScratch);
+  const auto start = Clock::now();
   for (UInt i = 0; i < mTerminalHistoryScratch.rows(); ++i)
     Math::addToVectorElement(rightVector, matrixNodeIndex(i / 3, i % 3),
                              mTerminalHistoryScratch(i));
+  mRhsScatterTime += std::chrono::duration_cast<std::chrono::nanoseconds>(
+      Clock::now() - start);
+  ++mRhsScatterCalls;
+}
+
+void EMT::LinearSSNGroup::mnaWriteProfile(std::ostream &profile) const {
+  const auto write = [&profile](const char *name, std::chrono::nanoseconds time,
+                                std::size_t calls) {
+    const double total = time.count() * 1e-9;
+    const double averageUs = calls ? time.count() * 1e-3 / calls : 0.;
+    profile << name << "," << total << "," << averageUs << ",0,0," << calls
+            << "\n";
+  };
+  write("group_history_state_multiply", mHistoryMultiplyTime, mHistoryCalls);
+  write("group_history_internal_solve", mInternalSolveTime, mHistoryCalls);
+  write("group_history_reduced_output", mReducedHistoryTime, mHistoryCalls);
+  write("group_rhs_scatter", mRhsScatterTime, mRhsScatterCalls);
+  write("group_state_update", mStateUpdateTime, mStateUpdateCalls);
+  profile << "group_precomputed_internal_maps_selected,0,0,0,0,"
+          << (mUsePrecomputedInternalMaps ? 1 : 0) << "\n";
+  profile << "group_fully_reduced_maps_selected,0,0,0,0,"
+          << (mUseFullyReducedInternalMaps ? 1 : 0) << "\n";
+  profile << "group_internal_state_map_nonzeros,0,0,0,0,"
+          << mInternalStateMap.nonZeros() << "\n";
+  profile << "group_internal_input_map_nonzeros,0,0,0,0,"
+          << mInternalInputMapSparse.nonZeros() << "\n";
+  profile << "group_reduced_history_map_nonzeros,0,0,0,0,"
+          << mReducedHistoryMap.nonZeros() << "\n";
+  profile << "group_reduced_state_map_nonzeros,0,0,0,0,"
+          << mReducedStateMap.nonZeros() << "\n";
+  profile << "group_reduced_input_map_nonzeros,0,0,0,0,"
+          << mReducedInputMap.nonZeros() << "\n";
+  profile << "group_history_cached_response_selected,0,0,0,0,"
+          << (mUseCachedInternalHistoryInverse ? 1 : 0) << "\n";
 }
 
 void EMT::LinearSSNGroup::mnaCompPreStep(Real, Int) {}
 
 void EMT::LinearSSNGroup::mnaCompPostStep(Real, Int,
                                           Attribute<Matrix>::Ptr &leftVector) {
+  using Clock = std::chrono::steady_clock;
+  const auto start = Clock::now();
   const Matrix input = terminalVoltage(**leftVector);
   if (mInternalIndices.empty()) {
     mState->get() = mF * mState->get() + mBn * input;
+    mStateUpdateTime += std::chrono::duration_cast<std::chrono::nanoseconds>(
+        Clock::now() - start);
+    ++mStateUpdateCalls;
     return;
   }
-  const Matrix internal =
-      mInternalFactor.solve(mHi * mState->get() - mGin * input);
-  mState->get() = mF * mState->get() + mBi * internal + mBn * input;
+  if (mUseFullyReducedInternalMaps) {
+    mStateUpdateScratch.noalias() = mReducedStateMap * mState->get();
+    mStateUpdateScratch.noalias() += mReducedInputMap * input;
+    mState->get() = mStateUpdateScratch;
+    mStateUpdateTime += std::chrono::duration_cast<std::chrono::nanoseconds>(
+        Clock::now() - start);
+    ++mStateUpdateCalls;
+    return;
+  }
+  if (mUsePrecomputedInternalMaps) {
+    if (!mInternalStateResponseReady)
+      throw std::logic_error(
+          "Precomputed internal state response missing before post-step.");
+    mInternalVoltageScratch.noalias() -= mInternalInputMapSparse * input;
+    mStateUpdateScratch.noalias() = mF * mState->get();
+    mStateUpdateScratch.noalias() += mBi * mInternalVoltageScratch;
+    mStateUpdateScratch.noalias() += mBn * input;
+    mState->get() = mStateUpdateScratch;
+    mInternalStateResponseReady = false;
+  } else {
+    const Matrix internal =
+        mInternalFactor.solve(mHi * mState->get() - mGin * input);
+    mState->get() = mF * mState->get() + mBi * internal + mBn * input;
+  }
+  mStateUpdateTime += std::chrono::duration_cast<std::chrono::nanoseconds>(
+      Clock::now() - start);
+  ++mStateUpdateCalls;
 }
 
 void EMT::LinearSSNGroup::mnaCompAddPreStepDependencies(

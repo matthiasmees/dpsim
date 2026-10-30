@@ -187,7 +187,6 @@
 #include <dpsim-models/EMT/EMT_Ph3_HalfDecouplingLine.h>
 #include <dpsim-models/EMT/EMT_Ph3_NetworkInjection.h>
 #include <dpsim-models/EMT/EMT_Ph3_PiLine.h>
-#include <dpsim-models/EMT/EMT_Ph3_PiLine_NoSub.h>
 #include <dpsim-models/EMT/EMT_Ph3_PiecewiseLinearInductor.h>
 #include <dpsim-models/EMT/EMT_Ph3_RXLoad.h>
 #include <dpsim-models/EMT/EMT_Ph3_RxLine.h>

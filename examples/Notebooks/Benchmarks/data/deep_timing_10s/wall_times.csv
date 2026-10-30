@@ -1,0 +1,4 @@
+case,process_wall_s,solver_choice
+ssn,25.214,KLU partial refactorization
+aggregate,21.452,KLU partial refactorization
+grouped,24.800,DenseLU on reduced system with cached correction inverse (trial 5)

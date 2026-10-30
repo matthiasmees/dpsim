@@ -1,0 +1,13 @@
+phase,total_s,avg_us,min_us,max_us,calls
+matrix_reset_and_variable_stamping,2.19779,10.9889,8.666,11837,200000
+node_voltage_propagation,0.585888,2.92944,2.417,2733.92,200000
+numeric_solve,3.32246,16.6123,14.375,7885.79,200000
+partial_refactorization,19.0123,95.0617,84.875,142619,200000
+rhs_assembly,3.73219,18.6609,16.666,13146.2,200000
+rhs_compact_stamp_callbacks,1.191,5.95498,5.125,7168.08,200000
+rhs_dense_stamp_accumulation,2.50615,12.5308,11.291,12551.9,200000
+rhs_zero,0.0228305,0.114152,0.041,91.75,200000
+variable_change_detection,0.0467052,0.233526,0.083,1315.29,200000
+rhs_dense_stamp_component_calls,0,0,0,0,13800000
+rhs_compact_stamp_component_calls,0,0,0,0,200000
+initial_factorization,0.000271417,271.417,271.417,271.417,1

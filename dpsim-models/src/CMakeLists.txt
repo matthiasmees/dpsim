@@ -96,7 +96,6 @@ list(APPEND MODELS_SOURCES
 	DP/DP_Ph3_GenericTwoTerminalITypeSSN.cpp
 
 	EMT/EMT_SSNComp.cpp
-	EMT/EMT_LinearSSNAggregate.cpp
 	EMT/EMT_LinearSSNFused.cpp
 	EMT/EMT_LinearSSNGroup.cpp
 	EMT/EMT_VTypeSSNComp.cpp
@@ -139,7 +138,6 @@ list(APPEND MODELS_SOURCES
 	EMT/EMT_Ph3_SeriesSwitch.cpp
 	EMT/EMT_Ph3_VoltageSourceNorton.cpp
 	EMT/EMT_Ph3_PiLine.cpp
-	EMT/EMT_Ph3_PiLine_NoSub.cpp
 	EMT/EMT_Ph3_SSN_PiLine.cpp
 	EMT/EMT_Ph3_SSN_ImpedanceLoad.cpp
 	EMT/EMT_Ph3_SSN_Transformer.cpp

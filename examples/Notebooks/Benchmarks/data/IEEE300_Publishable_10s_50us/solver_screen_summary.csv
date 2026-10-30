@@ -1,0 +1,7 @@
+formulation,solver,sim_duration_s,dt_s,steps,step_total_s,replicates,status,notes
+Aggregate,KLU full refactorization,10,0.00005,200000,58.091686,1,completed,Fastest measured full benchmark; standard KLU with partial refactorization disabled
+Grouped passive SSN,DenseLU with static correction,1,0.00005,20000,68.960778,1,completed,Static-preconditioned iterative correction; 237757 refinement iterations over 20000 solves
+Grouped passive SSN,DenseLU exact solve,1,0.00005,20000,51.261363,5,completed,Five-run mean; sample standard deviation 1.625 s; no correction iterations
+Grouped passive SSN,KLU with partial refactorization,1,0.00005,20000,79.549509,1,completed,Factored-path partial refactorization; slower screen than DenseLU exact
+Grouped passive SSN,SparseLU,1,0.00005,0,,1,failed,std::bad_alloc during solver initialization; no timing comparison
+Grouped passive SSN,DenseLU exact solve,10,0.00005,200000,505.153848,1,completed,Full-duration follow-up; not a five-run mean

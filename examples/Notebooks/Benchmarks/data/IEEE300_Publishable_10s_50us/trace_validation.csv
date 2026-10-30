@@ -1,0 +1,2 @@
+comparison,sim_duration_s,dt_s,steps,compared_values,max_abs_difference,comparison_precision,result,notes
+Conventional_NoSub vs Conventional legacy,1,0.00005,20000,240024,0.000001,CSV six-decimal output,pass,"Direct PiLine, RXLoad, and Transformer constructors; max differs only at logged output precision"

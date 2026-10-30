@@ -1,5 +1,13 @@
 # IEEE118 EMT `perf` findings
 
+Historical note: older benchmark artifacts in this folder refer to a separate
+`PiLine_NoSub` class. That class has been removed; the optional direct MNA path
+now lives in `EMT::Ph3::PiLine`. The old standalone timing is not representative
+of the integrated constructor, and its claim of removing the internal midpoint
+was incorrect for the validated implementation. See
+`examples/Notebooks/Benchmarks/IEEE300_EMT_Publishable_Performance_Benchmark.ipynb`
+for current trace-checked results.
+
 ## Scope and method
 
 These profiles compare the conventional composite EMT network with the

@@ -12,6 +12,8 @@
 #include <dpsim/SequentialScheduler.h>
 
 #include <algorithm>
+#include <fstream>
+#include <numeric>
 
 using namespace DPsim;
 using namespace CPS;
@@ -71,6 +73,9 @@ void MnaSolverDirect<VarType>::stampVariableSystemMatrix() {
   // TODO: a direct linear solver configuration is only applied if system matrix recomputation is used
   this->mDirectLinearSolverVariableSystemMatrix->setConfiguration(
       mConfigurationInUse);
+  if (auto dense = std::dynamic_pointer_cast<DenseLUAdapter>(
+          mDirectLinearSolverVariableSystemMatrix))
+    dense->setDetailedProfiling(Solver::mLogSolveTimes);
 
   SPDLOG_LOGGER_INFO(mSLog,
                      "Number of variable Elements: {}"
@@ -113,15 +118,28 @@ void MnaSolverDirect<VarType>::stampVariableSystemMatrix() {
 template <typename VarType>
 void MnaSolverDirect<VarType>::solveWithSystemMatrixRecomputation(
     Real time, Int timeStepCount) {
+  auto profileStart = std::chrono::steady_clock::now();
   // Reset source vector
   mRightSideVector.setZero();
+  auto profileEnd = std::chrono::steady_clock::now();
+  if (Solver::mLogSolveTimes)
+    recordProfileMeasurement("rhs_zero", profileStart, profileEnd);
 
   // Add together the right side vector (computed by the components'
   // pre-step tasks)
+  profileStart = std::chrono::steady_clock::now();
   addRightVectorStamps(mRightSideVector);
+  profileEnd = std::chrono::steady_clock::now();
+  if (Solver::mLogSolveTimes)
+    recordProfileMeasurement("rhs_assembly", profileStart, profileEnd);
 
   // Get switch and variable comp status and update system matrix and lu factorization accordingly
+  profileStart = std::chrono::steady_clock::now();
   mVariableComponentChanged = hasVariableComponentChanged();
+  profileEnd = std::chrono::steady_clock::now();
+  if (Solver::mLogSolveTimes)
+    recordProfileMeasurement("variable_change_detection", profileStart,
+                             profileEnd);
   if (mVariableComponentChanged)
     recomputeSystemMatrix(time);
 
@@ -132,16 +150,24 @@ void MnaSolverDirect<VarType>::solveWithSystemMatrixRecomputation(
   auto end = std::chrono::steady_clock::now();
   std::chrono::duration<Real> diff = end - start;
   mSolveTimes.push_back(diff.count());
+  if (Solver::mLogSolveTimes)
+    recordProfileMeasurement("numeric_solve", start, end);
 
   // TODO split into separate task? (dependent on x, updating all v attributes)
+  profileStart = std::chrono::steady_clock::now();
   for (UInt nodeIdx = 0; nodeIdx < mNumNetNodes; ++nodeIdx)
     mNodes[nodeIdx]->mnaUpdateVoltage(*mLeftSideVectorValue);
+  profileEnd = std::chrono::steady_clock::now();
+  if (Solver::mLogSolveTimes)
+    recordProfileMeasurement("node_voltage_propagation", profileStart,
+                             profileEnd);
 
   // Components' states will be updated by the post-step tasks
 }
 
 template <typename VarType>
 void MnaSolverDirect<VarType>::recomputeSystemMatrix(Real time) {
+  const auto profileStart = std::chrono::steady_clock::now();
   // The sparse structure is fixed after initialization. Reset only the
   // coefficient values instead of copying/reallocating the full sparse
   // matrix on every timestep.
@@ -151,6 +177,10 @@ void MnaSolverDirect<VarType>::recomputeSystemMatrix(Real time) {
   // Now stamp variable elements and switches into matrix
   for (auto comp : mMNAIntfVariableComps)
     comp->mnaApplySystemMatrixStamp(mVariableSystemMatrix);
+  const auto profileEnd = std::chrono::steady_clock::now();
+  if (Solver::mLogSolveTimes)
+    recordProfileMeasurement("matrix_reset_and_variable_stamping", profileStart,
+                             profileEnd);
 
   // Refactorization of matrix assuming that structure remained
   // constant by omitting analyzePattern
@@ -160,6 +190,8 @@ void MnaSolverDirect<VarType>::recomputeSystemMatrix(Real time) {
   auto end = std::chrono::steady_clock::now();
   std::chrono::duration<Real> diff = end - start;
   mRecomputationTimes.push_back(diff.count());
+  if (Solver::mLogSolveTimes)
+    recordProfileMeasurement("partial_refactorization", start, end);
   ++mNumRecomputations;
 }
 
@@ -271,11 +303,29 @@ void MnaSolverDirect<VarType>::prepareCompactRightVectorStamps() {
 
 template <typename VarType>
 void MnaSolverDirect<VarType>::addRightVectorStamps(Matrix &rightVector) {
+  using Clock = std::chrono::steady_clock;
+  const bool profile = Solver::mLogSolveTimes;
+  const auto start = profile ? Clock::now() : Clock::time_point{};
+  std::chrono::nanoseconds compactTime{};
   for (const auto &operation : mRightVectorStampOperations) {
-    if (operation.compact)
+    if (operation.compact) {
+      const auto compactStart = profile ? Clock::now() : Clock::time_point{};
       operation.compact->mnaAddCompactRightSideVectorStamp(rightVector);
-    else
+      if (profile)
+        compactTime += std::chrono::duration_cast<std::chrono::nanoseconds>(
+            Clock::now() - compactStart);
+      ++mCompactRightVectorStampCalls;
+    } else {
       rightVector += *operation.dense;
+      ++mDenseRightVectorStampCalls;
+    }
+  }
+  if (profile) {
+    const auto end = Clock::now();
+    recordProfileMeasurement("rhs_compact_stamp_callbacks", start,
+                             start + compactTime);
+    recordProfileMeasurement("rhs_dense_stamp_accumulation",
+                             start + compactTime, end);
   }
 }
 
@@ -442,6 +492,87 @@ template <typename VarType> void MnaSolverDirect<VarType>::logLUTimes() {
   logFactorizationTime();
   logRecomputationTime();
   logSolveTime();
+  for (const auto &entry : mProfileMeasurements) {
+    const auto &measurement = entry.second;
+    const double averageNs =
+        measurement.count == 0
+            ? 0.
+            : static_cast<double>(measurement.total.count()) /
+                  measurement.count;
+    SPDLOG_LOGGER_INFO(mSLog,
+                       "DEEP_TIMING_PHASE,{},{:.9f},{:.3f},{:.3f},{:.3f},{}",
+                       entry.first, measurement.total.count() * 1e-9,
+                       averageNs * 1e-3, measurement.minimum.count() * 1e-3,
+                       measurement.maximum.count() * 1e-3, measurement.count);
+  }
+  std::ofstream phaseFile(CPS::Logger::logDir() + "/" + this->mName +
+                          "_SolverPhaseTimes.csv");
+  phaseFile << "phase,total_s,avg_us,min_us,max_us,calls\n";
+  for (const auto &entry : mProfileMeasurements) {
+    const auto &measurement = entry.second;
+    const double count = static_cast<double>(measurement.count);
+    phaseFile << entry.first << "," << measurement.total.count() * 1e-9 << ","
+              << (count ? measurement.total.count() / count * 1e-3 : 0.) << ","
+              << measurement.minimum.count() * 1e-3 << ","
+              << measurement.maximum.count() * 1e-3 << "," << measurement.count
+              << "\n";
+  }
+  phaseFile << "rhs_dense_stamp_component_calls,0,0,0,0,"
+            << mDenseRightVectorStampCalls << "\n";
+  phaseFile << "rhs_compact_stamp_component_calls,0,0,0,0,"
+            << mCompactRightVectorStampCalls << "\n";
+  for (const auto &operation : mRightVectorStampOperations)
+    if (operation.compact)
+      operation.compact->mnaWriteProfile(phaseFile);
+  if (auto dense = std::dynamic_pointer_cast<DenseLUAdapter>(
+          mDirectLinearSolverVariableSystemMatrix))
+    dense->writeDetailedProfile(phaseFile);
+  if (auto dense = std::dynamic_pointer_cast<DenseLUAdapter>(
+          mDirectLinearSolverVariableSystemMatrix)) {
+    std::ofstream diagnostics(CPS::Logger::logDir() + "/" + this->mName +
+                              "_SolverDiagnostics.csv");
+    dense->writeDetailedDiagnostics(diagnostics);
+  }
+  std::ofstream matrixFile(CPS::Logger::logDir() + "/" + this->mName +
+                           "_SolverMatrixStats.csv");
+  matrixFile << "rows,cols,nonzeros,structural_density,variable_entries\n";
+  const double matrixSize = static_cast<double>(mVariableSystemMatrix.rows());
+  const double matrixEntries = matrixSize * matrixSize;
+  matrixFile << mVariableSystemMatrix.rows() << ","
+             << mVariableSystemMatrix.cols() << ","
+             << mVariableSystemMatrix.nonZeros() << ","
+             << (matrixEntries
+                     ? mVariableSystemMatrix.nonZeros() / matrixEntries
+                     : 0.)
+             << "," << mListVariableSystemMatrixEntries.size() << "\n";
+  if (!mFactorizeTimes.empty()) {
+    const Real total = std::accumulate(mFactorizeTimes.begin(),
+                                       mFactorizeTimes.end(), Real(0.));
+    const auto bounds =
+        std::minmax_element(mFactorizeTimes.begin(), mFactorizeTimes.end());
+    phaseFile << "initial_factorization," << total << ","
+              << total * 1e6 / mFactorizeTimes.size() << ","
+              << *bounds.first * 1e6 << "," << *bounds.second * 1e6 << ","
+              << mFactorizeTimes.size() << "\n";
+  }
+}
+
+template <typename VarType>
+void MnaSolverDirect<VarType>::recordProfileMeasurement(
+    const String &phase, std::chrono::steady_clock::time_point start,
+    std::chrono::steady_clock::time_point end) {
+  const auto elapsed =
+      std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
+  auto &measurement = mProfileMeasurements[phase];
+  if (measurement.count == 0) {
+    measurement.minimum = elapsed;
+    measurement.maximum = elapsed;
+  } else {
+    measurement.minimum = std::min(measurement.minimum, elapsed);
+    measurement.maximum = std::max(measurement.maximum, elapsed);
+  }
+  measurement.total += elapsed;
+  ++measurement.count;
 }
 
 template <typename VarType> void MnaSolverDirect<VarType>::logSolveTime() {

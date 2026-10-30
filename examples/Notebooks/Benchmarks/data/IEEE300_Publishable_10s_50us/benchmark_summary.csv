@@ -1,0 +1,8 @@
+case,formulation,solver,sim_duration_s,dt_s,steps,step_total_s,wall_total_s,replicates,measurement_scope
+Conventional,legacy subcomponents,KLU full refactorization,10,0.00005,200000,146.638907,155.9,1,full 10 s profile; wall from run log timestamps
+Conventional_NoSub_LineLoadOnly,direct PiLine and RXLoad; legacy transformer,KLU full refactorization,10,0.00005,200000,73.802402,82.9,1,earlier 10 s profile; superseded by all-direct constructor run
+Conventional_NoSub,"direct PiLine, RXLoad, and Transformer constructors",KLU full refactorization,10,0.00005,200000,59.778564,61.0,1,all-direct constructors; wall elapsed from benchmark invocation
+SSN,individual linear SSN components,KLU full refactorization,10,0.00005,200000,69.253271,70.930,1,full 10 s profile
+Aggregate,fused linear SSN network,KLU full refactorization,10,0.00005,200000,58.091686,59.546,1,full 10 s profile
+Grouped passive SSN,Paper-style passive group; static correction,DenseLU,10,0.00005,200000,697.258200,698.967,1,full 10 s profile
+Grouped passive SSN,Paper-style passive group; exact solve,DenseLU,10,0.00005,200000,505.153848,,1,full 10 s profile; wall time not retained

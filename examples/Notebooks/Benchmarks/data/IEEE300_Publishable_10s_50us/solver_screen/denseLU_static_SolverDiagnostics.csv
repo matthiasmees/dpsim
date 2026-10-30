@@ -1,0 +1,7 @@
+metric,value,unit
+solve_calls,20000,calls
+refinement_iterations_total,237757,iterations
+refinement_iterations_average_per_step,11.8879,iterations/solve
+refinement_iterations_max_per_step,12,iterations
+inverse_correction_operator_selected,1,bool
+fallback_refactorizations,19756,calls

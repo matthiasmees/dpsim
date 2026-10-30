@@ -42,10 +42,25 @@ protected:
   std::shared_ptr<Capacitor> mSubParallelCapacitor1;
   /// solver
   std::vector<const Matrix *> mRightVectorStamps;
+  Bool mUseSubcomponents = true;
+  Attribute<Matrix>::Ptr mDirectState;
+  Matrix mDirectInductorAdmittance = Matrix::Zero(3, 3);
+  Matrix mDirectResistanceConductance = Matrix::Zero(3, 3);
+  Matrix mDirectCapAdmittance = Matrix::Zero(3, 3);
+  Matrix mDirectSeriesHistory = Matrix::Zero(3, 1);
+  Matrix mDirectInductorHistory = Matrix::Zero(3, 1);
+  Matrix mDirectCapHistory0 = Matrix::Zero(3, 1);
+  Matrix mDirectCapHistory1 = Matrix::Zero(3, 1);
 
 public:
   /// Defines UID, name and logging level
   PiLine(String uid, String name, Logger::Level logLevel = Logger::Level::off);
+  /// Optional direct MNA implementation; legacy subcomponents remain the default.
+  PiLine(String uid, String name, Bool useSubcomponents,
+         Logger::Level logLevel = Logger::Level::off);
+  PiLine(String name, Bool useSubcomponents,
+         Logger::Level logLevel = Logger::Level::off)
+      : PiLine(name, name, useSubcomponents, logLevel) {}
   /// Defines name and logging level
   PiLine(String name, Logger::Level logLevel = Logger::Level::off)
       : PiLine(name, name, logLevel) {}
@@ -57,6 +72,12 @@ public:
   void createSubComponents() override;
   /// Derives values from power flow data and pushes them to subcomponents
   void initializeParentFromNodesAndTerminals(Real frequency) override;
+  void mnaParentInitialize(Real omega, Real timeStep,
+                           Attribute<Matrix>::Ptr leftVector) override;
+  void mnaParentApplySystemMatrixStamp(SparseMatrixRow &systemMatrix) override;
+  void mnaParentApplyRightSideVectorStamp(Matrix &rightVector) override;
+  Bool mnaHasCompactRightSideVectorStamp() const override;
+  void mnaAddCompactRightSideVectorStamp(Matrix &rightVector) override;
 
   // #### MNA section ####
   /// Updates internal current variable of the component

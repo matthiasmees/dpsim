@@ -344,6 +344,12 @@ target_link_libraries(IEEE118_Ph3_SSN ${LIBRARIES})
 target_include_directories(IEEE118_Ph3_SSN PRIVATE ${INCLUDE_DIRS})
 target_compile_options(IEEE118_Ph3_SSN PUBLIC ${DPSIM_CXX_FLAGS})
 
+# Same three-phase EMT benchmark setup using the IEEE 300-bus MATPOWER case.
+add_executable(IEEE300_Ph3 Grids/IEEE300_Ph3.cpp)
+target_link_libraries(IEEE300_Ph3 ${LIBRARIES})
+target_include_directories(IEEE300_Ph3 PRIVATE ${INCLUDE_DIRS})
+target_compile_options(IEEE300_Ph3 PUBLIC ${DPSIM_CXX_FLAGS})
+
 foreach(TEST_SOURCE ${TEST_SOURCES})
 	get_filename_component(TARGET ${TEST_SOURCE} NAME_WE)
 	add_dependencies(tests ${TARGET})

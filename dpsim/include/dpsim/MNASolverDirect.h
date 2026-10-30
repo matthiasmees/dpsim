@@ -9,8 +9,10 @@
 #pragma once
 
 #include <bitset>
+#include <chrono>
 #include <iostream>
 #include <list>
+#include <map>
 #include <memory>
 #include <unordered_map>
 #include <vector>
@@ -75,6 +77,8 @@ protected:
     CPS::MNAInterface *compact = nullptr;
   };
   std::vector<RightVectorStamp> mRightVectorStampOperations;
+  std::size_t mDenseRightVectorStampCalls = 0;
+  std::size_t mCompactRightVectorStampCalls = 0;
 
   // #### Data structures for system recomputation over time ####
   /// System matrix including all static elements
@@ -120,6 +124,17 @@ protected:
   using MnaSolver<VarType>::mListVariableSystemMatrixEntries;
   using MnaSolver<VarType>::mStateSpaceExtraction;
   using MnaSolver<VarType>::mStateSpaceExtractor;
+
+  struct ProfileMeasurement {
+    std::chrono::nanoseconds total{};
+    std::chrono::nanoseconds minimum{};
+    std::chrono::nanoseconds maximum{};
+    std::size_t count = 0;
+  };
+  std::map<String, ProfileMeasurement> mProfileMeasurements;
+  void recordProfileMeasurement(const String &phase,
+                                std::chrono::steady_clock::time_point start,
+                                std::chrono::steady_clock::time_point end);
 
   // #### General
   /// Create system matrix

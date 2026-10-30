@@ -7,15 +7,23 @@
  *********************************************************************************/
 
 #include <dpsim-models/EMT/EMT_Ph3_RXLoad.h>
+#include <dpsim-models/MNAStampUtils.h>
 
 using namespace CPS;
 
 EMT::Ph3::RXLoad::RXLoad(String uid, String name, Logger::Level logLevel)
+    : RXLoad(uid, name, true, logLevel) {}
+
+EMT::Ph3::RXLoad::RXLoad(String uid, String name, Bool useSubcomponents,
+                         Logger::Level logLevel)
     : CompositePowerComp<Real>(uid, name, true, true, logLevel),
       mActivePower(mAttributes->create<Matrix>("P")),
       mReactivePower(mAttributes->create<Matrix>("Q")),
       mNomVoltage(mAttributes->create<Real>("V_nom")),
       mReactanceInSeries(false) {
+  mUseSubcomponents = useSubcomponents;
+  mDirectState = mAttributes->create<Matrix>("direct_state");
+  **mDirectState = Matrix::Zero(12, 1);
   mPhaseType = PhaseType::ABC;
   setTerminalNumber(1);
 
@@ -49,7 +57,7 @@ EMT::Ph3::RXLoad::RXLoad(String name, Matrix activePower, Matrix reactivePower,
 }
 
 SimPowerComp<Real>::Ptr EMT::Ph3::RXLoad::clone(String name) {
-  auto copy = RXLoad::make(name, mLogLevel);
+  auto copy = RXLoad::make(name, mUseSubcomponents, mLogLevel);
   if (!initPowerFromTerminal)
     copy->setParameters(**mActivePower, **mReactivePower, **mNomVoltage,
                         mReactanceInSeries);
@@ -58,6 +66,9 @@ SimPowerComp<Real>::Ptr EMT::Ph3::RXLoad::clone(String name) {
 
 void EMT::Ph3::RXLoad::setParameters(Matrix activePower, Matrix reactivePower,
                                      Real volt, bool reactanceInSeries) {
+  if (!mUseSubcomponents && reactanceInSeries)
+    throw std::invalid_argument(
+        "Direct RXLoad mode currently supports parallel R-X loads only.");
   **mActivePower = activePower;
   **mReactivePower = reactivePower;
   mReactanceInSeries = reactanceInSeries;
@@ -87,6 +98,8 @@ void EMT::Ph3::RXLoad::createSubComponents() {
   if (mSubCompCreated)
     return;
   mSubCompCreated = true;
+  if (!mUseSubcomponents)
+    return;
 
   // Intentionally empty: which of R/L/C exist depends on the load power sign, known only in
   // initializeParentFromNodesAndTerminals(), where the sub-components are created. Safe: any
@@ -136,6 +149,44 @@ void EMT::Ph3::RXLoad::initializeParentFromNodesAndTerminals(Real frequency) {
         std::pow(**mNomVoltage / sqrt(3), 2) * (**mReactivePower).inverse();
   else
     mReactance = Matrix::Zero(3, 3);
+
+  if (!mUseSubcomponents) {
+    const Real omega = 2. * PI * frequency;
+    if (mReactance(0, 0) > 0.)
+      mInductance = mReactance / omega;
+    else if (mReactance(0, 0) < 0.)
+      mCapacitance = -mReactance.inverse() / omega;
+    mDirectTotalConductance =
+        mResistance.norm() > 0. ? mResistance.inverse()(0, 0) : 0.;
+    mDirectHasInductor = mReactance(0, 0) > 0.;
+    mDirectHasCapacitor = mReactance(0, 0) < 0.;
+    MatrixComp voltage = MatrixComp::Zero(3, 1);
+    voltage(0) = RMS3PH_TO_PEAK1PH * mTerminals[0]->initialSingleVoltage();
+    voltage(1) = voltage(0) * SHIFT_TO_PHASE_B;
+    voltage(2) = voltage(0) * SHIFT_TO_PHASE_C;
+    MatrixComp loadG = MatrixComp::Zero(3, 3);
+    if (mResistance.norm() > 0.)
+      loadG = mResistance.inverse().cast<Complex>();
+    **mIntfVoltage = voltage.real();
+    (**mDirectState).setZero();
+    if (mDirectHasInductor) {
+      const MatrixComp yL =
+          (Complex(0., omega) * mInductance.cast<Complex>()).inverse();
+      (**mDirectState).block<3, 1>(0, 0) = voltage.real();
+      (**mDirectState).block<3, 1>(3, 0) = (yL * voltage).real();
+    }
+    if (mDirectHasCapacitor) {
+      const MatrixComp yC = Complex(0., omega) * mCapacitance.cast<Complex>();
+      (**mDirectState).block<3, 1>(6, 0) = voltage.real();
+      (**mDirectState).block<3, 1>(9, 0) = (yC * voltage).real();
+    }
+    **mIntfCurrent = -(loadG.real() * voltage.real());
+    if (mDirectHasInductor)
+      **mIntfCurrent -= (**mDirectState).block<3, 1>(3, 0);
+    if (mDirectHasCapacitor)
+      **mIntfCurrent -= (**mDirectState).block<3, 1>(9, 0);
+    return;
+  }
 
   if ((**mActivePower)(0, 0) != 0) {
     mSubResistor =
@@ -252,6 +303,8 @@ void EMT::Ph3::RXLoad::mnaParentAddPreStepDependencies(
     AttributeBase::List &prevStepDependencies,
     AttributeBase::List &attributeDependencies,
     AttributeBase::List &modifiedAttributes) {
+  if (!mUseSubcomponents)
+    prevStepDependencies.push_back(mDirectState);
   modifiedAttributes.push_back(mRightVector);
 };
 
@@ -263,14 +316,49 @@ void EMT::Ph3::RXLoad::mnaParentAddPostStepDependencies(
   attributeDependencies.push_back(leftVector);
   modifiedAttributes.push_back(mIntfCurrent);
   modifiedAttributes.push_back(mIntfVoltage);
+  if (!mUseSubcomponents)
+    modifiedAttributes.push_back(mDirectState);
 };
 
 void EMT::Ph3::RXLoad::mnaParentPreStep(Real time, Int timeStepCount) {
+  if (!mUseSubcomponents) {
+    const auto &state = **mDirectState;
+    mDirectHistoryLoad.setZero();
+    mDirectHistoryShunt.setZero();
+    if (mDirectHasInductor)
+      mDirectHistoryLoad = mDirectInductorAdmittance * state.block<3, 1>(0, 0) +
+                           state.block<3, 1>(3, 0);
+    if (mDirectHasCapacitor)
+      mDirectHistoryShunt =
+          -state.block<3, 1>(9, 0) -
+          mDirectCapacitorAdmittance * state.block<3, 1>(6, 0);
+  }
   mnaCompApplyRightSideVectorStamp(**mRightVector);
 }
 
 void EMT::Ph3::RXLoad::mnaParentPostStep(Real time, Int timeStepCount,
                                          Attribute<Matrix>::Ptr &leftVector) {
+  if (!mUseSubcomponents) {
+    mnaCompUpdateVoltage(**leftVector);
+    const Matrix voltage = **mIntfVoltage;
+    Matrix inductorCurrent = Matrix::Zero(3, 1);
+    Matrix capacitorCurrent = Matrix::Zero(3, 1);
+    if (mDirectHasInductor) {
+      inductorCurrent =
+          mDirectInductorAdmittance * voltage + mDirectHistoryLoad;
+      (**mDirectState).block<3, 1>(0, 0) = voltage;
+      (**mDirectState).block<3, 1>(3, 0) = inductorCurrent;
+    }
+    if (mDirectHasCapacitor) {
+      capacitorCurrent =
+          mDirectCapacitorAdmittance * voltage + mDirectHistoryShunt;
+      (**mDirectState).block<3, 1>(6, 0) = voltage;
+      (**mDirectState).block<3, 1>(9, 0) = capacitorCurrent;
+    }
+    **mIntfCurrent = -(mDirectTotalConductance * voltage + inductorCurrent +
+                       capacitorCurrent);
+    return;
+  }
   mnaCompUpdateVoltage(**leftVector);
   mnaCompUpdateCurrent(**leftVector);
 }
@@ -286,6 +374,16 @@ void EMT::Ph3::RXLoad::mnaCompUpdateVoltage(const Matrix &leftVector) {
 }
 
 void EMT::Ph3::RXLoad::mnaCompUpdateCurrent(const Matrix &leftVector) {
+  if (!mUseSubcomponents) {
+    **mIntfCurrent = -mDirectTotalConductance * (**mIntfVoltage);
+    if (mDirectHasInductor)
+      **mIntfCurrent -=
+          mDirectInductorAdmittance * (**mIntfVoltage) + mDirectHistoryLoad;
+    if (mDirectHasCapacitor)
+      **mIntfCurrent -=
+          mDirectCapacitorAdmittance * (**mIntfVoltage) + mDirectHistoryShunt;
+    return;
+  }
   if (mReactanceInSeries) {
     **mIntfCurrent = mSubInductor->intfCurrent();
   } else {
@@ -293,5 +391,56 @@ void EMT::Ph3::RXLoad::mnaCompUpdateCurrent(const Matrix &leftVector) {
     for (auto &subc : mSubComponents) {
       **mIntfCurrent += subc->intfCurrent();
     }
+  }
+}
+
+void EMT::Ph3::RXLoad::mnaParentInitialize(Real, Real timeStep,
+                                           Attribute<Matrix>::Ptr) {
+  if (mUseSubcomponents)
+    return;
+  mDirectInductorAdmittance =
+      mDirectHasInductor ? timeStep / (2. * mInductance(0, 0)) : 0.;
+  mDirectCapacitorAdmittance =
+      mDirectHasCapacitor ? 2. * mCapacitance(0, 0) / timeStep : 0.;
+  mDirectNodalAdmittance =
+      (mDirectTotalConductance + mDirectInductorAdmittance +
+       mDirectCapacitorAdmittance) *
+      Matrix::Identity(3, 3);
+}
+
+void EMT::Ph3::RXLoad::mnaParentApplySystemMatrixStamp(
+    SparseMatrixRow &systemMatrix) {
+  if (!mUseSubcomponents) {
+    updateMatrixNodeIndices();
+    MNAStampUtils::stampConductanceMatrix(mDirectNodalAdmittance, systemMatrix,
+                                          matrixNodeIndex(0), 0,
+                                          terminalNotGrounded(0), false, mSLog);
+  }
+}
+
+void EMT::Ph3::RXLoad::mnaParentApplyRightSideVectorStamp(Matrix &rightVector) {
+  if (!mUseSubcomponents && terminalNotGrounded(0))
+    for (UInt phase = 0; phase < 3; ++phase)
+      Math::setVectorElement(
+          rightVector, matrixNodeIndex(0, phase),
+          -(mDirectHistoryLoad(phase) + mDirectHistoryShunt(phase)));
+}
+
+Bool EMT::Ph3::RXLoad::mnaHasCompactRightSideVectorStamp() const {
+  return !mUseSubcomponents ||
+         CompositePowerComp<Real>::mnaHasCompactRightSideVectorStamp();
+}
+
+void EMT::Ph3::RXLoad::mnaAddCompactRightSideVectorStamp(Matrix &rightVector) {
+  if (mUseSubcomponents) {
+    CompositePowerComp<Real>::mnaAddCompactRightSideVectorStamp(rightVector);
+    return;
+  }
+  if (!terminalNotGrounded(0))
+    return;
+  for (UInt phase = 0; phase < 3; ++phase) {
+    const UInt idx = matrixNodeIndex(0, phase);
+    Math::addToVectorElement(rightVector, idx,
+                             Math::realFromVectorElement(**mRightVector, idx));
   }
 }

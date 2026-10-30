@@ -1,0 +1,8 @@
+phase,total_s,avg_us,min_us,max_us,calls
+matrix_reset_and_variable_stamping,1.72892,8.64458,8,142.166,200000
+node_voltage_propagation,0.251483,1.25742,1.041,121.958,200000
+numeric_solve,1.23169,6.15846,5.334,78.75,200000
+partial_refactorization,5.40897,27.0448,25.292,215.375,200000
+rhs_assembly,1.84007,9.20033,8.666,136.042,200000
+variable_change_detection,0.0286691,0.143346,0.042,31.708,200000
+initial_factorization,0.00146921,1469.21,1469.21,1469.21,1

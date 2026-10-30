@@ -9,6 +9,7 @@
 #pragma once
 
 #include <bitset>
+#include <chrono>
 #include <iostream>
 #include <list>
 #include <memory>
@@ -23,12 +24,25 @@ namespace DPsim {
 class DenseLUAdapter : public DirectLinearSolver {
   Eigen::PartialPivLU<Matrix> LUFactorized;
   Matrix mReferenceMatrix;
+  Matrix mCorrectionInverse;
   Matrix mCurrentMatrix;
   Matrix mResidual;
   Matrix mCorrection;
   std::vector<std::pair<UInt, UInt>> mVariableEntries;
   Bool mUseStaticPreconditioner = false;
   Bool mStaticPreconditionerActive = false;
+  Bool mUseInverseForCorrections = false;
+  Bool mDetailedProfiling = false;
+  struct Timing {
+    std::chrono::nanoseconds total{};
+    std::size_t calls = 0;
+  };
+  Timing mInitialSolveTime, mResidualBuildTime, mCorrectionSolveTime,
+      mResidualUpdateTime, mFallbackFactorizationTime, mFallbackSolveTime;
+  std::size_t mSolveCalls = 0;
+  std::size_t mRefinementIterations = 0;
+  std::size_t mMaximumRefinementIterations = 0;
+  std::size_t mFallbackCount = 0;
 
   void applyConfiguration() override;
 
@@ -58,5 +72,8 @@ public:
   /// solution function for a right hand side
   Matrix solve(Matrix &rightSideVector) override;
   void solveInto(Matrix &rightSideVector, Matrix &solution) override;
+  void setDetailedProfiling(Bool enabled) { mDetailedProfiling = enabled; }
+  void writeDetailedProfile(std::ostream &profile) const;
+  void writeDetailedDiagnostics(std::ostream &diagnostics) const;
 };
 } // namespace DPsim

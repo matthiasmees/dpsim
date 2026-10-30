@@ -10,6 +10,7 @@
 
 #include <algorithm>
 
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <unordered_map>
@@ -41,7 +42,11 @@ void Scheduler::updateMeasurement(Task *ptr, TaskTime time) {
 }
 
 void Scheduler::writeMeasurements(String filename) {
+  const auto parentPath = std::filesystem::path(filename).parent_path();
+  if (!parentPath.empty())
+    std::filesystem::create_directories(parentPath);
   std::ofstream os(filename);
+  os << "task,avg_ns,min_ns,max_ns,total_ns,calls\n";
   for (auto &pair : mMeasurements) {
     const auto &measurement = pair.second;
     const TaskTime average = getAveragedMeasurement(pair.first);
@@ -49,7 +54,8 @@ void Scheduler::writeMeasurements(String filename) {
     // range and sample count without retaining every per-step sample.
     os << pair.first->toString() << "," << average.count() << ","
        << measurement.minimum.count() << "," << measurement.maximum.count()
-       << "," << measurement.count << std::endl;
+       << "," << measurement.total.count() << "," << measurement.count
+       << std::endl;
   }
   os.close();
 }
@@ -64,6 +70,8 @@ void Scheduler::readMeasurements(
   while (fs.good()) {
     std::string line;
     std::getline(fs, line);
+    if (line.rfind("task,", 0) == 0)
+      continue;
     int idx = static_cast<UInt>(line.find(','));
     if (idx == -1) {
       if (line.empty())
