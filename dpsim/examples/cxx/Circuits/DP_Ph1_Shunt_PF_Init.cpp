@@ -394,17 +394,19 @@ Csv runSVCComparison() {
 
 Csv runDPInverterCase(Bool useSubcomponents, const String &name,
                       Real *wallTime = nullptr, Bool controlEnabled = false,
-                      Real duration = 0.04) {
+                      Real duration = 0.04, Bool withTransformer = false) {
   auto bus = SimNode<Complex>::make("bus", PhaseType::Single);
   bus->setInitialVoltage(Complex(voltage, 0.));
   auto source = DP::Ph1::VoltageSource::make("source");
   source->setParameters(Complex(voltage, 0.), frequency);
-  auto inverter =
-      DP::Ph1::AvVoltageSourceInverterDQ::make("inverter", useSubcomponents);
+  auto inverter = DP::Ph1::AvVoltageSourceInverterDQ::make(
+      "inverter", useSubcomponents, Logger::Level::off, withTransformer);
   inverter->setParameters(2. * PI * frequency, voltage, 1000., 250.);
   inverter->setControllerParameters(0.25, 2., 0.001, 0.08, 3.77, 1400.,
                                     2. * PI * frequency);
   inverter->setFilterParameters(0.16, 10e-6, 5., 100.);
+  if (withTransformer)
+    inverter->setTransformerParameters(voltage, voltage, 1e6, 1., 0., 0., 1e-3);
   inverter->withControl(controlEnabled);
   auto load = DP::Ph1::Resistor::make("load");
   load->setParameters(voltage * voltage / 1000.);
@@ -1403,6 +1405,36 @@ int main() {
     throw std::runtime_error(
         "DP AvVSI controlled direct trace comparison failed");
 
+  const Csv inverterTransformerLegacy = runDPInverterCase(
+      true, "DP_AvVSI_Transformer_LegacyCompare", nullptr, false, 0.005, true);
+  const Csv inverterTransformerDirect = runDPInverterCase(
+      false, "DP_AvVSI_Transformer_DirectCompare", nullptr, false, 0.005, true);
+  Real inverterTransformerVoltageError = 0.;
+  Real inverterTransformerCurrentError = 0.;
+  for (size_t row = 0; row < inverterTransformerLegacy.rows.size(); ++row) {
+    for (const String &quantity : {String("voltage"), String("current")}) {
+      Real &error = quantity == "voltage" ? inverterTransformerVoltageError
+                                          : inverterTransformerCurrentError;
+      const Complex legacyValue(
+          at(inverterTransformerLegacy, row, quantity + ".re"),
+          at(inverterTransformerLegacy, row, quantity + ".im"));
+      const Complex directValue(
+          at(inverterTransformerDirect, row, quantity + ".re"),
+          at(inverterTransformerDirect, row, quantity + ".im"));
+      const Real base = quantity == "voltage" ? voltage : 10.;
+      const Real scale =
+          quantity == "current" ? std::max(base, std::abs(legacyValue)) : base;
+      error = std::max(error, std::abs(legacyValue - directValue) / scale);
+    }
+  }
+  std::cout << "DP AvVSI transformer direct trace errors: voltage="
+            << inverterTransformerVoltageError
+            << ", current=" << inverterTransformerCurrentError << "\n";
+  if (inverterTransformerVoltageError > 2e-3 ||
+      inverterTransformerCurrentError > 2e-3)
+    throw std::runtime_error(
+        "DP AvVSI transformer direct trace comparison failed");
+
   const Csv networkInjection3ph = runThreePhaseNetworkInjectionComparison();
   Real networkInjection3phError = 0.;
   for (size_t row = 0; row < networkInjection3ph.rows.size(); ++row)
@@ -1598,4 +1630,23 @@ int main() {
   std::cout << "DP AvVSI benchmark (5-run mean, 0.04 s at 10 us): legacy="
             << inverterLegacyTime / timingRuns
             << " s, direct=" << inverterDirectTime / timingRuns << " s\n";
+
+  Real inverterTransformerLegacyTime = 0.;
+  Real inverterTransformerDirectTime = 0.;
+  for (UInt run = 0; run < timingRuns; ++run) {
+    Real elapsed = 0.;
+    runDPInverterCase(
+        true, "DP_AvVSI_Transformer_LegacyBenchmark_" + std::to_string(run),
+        &elapsed, false, 0.04, true);
+    inverterTransformerLegacyTime += elapsed;
+    runDPInverterCase(
+        false, "DP_AvVSI_Transformer_DirectBenchmark_" + std::to_string(run),
+        &elapsed, false, 0.04, true);
+    inverterTransformerDirectTime += elapsed;
+  }
+  std::cout << "DP AvVSI with transformer benchmark (5-run mean, 0.04 s at "
+               "10 us): legacy="
+            << inverterTransformerLegacyTime / timingRuns
+            << " s, direct=" << inverterTransformerDirectTime / timingRuns
+            << " s\n";
 }

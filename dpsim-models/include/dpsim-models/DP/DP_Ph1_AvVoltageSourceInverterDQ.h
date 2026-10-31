@@ -73,6 +73,7 @@ protected:
   Complex mDirectCapacitorVoltage = Complex(0., 0.);
   Complex mDirectCapacitorCurrent = Complex(0., 0.);
   Complex mDirectSourceValue = Complex(0., 0.);
+  std::vector<UInt> mDirectChildRightVectorIndices;
   /// Flag for controller usage
   Bool mWithControl = true;
 
@@ -158,6 +159,7 @@ public:
                            Attribute<Matrix>::Ptr leftVector) override;
   void mnaParentApplySystemMatrixStamp(SparseMatrixRow &systemMatrix) override;
   void mnaParentApplyRightSideVectorStamp(Matrix &rightVector) override;
+  void mnaAddCompactRightSideVectorStamp(Matrix &rightVector) override;
   /// Updates current through the component
   void mnaCompUpdateCurrent(const Matrix &leftVector) override;
   /// Updates voltage across component

@@ -9,6 +9,7 @@
 #include <dpsim-models/DP/DP_Ph1_AvVoltageSourceInverterDQ.h>
 #include <dpsim-models/MNAStampUtils.h>
 
+#include <array>
 #include <stdexcept>
 
 using namespace CPS;
@@ -39,10 +40,6 @@ DP::Ph1::AvVoltageSourceInverterDQ::AvVoltageSourceInverterDQ(
       mPowerctrlStates(mAttributes->createDynamic<Matrix>("powerctrl_states")) {
 
   mUseSubcomponents = useSubcomponents;
-  if (withTrafo && !mUseSubcomponents)
-    throw std::invalid_argument(
-        "DP AvVoltageSourceInverterDQ direct mode does not yet support a "
-        "connection transformer; use the legacy constructor for this case.");
   if (withTrafo) {
     setVirtualNodeNumber(4);
     mConnectionTransformer = DP::Ph1::Transformer::make(
@@ -66,8 +63,6 @@ DP::Ph1::AvVoltageSourceInverterDQ::AvVoltageSourceInverterDQ(
     mSubResistorC = DP::Ph1::Resistor::make(**mName + "_resC", mLogLevel);
     mSubCapacitorF = DP::Ph1::Capacitor::make(**mName + "_capF", mLogLevel);
     mSubInductorF = DP::Ph1::Inductor::make(**mName + "_indF", mLogLevel);
-    mSubCtrledVoltageSource =
-        DP::Ph1::VoltageSource::make(**mName + "_src", mLogLevel);
     addMNASubComponent(mSubResistorF,
                        MNA_SUBCOMP_TASK_ORDER::TASK_BEFORE_PARENT,
                        MNA_SUBCOMP_TASK_ORDER::TASK_BEFORE_PARENT, false);
@@ -80,8 +75,19 @@ DP::Ph1::AvVoltageSourceInverterDQ::AvVoltageSourceInverterDQ(
     addMNASubComponent(mSubInductorF,
                        MNA_SUBCOMP_TASK_ORDER::TASK_BEFORE_PARENT,
                        MNA_SUBCOMP_TASK_ORDER::TASK_BEFORE_PARENT, true);
+  }
 
-    // The controlled source's pre-step is handled explicitly by the parent.
+  // Keep the controlled source as a component in transformer-enabled direct
+  // mode. Its branch unknown is distinct from the transformer's low-voltage
+  // node, while the R-L-C filter remains stamped directly by this parent.
+  if (!mUseSubcomponents && mWithConnectionTransformer) {
+    mSubCtrledVoltageSource =
+        DP::Ph1::VoltageSource::make(**mName + "_src", mLogLevel);
+    addMNASubComponent(mSubCtrledVoltageSource, MNA_SUBCOMP_TASK_ORDER::NO_TASK,
+                       MNA_SUBCOMP_TASK_ORDER::TASK_BEFORE_PARENT, true);
+  } else if (mUseSubcomponents) {
+    mSubCtrledVoltageSource =
+        DP::Ph1::VoltageSource::make(**mName + "_src", mLogLevel);
     addMNASubComponent(mSubCtrledVoltageSource, MNA_SUBCOMP_TASK_ORDER::NO_TASK,
                        MNA_SUBCOMP_TASK_ORDER::TASK_BEFORE_PARENT, true);
   }
@@ -96,7 +102,7 @@ DP::Ph1::AvVoltageSourceInverterDQ::AvVoltageSourceInverterDQ(
       **mName + "_PowerControllerVSI", mLogLevel);
 
   // Sub voltage source
-  if (mUseSubcomponents)
+  if (mUseSubcomponents || mWithConnectionTransformer)
     mVs->setReference(mSubCtrledVoltageSource->mIntfVoltage);
   else
     mVs->setReference(mDirectSourceVoltageAttr);
@@ -284,6 +290,10 @@ void DP::Ph1::AvVoltageSourceInverterDQ::initializeParentFromNodesAndTerminals(
     mDirectInductorCurrent = filterInterfaceInitialCurrent - icfInit;
     mDirectCapacitorVoltage = -vcInit;
     mDirectCapacitorCurrent = -icfInit;
+    if (mWithConnectionTransformer) {
+      mSubCtrledVoltageSource->setParameters((**mVsref)(0, 0));
+      mSubCtrledVoltageSource->connect({SimNode::GND, mVirtualNodes[0]});
+    }
   }
 
   // Initialize control subcomponents
@@ -358,6 +368,46 @@ void DP::Ph1::AvVoltageSourceInverterDQ::mnaParentInitialize(
     mDirectCapacitorHistory =
         -mDirectCapacitorCurrent -
         mDirectCapacitorPreviousVoltageFactor * mDirectCapacitorVoltage;
+
+    if (mWithConnectionTransformer) {
+      const UInt harmonicOffset =
+          static_cast<UInt>(leftVector->get().rows()) / mNumFreqs;
+      const UInt complexOffset = harmonicOffset / 2;
+      const UInt vectorSize = static_cast<UInt>(leftVector->get().rows());
+      auto appendComponentRows = [&](SimPowerComp<Complex> &component) {
+        std::vector<UInt> baseIndices;
+        for (UInt terminal = 0; terminal < component.terminalNumberConnected();
+             ++terminal) {
+          if (component.node(terminal)->isGround())
+            continue;
+          const auto indices = component.matrixNodeIndices(terminal);
+          baseIndices.insert(baseIndices.end(), indices.begin(), indices.end());
+        }
+        for (UInt virtualNode = 0; virtualNode < component.virtualNodesNumber();
+             ++virtualNode) {
+          const auto indices = component.virtualMatrixNodeIndices(virtualNode);
+          baseIndices.insert(baseIndices.end(), indices.begin(), indices.end());
+        }
+        for (UInt freq = 0; freq < mNumFreqs; ++freq) {
+          for (UInt index : baseIndices) {
+            const UInt realIndex = index + freq * harmonicOffset;
+            const UInt imagIndex = realIndex + complexOffset;
+            if (realIndex < vectorSize)
+              mDirectChildRightVectorIndices.push_back(realIndex);
+            if (imagIndex < vectorSize)
+              mDirectChildRightVectorIndices.push_back(imagIndex);
+          }
+        }
+      };
+      appendComponentRows(*mConnectionTransformer);
+      appendComponentRows(*mSubCtrledVoltageSource);
+      std::sort(mDirectChildRightVectorIndices.begin(),
+                mDirectChildRightVectorIndices.end());
+      mDirectChildRightVectorIndices.erase(
+          std::unique(mDirectChildRightVectorIndices.begin(),
+                      mDirectChildRightVectorIndices.end()),
+          mDirectChildRightVectorIndices.end());
+    }
   }
 
   // initialize state space controller
@@ -441,15 +491,19 @@ void DP::Ph1::AvVoltageSourceInverterDQ::controlStep(Real time,
 
 void DP::Ph1::AvVoltageSourceInverterDQ::mnaParentApplySystemMatrixStamp(
     SparseMatrixRow &systemMatrix) {
-  if (mUseSubcomponents)
+  if (mUseSubcomponents) {
     return CompositePowerComp<Complex>::mnaParentApplySystemMatrixStamp(
         systemMatrix);
+  }
 
   const Int sourceNode = mVirtualNodes[0]->matrixNodeIndex();
   const Int resistorNode = mVirtualNodes[1]->matrixNodeIndex();
   const Int capacitorNode = mVirtualNodes[2]->matrixNodeIndex();
   const Int sourceBranch = mVirtualNodes[3]->matrixNodeIndex();
   const Int terminal = matrixNodeIndex(0);
+  const Int filterOutput = mWithConnectionTransformer
+                               ? mVirtualNodes[3]->matrixNodeIndex()
+                               : terminal;
   const Complex rfConductance(1. / mRf, 0.);
   const Complex rcConductance(1. / mRc, 0.);
 
@@ -460,13 +514,16 @@ void DP::Ph1::AvVoltageSourceInverterDQ::mnaParentApplySystemMatrixStamp(
                                  mSLog);
   MNAStampUtils::stampAdmittance(mDirectCapacitorConductance, systemMatrix,
                                  capacitorNode, 0, true, false, mSLog);
-  MNAStampUtils::stampAdmittance(rcConductance, systemMatrix, capacitorNode,
-                                 terminal, true, terminalNotGrounded(0), mSLog);
+  MNAStampUtils::stampAdmittance(
+      rcConductance, systemMatrix, capacitorNode, filterOutput, true,
+      mWithConnectionTransformer || terminalNotGrounded(0), mSLog);
 
-  Math::setMatrixElement(systemMatrix, sourceBranch, sourceNode,
-                         Complex(1., 0.));
-  Math::setMatrixElement(systemMatrix, sourceNode, sourceBranch,
-                         Complex(1., 0.));
+  if (!mWithConnectionTransformer) {
+    Math::setMatrixElement(systemMatrix, sourceBranch, sourceNode,
+                           Complex(1., 0.));
+    Math::setMatrixElement(systemMatrix, sourceNode, sourceBranch,
+                           Complex(1., 0.));
+  }
 }
 
 void DP::Ph1::AvVoltageSourceInverterDQ::mnaParentApplyRightSideVectorStamp(
@@ -478,19 +535,36 @@ void DP::Ph1::AvVoltageSourceInverterDQ::mnaParentApplyRightSideVectorStamp(
   const Int sourceNode = mVirtualNodes[0]->matrixNodeIndex();
   const Int resistorNode = mVirtualNodes[1]->matrixNodeIndex();
   const Int capacitorNode = mVirtualNodes[2]->matrixNodeIndex();
-  const Int sourceBranch = mVirtualNodes[3]->matrixNodeIndex();
   const Complex inductorEquivalent =
       mDirectInductorConductance * mDirectInductorVoltage +
       mDirectInductorPreviousCurrentFactor * mDirectInductorCurrent;
   const Complex capacitorEquivalent =
       -mDirectCapacitorCurrent -
       mDirectCapacitorPreviousVoltageFactor * mDirectCapacitorVoltage;
-  Math::setVectorElement(rightVector, sourceBranch, mDirectSourceValue,
-                         mNumFreqs);
+  if (!mWithConnectionTransformer)
+    Math::setVectorElement(rightVector, mVirtualNodes[3]->matrixNodeIndex(),
+                           mDirectSourceValue, mNumFreqs);
   Math::setVectorElement(rightVector, resistorNode, inductorEquivalent,
                          mNumFreqs);
   Math::setVectorElement(rightVector, capacitorNode,
                          capacitorEquivalent - inductorEquivalent, mNumFreqs);
+}
+
+void DP::Ph1::AvVoltageSourceInverterDQ::mnaAddCompactRightSideVectorStamp(
+    Matrix &rightVector) {
+  CompositePowerComp<Complex>::mnaAddCompactRightSideVectorStamp(rightVector);
+  if (mUseSubcomponents || !mWithConnectionTransformer)
+    return;
+
+  // The direct filter realization keeps only its external voltage source and
+  // connection transformer as MNA children. Unlike the legacy pre-step path,
+  // the direct parent does not fold those child histories into its own vector.
+  const Matrix &transformerStamp = **mConnectionTransformer->mRightVector;
+  const Matrix &sourceStamp = **mSubCtrledVoltageSource->mRightVector;
+  for (UInt index : mDirectChildRightVectorIndices) {
+    rightVector(index, 0) += transformerStamp(index, 0);
+    rightVector(index, 0) += sourceStamp(index, 0);
+  }
 }
 
 void DP::Ph1::AvVoltageSourceInverterDQ::mnaParentAddPreStepDependencies(
@@ -519,6 +593,11 @@ void DP::Ph1::AvVoltageSourceInverterDQ::mnaParentPreStep(Real time,
   if (mUseSubcomponents)
     mnaCompApplyRightSideVectorStamp(**mRightVector);
   else {
+    if (mWithConnectionTransformer) {
+      if (mWithControl)
+        **mSubCtrledVoltageSource->mVoltageRef = (**mVsref)(0, 0);
+      mSubCtrledVoltageSource->mnaPreStep(time, timeStepCount);
+    }
     if (mWithControl)
       mDirectSourceValue = (**mVsref)(0, 0);
     (**mDirectSourceVoltageAttr)(0, 0) = mDirectSourceValue;
@@ -572,9 +651,17 @@ void DP::Ph1::AvVoltageSourceInverterDQ::mnaCompUpdateCurrent(
         mDirectCapacitorConductance * capacitorComponentVoltage +
         capacitorEquivalent;
     mDirectCapacitorVoltage = capacitorComponentVoltage;
-    mDirectGridCurrent = (terminalVoltage - capacitorVoltage) / mRc;
+    const Complex filterOutputVoltage =
+        mWithConnectionTransformer
+            ? Math::complexFromVectorElement(
+                  leftvector, mVirtualNodes[3]->matrixNodeIndex())
+            : terminalVoltage;
+    mDirectGridCurrent = (filterOutputVoltage - capacitorVoltage) / mRc;
     (**mIntfVoltage)(0, 0) = terminalVoltage;
-    (**mIntfCurrent)(0, 0) = mDirectGridCurrent;
+    (**mIntfCurrent)(0, 0) =
+        mWithConnectionTransformer
+            ? (**mConnectionTransformer->mIntfCurrent)(0, 0)
+            : mDirectGridCurrent;
     return;
   }
   if (mWithConnectionTransformer)
