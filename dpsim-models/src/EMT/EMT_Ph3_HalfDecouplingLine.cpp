@@ -46,6 +46,8 @@ void EMT::Ph3::HalfDecouplingLine::setParameters(Matrix resistance,
   mDelay = (inductance.array() * capacitance.array()).sqrt().maxCoeff();
 
   **mSrcRes = mSurgeImpedance + mResistance / 4;
+  mSrcResInverse = (**mSrcRes).inverse();
+  mSrcResSquaredInverse = ((**mSrcRes) * (**mSrcRes)).inverse();
 
   SPDLOG_LOGGER_INFO(mSLog, "surge impedance: {}", mSurgeImpedance);
   SPDLOG_LOGGER_INFO(mSLog, "delay: {}", mDelay);
@@ -84,8 +86,7 @@ void EMT::Ph3::HalfDecouplingLine::mnaParentApplySystemMatrixStamp(
     SparseMatrixRow &systemMatrix) {
   if (mUseSubcomponents)
     return;
-  const Matrix conductance = (**mSrcRes).inverse();
-  MNAStampUtils::stampConductanceMatrix(conductance, systemMatrix,
+  MNAStampUtils::stampConductanceMatrix(mSrcResInverse, systemMatrix,
                                         matrixNodeIndex(0), 0,
                                         terminalNotGrounded(0), false, mSLog);
 }
@@ -137,29 +138,30 @@ void EMT::Ph3::HalfDecouplingLine::mnaParentInitialize(
   **mSendingCur = curNear.real();
 }
 
-Matrix EMT::Ph3::HalfDecouplingLine::interpolate(Matrix &data) {
-  Matrix c1 = data.row(mBufIdx);
-  Matrix c2 = mBufIdx == mBufSize - 1 ? data.row(0) : data.row(mBufIdx + 1);
-  return (mAlpha * c1 + (1 - mAlpha) * c2).transpose();
+MatrixFixedSize<3, 1>
+EMT::Ph3::HalfDecouplingLine::interpolate(const Matrix &data) const {
+  const UInt nextIdx = (mBufIdx + 1 == mBufSize) ? 0 : mBufIdx + 1;
+  MatrixFixedSize<3, 1> result;
+  const Real nextWeight = 1 - mAlpha;
+  for (UInt phase = 0; phase < 3; ++phase)
+    result(phase) =
+        mAlpha * data(mBufIdx, phase) + nextWeight * data(nextIdx, phase);
+  return result;
 }
 
 void EMT::Ph3::HalfDecouplingLine::step(Real time, Int timeStepCount) {
-  Matrix voltNear = **mSendingVolt;
-  Matrix curNear = **mSendingCur;
-  Matrix voltFar = **mReceivingVolt;
-  Matrix curFar = **mReceivingCur;
-
-  Matrix denom =
-      (mSurgeImpedance + mResistance / 4) * (mSurgeImpedance + mResistance / 4);
+  const Matrix &voltNear = **mSendingVolt;
+  const Matrix &curNear = **mSendingCur;
+  const Matrix &voltFar = **mReceivingVolt;
+  const Matrix &curFar = **mReceivingCur;
 
   if (timeStepCount == 0) {
-    **mSrcCtrledCurrent =
-        curNear - (mSurgeImpedance + mResistance / 4).inverse() * voltNear;
+    **mSrcCtrledCurrent = curNear - mSrcResInverse * voltNear;
   } else {
     **mSrcCtrledCurrent =
-        -mSurgeImpedance * denom.inverse() *
+        -mSurgeImpedance * mSrcResSquaredInverse *
             (voltFar + (mSurgeImpedance - mResistance / 4) * curFar) -
-        mResistance / 4 * denom.inverse() *
+        mResistance / 4 * mSrcResSquaredInverse *
             (voltNear + (mSurgeImpedance - mResistance / 4) * curNear);
   }
 
@@ -216,8 +218,7 @@ void EMT::Ph3::HalfDecouplingLine::mnaCompUpdateCurrent(
     **mIntfCurrent = -mSubRes->intfCurrent() + **mSrcCtrledCurrent;
     return;
   }
-  **mIntfCurrent =
-      -(**mSrcRes).inverse() * **mIntfVoltage + **mSrcCtrledCurrent;
+  **mIntfCurrent = -mSrcResInverse * **mIntfVoltage + **mSrcCtrledCurrent;
 }
 
 void EMT::Ph3::HalfDecouplingLine::mnaParentAddPreStepDependencies(

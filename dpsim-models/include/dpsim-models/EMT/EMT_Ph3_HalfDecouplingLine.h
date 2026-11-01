@@ -24,6 +24,9 @@ protected:
   Matrix mCapacitance = Matrix::Zero(3, 3);
   /// Surge impedance, sqrt(L/C)
   Matrix mSurgeImpedance = Matrix::Zero(3, 3);
+  /// Constant inverses used by the half-line history source update.
+  Matrix mSrcResInverse = Matrix::Zero(3, 3);
+  Matrix mSrcResSquaredInverse = Matrix::Zero(3, 3);
 
   // ### Electrical Subcomponents ###
   /// Controlled current source carrying the history term
@@ -39,7 +42,7 @@ protected:
   Real mAlpha;
 
   /// Reads a ring buffer one travel time back
-  Matrix interpolate(Matrix &data);
+  MatrixFixedSize<3, 1> interpolate(const Matrix &data) const;
 
 public:
   typedef std::shared_ptr<HalfDecouplingLine> Ptr;

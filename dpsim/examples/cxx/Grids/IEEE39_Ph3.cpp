@@ -135,17 +135,8 @@ const Generator generators[] = {
      .031, .025, .069, .025, .015},
 };
 
-std::vector<Complex> phasePhasors(Real lineLineRms, Real angleDegrees,
-                                  Real scale) {
-  const Complex a = std::polar(lineLineRms * scale, angleDegrees * PI / 180.0);
-  return {a, a * std::polar(1.0, -2.0 * PI / 3.0),
-          a * std::polar(1.0, 2.0 * PI / 3.0)};
-}
 Matrix parameter3(Real value) {
   return Math::singlePhaseParameterToThreePhase(value);
-}
-MatrixComp variable3(Complex value) {
-  return Math::singlePhaseVariableToThreePhase(value);
 }
 
 PowerflowBusType pfBusType(int type) {

@@ -133,7 +133,8 @@ void EMT::Ph3::SeriesResistor::mnaCompUpdateVoltage(const Matrix &leftVector) {
 }
 
 void EMT::Ph3::SeriesResistor::mnaCompUpdateCurrent(const Matrix &leftVector) {
-  **mIntfCurrent = **mIntfVoltage / **mResistance;
+  const Real conductance = 1. / **mResistance;
+  **mIntfCurrent = **mIntfVoltage * conductance;
 
   SPDLOG_LOGGER_DEBUG(mSLog, "Current A: {} < {}", (**mIntfCurrent)(0, 0));
 }

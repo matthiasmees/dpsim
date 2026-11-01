@@ -465,14 +465,13 @@ void EMT::LinearSSNGroup::currentHistory(Matrix &result) const {
       Clock::now() - start);
 }
 
-Matrix EMT::LinearSSNGroup::terminalVoltage(const Matrix &leftVector) {
-  updateMatrixNodeIndices();
-  Matrix voltage = Matrix::Zero(mTerminalIndices.size(), 1);
+void EMT::LinearSSNGroup::terminalVoltage(const Matrix &leftVector,
+                                          Matrix &voltage) {
+  voltage.setZero();
   for (UInt terminal = 0; terminal < mRetainedNames.size(); ++terminal)
     for (UInt phase = 0; phase < 3; ++phase)
       voltage(terminal * 3 + phase) = Math::realFromVectorElement(
-          leftVector, matrixNodeIndex(terminal, phase));
-  return voltage;
+          leftVector, mRetainedMatrixIndices[terminal * 3 + phase]);
 }
 
 void EMT::LinearSSNGroup::mnaCompApplySystemMatrixStamp(
@@ -480,10 +479,13 @@ void EMT::LinearSSNGroup::mnaCompApplySystemMatrixStamp(
   updateMatrixNodeIndices();
   if (!mReady)
     throw std::logic_error("LinearSSNGroup used before initialization.");
+  mRetainedMatrixIndices.resize(mRetainedNames.size() * 3);
+  for (UInt i = 0; i < mRetainedMatrixIndices.size(); ++i)
+    mRetainedMatrixIndices[i] = matrixNodeIndex(i / 3, i % 3);
   for (UInt i = 0; i < mRetainedNames.size() * 3; ++i)
     for (UInt j = 0; j < mRetainedNames.size() * 3; ++j)
-      Math::addToMatrixElement(systemMatrix, matrixNodeIndex(i / 3, i % 3),
-                               matrixNodeIndex(j / 3, j % 3), mDd(i, j));
+      Math::addToMatrixElement(systemMatrix, mRetainedMatrixIndices[i],
+                               mRetainedMatrixIndices[j], mDd(i, j));
 }
 
 void EMT::LinearSSNGroup::mnaCompApplyRightSideVectorStamp(
@@ -494,11 +496,12 @@ void EMT::LinearSSNGroup::mnaCompApplyRightSideVectorStamp(
 void EMT::LinearSSNGroup::mnaAddCompactRightSideVectorStamp(
     Matrix &rightVector) {
   using Clock = std::chrono::steady_clock;
-  updateMatrixNodeIndices();
-  currentHistory(mTerminalHistoryScratch);
   const auto start = Clock::now();
+  // Terminal matrix indices are cached during the system-matrix stamp;
+  // refreshing all node/phase indices on every history stamp is redundant.
+  currentHistory(mTerminalHistoryScratch);
   for (UInt i = 0; i < mTerminalHistoryScratch.rows(); ++i)
-    Math::addToVectorElement(rightVector, matrixNodeIndex(i / 3, i % 3),
+    Math::addToVectorElement(rightVector, mRetainedMatrixIndices[i],
                              mTerminalHistoryScratch(i));
   mRhsScatterTime += std::chrono::duration_cast<std::chrono::nanoseconds>(
       Clock::now() - start);
@@ -532,6 +535,26 @@ void EMT::LinearSSNGroup::mnaWriteProfile(std::ostream &profile) const {
           << mReducedStateMap.nonZeros() << "\n";
   profile << "group_reduced_input_map_nonzeros,0,0,0,0,"
           << mReducedInputMap.nonZeros() << "\n";
+  profile << "group_state_count,0,0,0,0," << mState->get().rows() << "\n";
+  profile << "group_reduced_state_map_rows,0,0,0,0," << mReducedStateMap.rows()
+          << "\n";
+  profile << "group_reduced_state_map_columns,0,0,0,0,"
+          << mReducedStateMap.cols() << "\n";
+  if (mReducedStateMap.rows() > 0) {
+    Eigen::Index minNonzerosPerRow = mReducedStateMap.cols();
+    Eigen::Index maxNonzerosPerRow = 0;
+    for (Eigen::Index row = 0; row < mReducedStateMap.rows(); ++row) {
+      const Eigen::Index rowNonzeros =
+          mReducedStateMap.outerIndexPtr()[row + 1] -
+          mReducedStateMap.outerIndexPtr()[row];
+      minNonzerosPerRow = std::min(minNonzerosPerRow, rowNonzeros);
+      maxNonzerosPerRow = std::max(maxNonzerosPerRow, rowNonzeros);
+    }
+    profile << "group_reduced_state_map_min_row_nonzeros,0,0,0,0,"
+            << minNonzerosPerRow << "\n";
+    profile << "group_reduced_state_map_max_row_nonzeros,0,0,0,0,"
+            << maxNonzerosPerRow << "\n";
+  }
   profile << "group_history_cached_response_selected,0,0,0,0,"
           << (mUseCachedInternalHistoryInverse ? 1 : 0) << "\n";
 }
@@ -542,7 +565,8 @@ void EMT::LinearSSNGroup::mnaCompPostStep(Real, Int,
                                           Attribute<Matrix>::Ptr &leftVector) {
   using Clock = std::chrono::steady_clock;
   const auto start = Clock::now();
-  const Matrix input = terminalVoltage(**leftVector);
+  terminalVoltage(**leftVector, mTerminalInputScratch);
+  const Matrix &input = mTerminalInputScratch;
   if (mInternalIndices.empty()) {
     mState->get() = mF * mState->get() + mBn * input;
     mStateUpdateTime += std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -551,7 +575,17 @@ void EMT::LinearSSNGroup::mnaCompPostStep(Real, Int,
     return;
   }
   if (mUseFullyReducedInternalMaps) {
-    mStateUpdateScratch.noalias() = mReducedStateMap * mState->get();
+    const Matrix &state = mState->get();
+    const auto *outer = mReducedStateMap.outerIndexPtr();
+    const auto *inner = mReducedStateMap.innerIndexPtr();
+    const auto *coefficients = mReducedStateMap.valuePtr();
+    Real *nextState = mStateUpdateScratch.data();
+    for (Eigen::Index row = 0; row < mReducedStateMap.rows(); ++row) {
+      Real value = 0.;
+      for (auto entry = outer[row]; entry < outer[row + 1]; ++entry)
+        value += coefficients[entry] * state(inner[entry]);
+      nextState[row] = value;
+    }
     mStateUpdateScratch.noalias() += mReducedInputMap * input;
     mState->get() = mStateUpdateScratch;
     mStateUpdateTime += std::chrono::duration_cast<std::chrono::nanoseconds>(

@@ -14,6 +14,8 @@
 #include <dpsim-models/EMT/EMT_Ph3_Resistor.h>
 #include <dpsim-models/Solver/MNAInterface.h>
 
+#include <array>
+
 namespace CPS {
 namespace EMT {
 namespace Ph3 {
@@ -26,6 +28,9 @@ protected:
   Attribute<Matrix>::Ptr mDirectState;
   Matrix mDirectInductorAdmittance = Matrix::Zero(3, 3);
   Matrix mDirectHistory = Matrix::Zero(3, 1);
+  std::array<std::array<UInt, 3>, 2> mDirectTerminalIndices{};
+  std::array<UInt, 3> mDirectMidpointIndices{};
+  std::array<Bool, 2> mDirectTerminalConnected{};
   /// True after createSubComponents() runs; prevents double-construction.
   /// Inductance submodel
   std::shared_ptr<Inductor> mSubInductor;
@@ -55,6 +60,7 @@ public:
   void mnaParentInitialize(Real omega, Real timeStep,
                            Attribute<Matrix>::Ptr leftVector) override;
   void mnaParentApplySystemMatrixStamp(SparseMatrixRow &systemMatrix) override;
+  void cacheDirectMatrixIndices();
   void mnaParentApplyRightSideVectorStamp(Matrix &rightVector) override;
   Bool mnaHasCompactRightSideVectorStamp() const override;
   void mnaAddCompactRightSideVectorStamp(Matrix &rightVector) override;

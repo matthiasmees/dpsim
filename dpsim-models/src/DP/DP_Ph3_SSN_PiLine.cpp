@@ -200,7 +200,8 @@ void DP::Ph3::SSN::PiLine::mnaCompPostStep(Real, Int,
   const MatrixComp v0 = terminalVoltage(**leftVector, 0);
   const MatrixComp v1 = terminalVoltage(**leftVector, 1);
   **mIntfVoltage = v1 - v0;
-  mnaCompUpdateCurrent(**leftVector);
+  (**mIntfCurrent).noalias() = mSeriesAdmittance * (**mIntfVoltage);
+  **mIntfCurrent += mSeriesHistory;
 
   const TerminalVoltage inductorVoltage =
       **mIntfVoltage - (**mSeriesRes).cast<Complex>() * (**mIntfCurrent);

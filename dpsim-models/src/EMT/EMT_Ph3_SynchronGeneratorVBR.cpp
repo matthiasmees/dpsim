@@ -285,6 +285,16 @@ void EMT::Ph3::SynchronGeneratorVBR::mnaCompApplyRightSideVectorStamp(
   }
 }
 
+void EMT::Ph3::SynchronGeneratorVBR::mnaAddCompactRightSideVectorStamp(
+    Matrix &rightVector) {
+  if (!terminalNotGrounded(0))
+    return;
+
+  Math::addToVectorElement(rightVector, matrixNodeIndex(0, 0), mISourceEq(0));
+  Math::addToVectorElement(rightVector, matrixNodeIndex(0, 1), mISourceEq(1));
+  Math::addToVectorElement(rightVector, matrixNodeIndex(0, 2), mISourceEq(2));
+}
+
 void EMT::Ph3::SynchronGeneratorVBR::stepInPerUnit() {
 
   // Update of mechanical torque from turbine governor
@@ -308,10 +318,11 @@ void EMT::Ph3::SynchronGeneratorVBR::stepInPerUnit() {
 
   mIabc << mIa, mIb, mIc;
 
-  mEsh_vbr =
+  mEsh_vbr.noalias() =
       (mResistanceMat - (2 / (mTimeStep * mBase_OmElec)) * mDInductanceMat) *
-          mIabc +
-      mDVabc - mVabc;
+      mIabc;
+  mEsh_vbr += mDVabc;
+  mEsh_vbr -= mVabc;
 
   CalculateL();
 
@@ -328,7 +339,8 @@ void EMT::Ph3::SynchronGeneratorVBR::stepInPerUnit() {
   // mBase_Z is a scalar. Avoid a second 3x3 inverse:
   // (R_eq_vbr * mBase_Z)^-1 = R_eq_vbr^-1 / mBase_Z.
   mConductanceMat = mR_eq_vbr_inv / mBase_Z;
-  mISourceEq = mR_eq_vbr_inv * E_eq_vbr * mBase_I;
+  mISourceEq.noalias() = mR_eq_vbr_inv * E_eq_vbr;
+  mISourceEq *= mBase_I;
 }
 
 void EMT::Ph3::SynchronGeneratorVBR::mnaCompPostStep(
@@ -362,7 +374,10 @@ void EMT::Ph3::SynchronGeneratorVBR::mnaCompPostStep(
     // to the synchronous generator pu system
     mVfd = (mRfd / mLmd) * mExciter->step(mVd, mVq, mTimeStep, Vpss);
   }
-  mIabc = mR_eq_vbr_inv * (mVabc - E_eq_vbr);
+  MatrixFixedSize<3, 1> voltageDifference;
+  for (UInt phase = 0; phase < 3; ++phase)
+    voltageDifference(phase) = mVabc(phase) - E_eq_vbr(phase);
+  mIabc.noalias() = mR_eq_vbr_inv * voltageDifference;
 
   mIa = mIabc(0);
   mIb = mIabc(1);
@@ -533,7 +548,9 @@ void EMT::Ph3::SynchronGeneratorVBR::CalculateAuxiliarVariables() {
   K2b << 0, c25;
   K2 = K2a * F1 + K2b;
 
-  K << K1, K2, Matrix::Zero(2, 1), 0, 0, 0;
+  K.setZero();
+  K.block<2, 1>(0, 0) = K1;
+  K.block<2, 1>(0, 1) = K2;
 
   mKrs_teta << 2. / 3. * cos(mThetaMech),
       2. / 3. * cos(mThetaMech - 2. * M_PI / 3.),

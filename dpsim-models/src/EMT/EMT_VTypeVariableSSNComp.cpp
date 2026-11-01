@@ -13,7 +13,11 @@ EMT::VTypeVariableSSNComp::VTypeVariableSSNComp(String uid, String name,
       mF(Matrix::Zero(outputSize, 1)) {}
 
 void EMT::VTypeVariableSSNComp::calculateHistoryVector(Matrix &history) const {
-  history = mC * (mdA * stateValue() + mdB * inputValue() + mdE) + mF;
+  mHistoryState.noalias() = mdA * stateValue();
+  mHistoryState.noalias() += mdB * inputValue();
+  mHistoryState += mdE;
+  history.noalias() = mC * mHistoryState;
+  history += mF;
 }
 
 MatrixComp EMT::VTypeVariableSSNComp::calculateSteadyStateStateFromInput(
@@ -33,7 +37,12 @@ MatrixComp EMT::VTypeVariableSSNComp::calculateSteadyStateOutputFromInput(
 
 void EMT::VTypeVariableSSNComp::updateState(const Matrix &uOld,
                                             const Matrix &uNew) {
-  mX->get() = mdA * mX->get() + mdB * (uNew + uOld) + mdE;
+  mUpdateInput = uNew;
+  mUpdateInput += uOld;
+  mHistoryState.noalias() = mdA * mX->get();
+  mHistoryState.noalias() += mdB * mUpdateInput;
+  mHistoryState += mdE;
+  mX->get() = mHistoryState;
 }
 
 void EMT::VTypeVariableSSNComp::recomputeDiscreteModel() {
@@ -81,6 +90,7 @@ void EMT::VTypeVariableSSNComp::setParameters(const Matrix &A, const Matrix &B,
   setStateOffset(E);
   setOutputOffset(F);
   mdE = Matrix::Zero(mE.rows(), 1);
+  mUpdateInput.resize(B.cols(), 1);
 }
 
 void EMT::VTypeVariableSSNComp::updateStateSpaceModel() {

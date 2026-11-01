@@ -322,16 +322,16 @@ void EMT::Ph3::RXLoad::mnaParentAddPostStepDependencies(
 
 void EMT::Ph3::RXLoad::mnaParentPreStep(Real time, Int timeStepCount) {
   if (!mUseSubcomponents) {
-    const auto &state = **mDirectState;
-    mDirectHistoryLoad.setZero();
-    mDirectHistoryShunt.setZero();
-    if (mDirectHasInductor)
-      mDirectHistoryLoad = mDirectInductorAdmittance * state.block<3, 1>(0, 0) +
-                           state.block<3, 1>(3, 0);
-    if (mDirectHasCapacitor)
-      mDirectHistoryShunt =
-          -state.block<3, 1>(9, 0) -
-          mDirectCapacitorAdmittance * state.block<3, 1>(6, 0);
+    const Matrix &state = **mDirectState;
+    for (Int phase = 0; phase < 3; ++phase) {
+      if (mDirectHasInductor)
+        mDirectHistoryLoad(phase, 0) =
+            mDirectInductorAdmittance * state(phase, 0) + state(phase + 3, 0);
+      if (mDirectHasCapacitor)
+        mDirectHistoryShunt(phase, 0) =
+            -state(phase + 9, 0) -
+            mDirectCapacitorAdmittance * state(phase + 6, 0);
+    }
   }
   mnaCompApplyRightSideVectorStamp(**mRightVector);
 }
@@ -340,23 +340,27 @@ void EMT::Ph3::RXLoad::mnaParentPostStep(Real time, Int timeStepCount,
                                          Attribute<Matrix>::Ptr &leftVector) {
   if (!mUseSubcomponents) {
     mnaCompUpdateVoltage(**leftVector);
-    const Matrix voltage = **mIntfVoltage;
-    Matrix inductorCurrent = Matrix::Zero(3, 1);
-    Matrix capacitorCurrent = Matrix::Zero(3, 1);
-    if (mDirectHasInductor) {
-      inductorCurrent =
-          mDirectInductorAdmittance * voltage + mDirectHistoryLoad;
-      (**mDirectState).block<3, 1>(0, 0) = voltage;
-      (**mDirectState).block<3, 1>(3, 0) = inductorCurrent;
+    const Matrix &voltage = **mIntfVoltage;
+    Matrix &state = **mDirectState;
+    Matrix &current = **mIntfCurrent;
+    for (Int phase = 0; phase < 3; ++phase) {
+      Real inductorCurrent = 0.;
+      Real capacitorCurrent = 0.;
+      if (mDirectHasInductor) {
+        inductorCurrent = mDirectInductorAdmittance * voltage(phase, 0) +
+                          mDirectHistoryLoad(phase, 0);
+        state(phase, 0) = voltage(phase, 0);
+        state(phase + 3, 0) = inductorCurrent;
+      }
+      if (mDirectHasCapacitor) {
+        capacitorCurrent = mDirectCapacitorAdmittance * voltage(phase, 0) +
+                           mDirectHistoryShunt(phase, 0);
+        state(phase + 6, 0) = voltage(phase, 0);
+        state(phase + 9, 0) = capacitorCurrent;
+      }
+      current(phase, 0) = mDirectTotalConductance * voltage(phase, 0) +
+                          inductorCurrent + capacitorCurrent;
     }
-    if (mDirectHasCapacitor) {
-      capacitorCurrent =
-          mDirectCapacitorAdmittance * voltage + mDirectHistoryShunt;
-      (**mDirectState).block<3, 1>(6, 0) = voltage;
-      (**mDirectState).block<3, 1>(9, 0) = capacitorCurrent;
-    }
-    **mIntfCurrent =
-        mDirectTotalConductance * voltage + inductorCurrent + capacitorCurrent;
     return;
   }
   mnaCompUpdateVoltage(**leftVector);
@@ -375,13 +379,20 @@ void EMT::Ph3::RXLoad::mnaCompUpdateVoltage(const Matrix &leftVector) {
 
 void EMT::Ph3::RXLoad::mnaCompUpdateCurrent(const Matrix &leftVector) {
   if (!mUseSubcomponents) {
-    **mIntfCurrent = mDirectTotalConductance * (**mIntfVoltage);
-    if (mDirectHasInductor)
-      **mIntfCurrent +=
-          mDirectInductorAdmittance * (**mIntfVoltage) + mDirectHistoryLoad;
-    if (mDirectHasCapacitor)
-      **mIntfCurrent +=
-          mDirectCapacitorAdmittance * (**mIntfVoltage) + mDirectHistoryShunt;
+    const Matrix &voltage = **mIntfVoltage;
+    Matrix &current = **mIntfCurrent;
+    for (Int phase = 0; phase < 3; ++phase) {
+      Real inductorCurrent = 0.;
+      Real capacitorCurrent = 0.;
+      if (mDirectHasInductor)
+        inductorCurrent = mDirectInductorAdmittance * voltage(phase, 0) +
+                          mDirectHistoryLoad(phase, 0);
+      if (mDirectHasCapacitor)
+        capacitorCurrent = mDirectCapacitorAdmittance * voltage(phase, 0) +
+                           mDirectHistoryShunt(phase, 0);
+      current(phase, 0) = mDirectTotalConductance * voltage(phase, 0) +
+                          inductorCurrent + capacitorCurrent;
+    }
     return;
   }
   if (mReactanceInSeries) {

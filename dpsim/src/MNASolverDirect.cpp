@@ -66,6 +66,26 @@ void MnaSolverDirect<VarType>::switchedMatrixStamp(
 }
 
 template <typename VarType>
+void MnaSolverDirect<VarType>::switchedMatrixStamp(
+    std::size_t swIdx, Int freqIdx, CPS::MNAInterface::List &components,
+    CPS::MNASwitchInterface::List &switches) {
+  const auto bit = std::bitset<SWITCH_NUM>(swIdx);
+  auto &systemMatrix = mSwitchedMatrices[bit][freqIdx];
+  for (auto component : components)
+    component->mnaApplySystemMatrixStampHarm(systemMatrix, freqIdx);
+  systemMatrix.makeCompressed();
+  for (UInt i = 0; i < switches.size(); ++i)
+    switches[i]->mnaApplySwitchSystemMatrixStamp(bit[i], systemMatrix, freqIdx);
+
+  auto &directSolver = mDirectLinearSolvers[bit][freqIdx];
+  directSolver->preprocessing(systemMatrix, mListVariableSystemMatrixEntries);
+  const auto start = std::chrono::steady_clock::now();
+  directSolver->factorize(systemMatrix);
+  const auto end = std::chrono::steady_clock::now();
+  mFactorizeTimes.push_back(std::chrono::duration<Real>(end - start).count());
+}
+
+template <typename VarType>
 void MnaSolverDirect<VarType>::stampVariableSystemMatrix() {
 
   this->mDirectLinearSolverVariableSystemMatrix =
@@ -97,6 +117,16 @@ void MnaSolverDirect<VarType>::stampVariableSystemMatrix() {
   SPDLOG_LOGGER_INFO(mSLog, "Stamping variable elements");
   for (auto varElem : mMNAIntfVariableComps)
     varElem->mnaApplySystemMatrixStamp(mVariableSystemMatrix);
+
+  // Keep the reset matrix on exactly the same sparse pattern and in the same
+  // coefficient order as the variable matrix. Variable-only entries must be
+  // retained as explicit zeros here: recomputeSystemMatrix() copies values by
+  // array position, and the static-only pattern can have a different ordering
+  // once variable stamps have inserted additional entries.
+  mBaseSystemMatrix = mVariableSystemMatrix;
+  std::fill_n(mBaseSystemMatrix.valuePtr(), mBaseSystemMatrix.nonZeros(), 0.);
+  for (auto statElem : mMNAComponents)
+    statElem->mnaApplySystemMatrixStamp(mBaseSystemMatrix);
 
   SPDLOG_LOGGER_INFO(mSLog, "Initial system matrix with variable elements {}",
                      Logger::matrixToString(mVariableSystemMatrix));
@@ -350,35 +380,53 @@ std::shared_ptr<CPS::Task> MnaSolverDirect<VarType>::createLogTask() {
 
 template <typename VarType>
 void MnaSolverDirect<VarType>::solve(Real time, Int timeStepCount) {
+  const bool profile = Solver::mLogSolveTimes;
   const auto previousSwitchStatus = mCurrentSwitchStatus;
   // Reset source vector
+  auto profileStart = profile ? std::chrono::steady_clock::now()
+                              : std::chrono::steady_clock::time_point{};
   mRightSideVector.setZero();
+  if (profile)
+    recordProfileMeasurement("rhs_zero", profileStart,
+                             std::chrono::steady_clock::now());
 
   // Add together the right side vector (computed by the components' pre-step tasks)
   addRightVectorStamps(mRightSideVector);
 
-  if (!mIsInInitialization)
+  if (!mIsInInitialization) {
+    profileStart = profile ? std::chrono::steady_clock::now()
+                           : std::chrono::steady_clock::time_point{};
     MnaSolver<VarType>::updateSwitchStatus();
+    if (profile)
+      recordProfileMeasurement("switch_status_update", profileStart,
+                               std::chrono::steady_clock::now());
+  }
 
   if (mSwitchedMatrices.size() > 0) {
     std::chrono::steady_clock::time_point start;
-    if (Solver::mLogSolveTimes)
+    if (profile)
       start = std::chrono::steady_clock::now();
 
     mDirectLinearSolvers[mCurrentSwitchStatus][0]->solveInto(
         mRightSideVector, *mLeftSideVectorValue);
 
-    if (Solver::mLogSolveTimes) {
+    if (profile) {
       auto end = std::chrono::steady_clock::now();
       std::chrono::duration<Real> diff = end - start;
       mSolveTimes.push_back(diff.count());
+      recordProfileMeasurement("numeric_solve", start, end);
     }
   }
 
   // CHECK: Is this really required? Or can operations actually become part of
   // correctorStep and mnaPostStep?
+  profileStart = profile ? std::chrono::steady_clock::now()
+                         : std::chrono::steady_clock::time_point{};
   for (auto syncGen : mSyncGen)
     syncGen->updateVoltage(*mLeftSideVectorValue);
+  if (profile)
+    recordProfileMeasurement("iterative_generator_voltage_update", profileStart,
+                             std::chrono::steady_clock::now());
 
   // Reset number of iterations
   mIter = 0;
@@ -389,9 +437,15 @@ void MnaSolverDirect<VarType>::solve(Real time, Int timeStepCount) {
     do {
       // count synchronous generators that require iteration
       numCompsRequireIter = 0;
+      profileStart = profile ? std::chrono::steady_clock::now()
+                             : std::chrono::steady_clock::time_point{};
       for (auto syncGen : mSyncGen)
         if (syncGen->requiresIteration())
           numCompsRequireIter++;
+      if (profile)
+        recordProfileMeasurement("iterative_generator_convergence_check",
+                                 profileStart,
+                                 std::chrono::steady_clock::now());
 
       // recompute solve step if at least one component demands iteration
       if (numCompsRequireIter > 0) {
@@ -403,8 +457,14 @@ void MnaSolverDirect<VarType>::solve(Real time, Int timeStepCount) {
         if (!mIsInInitialization)
           MnaSolver<VarType>::updateSwitchStatus();
 
+        profileStart = profile ? std::chrono::steady_clock::now()
+                               : std::chrono::steady_clock::time_point{};
         for (auto syncGen : mSyncGen)
           syncGen->correctorStep();
+        if (profile)
+          recordProfileMeasurement("iterative_generator_corrector",
+                                   profileStart,
+                                   std::chrono::steady_clock::now());
 
         // Add together the right side vector (computed by the components' pre-step tasks)
         addRightVectorStamps(mRightSideVector);
@@ -416,12 +476,20 @@ void MnaSolverDirect<VarType>::solve(Real time, Int timeStepCount) {
           auto end = std::chrono::steady_clock::now();
           std::chrono::duration<Real> diff = end - start;
           mSolveTimes.push_back(diff.count());
+          if (profile)
+            recordProfileMeasurement("numeric_solve", start, end);
         }
 
         // CHECK: Is this really required? Or can operations actually become part of
         // correctorStep and mnaPostStep?
+        profileStart = profile ? std::chrono::steady_clock::now()
+                               : std::chrono::steady_clock::time_point{};
         for (auto syncGen : mSyncGen)
           syncGen->updateVoltage(*mLeftSideVectorValue);
+        if (profile)
+          recordProfileMeasurement("iterative_generator_voltage_update",
+                                   profileStart,
+                                   std::chrono::steady_clock::now());
       }
     } while (numCompsRequireIter > 0);
   }
@@ -429,8 +497,13 @@ void MnaSolverDirect<VarType>::solve(Real time, Int timeStepCount) {
   mSystemMatrixChanged = (mCurrentSwitchStatus != previousSwitchStatus);
 
   // TODO split into separate task? (dependent on x, updating all v attributes)
+  profileStart = profile ? std::chrono::steady_clock::now()
+                         : std::chrono::steady_clock::time_point{};
   for (UInt nodeIdx = 0; nodeIdx < mNumNetNodes; ++nodeIdx)
     mNodes[nodeIdx]->mnaUpdateVoltage(*mLeftSideVectorValue);
+  if (profile)
+    recordProfileMeasurement("node_voltage_propagation", profileStart,
+                             std::chrono::steady_clock::now());
 
   // Components' states will be updated by the post-step tasks
 }
@@ -444,7 +517,14 @@ void MnaSolverDirect<VarType>::solveWithHarmonics(Real time, Int timeStepCount,
   for (auto stamp : mRightVectorStamps)
     mRightSideVectorHarm[freqIdx] += stamp->col(freqIdx);
 
-  mDirectLinearSolvers[mCurrentSwitchStatus][freqIdx]->solveInto(
+  // Frequency solve tasks execute concurrently. Derive the switch-state key
+  // locally instead of mutating the shared mCurrentSwitchStatus bitset from
+  // each frequency worker.
+  std::bitset<SWITCH_NUM> switchStatus;
+  for (UInt i = 0; i < mSwitches.size(); ++i)
+    switchStatus.set(i, mSwitches[i]->mnaIsClosed());
+
+  mDirectLinearSolvers[switchStatus][freqIdx]->solveInto(
       mRightSideVectorHarm[freqIdx], **mLeftSideVectorHarm[freqIdx]);
 }
 
@@ -535,15 +615,25 @@ template <typename VarType> void MnaSolverDirect<VarType>::logLUTimes() {
   }
   std::ofstream matrixFile(CPS::Logger::logDir() + "/" + this->mName +
                            "_SolverMatrixStats.csv");
-  matrixFile << "rows,cols,nonzeros,structural_density,variable_entries\n";
-  const double matrixSize = static_cast<double>(mVariableSystemMatrix.rows());
+  const SparseMatrix *profiledMatrix = &mVariableSystemMatrix;
+  const char *matrixSource = "variable_system_matrix";
+  if (!mSystemMatrixRecomputationEnabled) {
+    const auto activeMatrix = mSwitchedMatrices.find(mCurrentSwitchStatus);
+    if (activeMatrix != mSwitchedMatrices.end() &&
+        !activeMatrix->second.empty()) {
+      profiledMatrix = &activeMatrix->second.front();
+      matrixSource = "active_switched_matrix";
+    }
+  }
+  matrixFile
+      << "source,rows,cols,nonzeros,structural_density,variable_entries\n";
+  const double matrixSize = static_cast<double>(profiledMatrix->rows());
   const double matrixEntries = matrixSize * matrixSize;
-  matrixFile << mVariableSystemMatrix.rows() << ","
-             << mVariableSystemMatrix.cols() << ","
-             << mVariableSystemMatrix.nonZeros() << ","
-             << (matrixEntries
-                     ? mVariableSystemMatrix.nonZeros() / matrixEntries
-                     : 0.)
+  matrixFile << matrixSource << "," << profiledMatrix->rows() << ","
+             << profiledMatrix->cols() << "," << profiledMatrix->nonZeros()
+             << ","
+             << (matrixEntries ? profiledMatrix->nonZeros() / matrixEntries
+                               : 0.)
              << "," << mListVariableSystemMatrixEntries.size() << "\n";
   if (!mFactorizeTimes.empty()) {
     const Real total = std::accumulate(mFactorizeTimes.begin(),

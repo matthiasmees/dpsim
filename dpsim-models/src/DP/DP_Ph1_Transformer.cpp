@@ -474,8 +474,12 @@ void DP::Ph1::Transformer::mnaParentApplyRightSideVectorStamp(
     if (mNumVirtualNodes == 5 || terminalNotGrounded(mReferenceTerminal))
       Math::setVectorElement(rightVector, firstNode,
                              mDirectInductorHistory0(freq, 0), mNumFreqs, freq);
-    Complex midpointHistory =
-        -mDirectInductorHistory0(freq, 0) + mDirectInductorHistory1(freq, 0);
+    Complex midpointHistory = -mDirectInductorHistory0(freq, 0);
+    if (mNumVirtualNodes == 5)
+      Math::setVectorElement(rightVector, secondNode,
+                             mDirectInductorHistory1(freq, 0), mNumFreqs, freq);
+    else
+      midpointHistory += mDirectInductorHistory1(freq, 0);
     Math::setVectorElement(rightVector, ratioNode,
                            -mDirectInductorHistory1(freq, 0), mNumFreqs, freq);
     if (**mRatedPower > 0.) {

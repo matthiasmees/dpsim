@@ -3,6 +3,7 @@
 #include <dpsim-models/CompositePowerComp.h>
 
 #include <algorithm>
+#include <type_traits>
 
 using namespace CPS;
 
@@ -77,21 +78,27 @@ void CompositePowerComp<VarType>::mnaCompInitialize(
   // those locations once so the composite can aggregate the stamps without
   // clearing and adding full network-sized vectors on every step.
   const UInt vectorSize = static_cast<UInt>(leftVector->get().rows());
-  auto appendNodeIndices = [vectorSize](SimPowerComp<VarType> &component,
-                                        std::vector<UInt> &indices) {
+  const UInt baseRowLimit = [&]() {
+    if constexpr (std::is_same_v<VarType, Complex>)
+      return vectorSize / (2 * this->mNumFreqs);
+    else
+      return vectorSize;
+  }();
+  auto appendNodeIndices = [baseRowLimit](SimPowerComp<VarType> &component,
+                                          std::vector<UInt> &indices) {
     for (UInt terminal = 0; terminal < component.terminalNumberConnected();
          ++terminal) {
       if (component.node(terminal)->isGround())
         continue;
       for (UInt index : component.matrixNodeIndices(terminal)) {
-        if (index < vectorSize)
+        if (index < baseRowLimit)
           indices.push_back(index);
       }
     }
     for (UInt virtualNode = 0; virtualNode < component.virtualNodesNumber();
          ++virtualNode) {
       for (UInt index : component.virtualMatrixNodeIndices(virtualNode)) {
-        if (index < vectorSize)
+        if (index < baseRowLimit)
           indices.push_back(index);
       }
     }
@@ -146,15 +153,31 @@ void CompositePowerComp<VarType>::mnaCompApplyRightSideVectorStamp(
         rightVector += **stamp;
     }
   } else {
-    for (UInt index : mRightVectorAffectedIndices)
-      rightVector(index, 0) = 0.;
+    if constexpr (std::is_same_v<VarType, Complex>) {
+      for (UInt freq = 0; freq < this->mNumFreqs; ++freq)
+        for (UInt index : mRightVectorAffectedIndices)
+          Math::setVectorElement(rightVector, index, Complex(0., 0.),
+                                 this->mNumFreqs, freq);
+    } else {
+      for (UInt index : mRightVectorAffectedIndices)
+        rightVector(index, 0) = 0.;
+    }
     for (std::size_t stampIndex = 0; stampIndex < mRightVectorStamps.size();
          ++stampIndex) {
       const auto &stamp = mRightVectorStamps[stampIndex];
       if ((**stamp).size() == 0)
         continue;
-      for (UInt index : mRightVectorStampIndices[stampIndex])
-        rightVector(index, 0) += (**stamp)(index, 0);
+      if constexpr (std::is_same_v<VarType, Complex>) {
+        for (UInt freq = 0; freq < this->mNumFreqs; ++freq)
+          for (UInt index : mRightVectorStampIndices[stampIndex])
+            Math::addToVectorElement(rightVector, index,
+                                     Math::complexFromVectorElement(
+                                         **stamp, index, this->mNumFreqs, freq),
+                                     this->mNumFreqs, freq);
+      } else {
+        for (UInt index : mRightVectorStampIndices[stampIndex])
+          rightVector(index, 0) += (**stamp)(index, 0);
+      }
     }
   }
   mnaParentApplyRightSideVectorStamp(rightVector);
@@ -169,8 +192,17 @@ void CompositePowerComp<VarType>::mnaAddCompactRightSideVectorStamp(
   }
 
   const Matrix &stamp = **this->mRightVector;
-  for (UInt index : mRightVectorAffectedIndices)
-    rightVector(index, 0) += stamp(index, 0);
+  if constexpr (std::is_same_v<VarType, Complex>) {
+    for (UInt freq = 0; freq < this->mNumFreqs; ++freq)
+      for (UInt index : mRightVectorAffectedIndices)
+        Math::addToVectorElement(
+            rightVector, index,
+            Math::complexFromVectorElement(stamp, index, this->mNumFreqs, freq),
+            this->mNumFreqs, freq);
+  } else {
+    for (UInt index : mRightVectorAffectedIndices)
+      rightVector(index, 0) += stamp(index, 0);
+  }
 }
 
 template <typename VarType>

@@ -148,7 +148,8 @@ void DP::Ph3::SeriesResistor::mnaCompUpdateVoltage(const Matrix &leftVector) {
 }
 
 void DP::Ph3::SeriesResistor::mnaCompUpdateCurrent(const Matrix &leftVector) {
-  **mIntfCurrent = **mIntfVoltage / **mResistance;
+  const Real conductance = 1. / **mResistance;
+  **mIntfCurrent = **mIntfVoltage * conductance;
 
   SPDLOG_LOGGER_DEBUG(mSLog, "Current A: {} < {}",
                       std::abs((**mIntfCurrent)(0, 0)),

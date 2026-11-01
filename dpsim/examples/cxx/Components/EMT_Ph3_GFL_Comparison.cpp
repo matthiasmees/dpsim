@@ -132,6 +132,46 @@ public:
     printTimingSummary(timings);
   }
 
+  void runSplitRepetitions(UInt repetitions) const {
+    if (repetitions == 0)
+      throw std::invalid_argument("repetitions must be positive");
+
+    const String baseName = "EMT_Ph3_GFL_Split_Standalone";
+    const auto [pPccRef, qPccRef] =
+        pccPowerFromFilterPowerReference(mPrefFilter, mQrefFilter);
+    const auto systemPF = runPowerFlow(baseName + "_PF", pPccRef, qPccRef);
+
+    std::vector<TimingResult> timings;
+    timings.reserve(repetitions);
+    for (UInt runIndex = 0; runIndex < repetitions; ++runIndex) {
+      const String runSuffix = "_run" + std::to_string(runIndex + 1);
+      timings.push_back(runSSNGFLSplit(baseName + runSuffix, systemPF));
+    }
+    printTimingSummary(timings);
+  }
+
+  void runMonolithicGFLRepetitions(UInt repetitions,
+                                   Real finalTime = 3.0) const {
+    if (repetitions == 0)
+      throw std::invalid_argument("repetitions must be positive");
+    if (finalTime <= 0.0)
+      throw std::invalid_argument("final time must be positive");
+
+    const String baseName =
+        "EMT_Ph3_GFL_Monolithic_" + std::to_string(finalTime) + "s";
+    const auto [pPccRef, qPccRef] =
+        pccPowerFromFilterPowerReference(mPrefFilter, mQrefFilter);
+    const auto systemPF = runPowerFlow(baseName + "_PF", pPccRef, qPccRef);
+
+    std::vector<TimingResult> timings;
+    timings.reserve(repetitions);
+    for (UInt runIndex = 0; runIndex < repetitions; ++runIndex) {
+      const String runSuffix = "_run" + std::to_string(runIndex + 1);
+      timings.push_back(runSSNGFL(baseName + runSuffix, systemPF, finalTime));
+    }
+    printTimingSummary(timings);
+  }
+
 private:
   struct TimingResult {
     String label;
@@ -339,8 +379,8 @@ private:
   // =========================================================================
   // CASE 2: SSN_GFL
   // =========================================================================
-  TimingResult runSSNGFL(const String &simName,
-                         const SystemTopology &systemPF) const {
+  TimingResult runSSNGFL(const String &simName, const SystemTopology &systemPF,
+                         Real finalTime = -1.0) const {
 
     Logger::setLogDir("logs/" + simName);
 
@@ -394,7 +434,7 @@ private:
     addStateSpaceCommonSignals(logger, nGrid, nSeries, nPcc, inverter);
 
     return runTimedSimulation("SSN_GFL", simName, system, logger, true,
-                              breakerLoad.breaker);
+                              breakerLoad.breaker, finalTime);
   }
 
   // =========================================================================
@@ -524,10 +564,12 @@ private:
   // =========================================================================
   // COMMON SIMULATION / LOGGING
   // =========================================================================
-  TimingResult runTimedSimulation(
-      const String &label, const String &simName, SystemTopology &system,
-      const DataLogger::Ptr &logger, Bool recomputeSystemMatrix,
-      const std::shared_ptr<EMT::Ph3::SeriesSwitch> &loadBreaker) const {
+  TimingResult
+  runTimedSimulation(const String &label, const String &simName,
+                     SystemTopology &system, const DataLogger::Ptr &logger,
+                     Bool recomputeSystemMatrix,
+                     const std::shared_ptr<EMT::Ph3::SeriesSwitch> &loadBreaker,
+                     Real finalTime = -1.0) const {
 
     Logger::setLogDir("logs/" + simName);
 
@@ -539,7 +581,7 @@ private:
     sim.doSystemMatrixRecomputation(recomputeSystemMatrix);
     sim.doInitFromNodesAndTerminals(true);
     sim.setTimeStep(mTimeStepEMT);
-    sim.setFinalTime(mFinalTimeEMT);
+    sim.setFinalTime(finalTime > 0.0 ? finalTime : mFinalTimeEMT);
 
     // Close the physical load breaker at exactly t = 5 s.
     sim.addEvent(SwitchEvent::make(mLoadStepTime, loadBreaker, true));
@@ -785,6 +827,18 @@ private:
 
 int main(int argc, char *argv[]) {
   Example_GFL_Four_Model_BreakerLoadStep example;
+  if (argc == 3 && String(argv[1]) == "--split-repetitions") {
+    const auto repetitions = static_cast<UInt>(std::stoul(argv[2]));
+    example.runSplitRepetitions(repetitions);
+    return 0;
+  }
+  if ((argc == 3 || argc == 4) &&
+      String(argv[1]) == "--monolithic-gfl-repetitions") {
+    const auto repetitions = static_cast<UInt>(std::stoul(argv[2]));
+    const auto finalTime = argc == 4 ? std::stod(argv[3]) : 3.0;
+    example.runMonolithicGFLRepetitions(repetitions, finalTime);
+    return 0;
+  }
   if (argc == 3 && String(argv[1]) == "--direct-pair-repetitions") {
     const auto repetitions = static_cast<UInt>(std::stoul(argv[2]));
     example.runDirectPairRepetitions(repetitions);

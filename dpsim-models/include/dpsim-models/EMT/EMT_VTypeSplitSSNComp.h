@@ -26,13 +26,15 @@ private:
   Matrix mMeasurementState;
   Matrix mMeasurementTerminal;
 
-  Matrix mSplitDiscreteA;
-  Matrix mSplitDiscreteB;
-  Matrix mSplitHistoryC;
-  Matrix mControllerBdUsed;
+  mutable Matrix mSplitDiscreteA;
+  mutable Matrix mSplitDiscreteB;
+  mutable Matrix mSplitHistoryC;
+  mutable Matrix mControllerBdUsed;
+  mutable Bool mSplitDiscreteModelDirty = false;
 
   void recomputeControllerDiscreteModel();
-  void rebuildSplitDiscreteModel(const Matrix &controllerBdUsed);
+  void rebuildSplitDiscreteModel(const Matrix &controllerBdUsed) const;
+  void ensureSplitDiscreteModel() const;
 
 protected:
   Matrix mBControllerOutput;

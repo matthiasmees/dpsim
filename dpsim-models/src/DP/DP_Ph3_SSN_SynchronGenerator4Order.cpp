@@ -3,6 +3,7 @@
 #include <dpsim-models/DP/DP_Ph3_SSN_SynchronGenerator4Order.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <stdexcept>
 
@@ -74,9 +75,11 @@ void DP::Ph3::SSN::SynchronGenerator4Order::setPowerflowInitialValues(
 void DP::Ph3::SSN::SynchronGenerator4Order::evaluate(const Matrix &x,
                                                      const Matrix &u, Matrix &f,
                                                      Matrix &y) const {
-  const MatrixComp phases = unpack3(u);
+  f.setZero(4, 1);
+  y.resize(6, 1);
   const Complex v =
-      (phases(0, 0) + alpha * phases(1, 0) + std::conj(alpha) * phases(2, 0)) /
+      (Complex(u(0, 0), u(1, 0)) + alpha * Complex(u(2, 0), u(3, 0)) +
+       std::conj(alpha) * Complex(u(4, 0), u(5, 0))) /
       (3. * mBaseV);
   const Complex vdq = v * std::polar(1., -x(kTheta, 0));
   const Real vd = vdq.real(), vq = vdq.imag();
@@ -85,12 +88,12 @@ void DP::Ph3::SSN::SynchronGenerator4Order::evaluate(const Matrix &x,
   const Real id = (mRa * dd + mXqp * dq) / det,
              iq = (-mXdp * dd + mRa * dq) / det;
   const Complex idq(id, iq), iph = mBaseI * idq * std::polar(1., x(kTheta, 0));
-  MatrixComp currents(3, 1);
-  currents(0, 0) = iph;
-  currents(1, 0) = iph * std::conj(alpha);
-  currents(2, 0) = iph * alpha;
-  y = pack3(currents);
-  f.setZero(4, 1);
+  const std::array<Complex, 3> currents = {iph, iph * std::conj(alpha),
+                                           iph * alpha};
+  for (Int phase = 0; phase < 3; ++phase) {
+    y(2 * phase, 0) = currents[phase].real();
+    y(2 * phase + 1, 0) = currents[phase].imag();
+  }
   f(kEd, 0) = (-(x(kEd, 0) - mEd0) - (mXq - mXqp) * (iq - mIq0)) / mTq0p;
   f(kEq, 0) = (-(x(kEq, 0) - mEq0) + (mXd - mXdp) * (id - mId0)) / mTd0p;
   const Real pe = vd * id + vq * iq;
@@ -107,37 +110,128 @@ void DP::Ph3::SSN::SynchronGenerator4Order::linearize(const Matrix &x,
   B.setZero(4, 6);
   C.setZero(6, 4);
   D.setZero(6, 6);
-  Matrix xp = x, xm = x, up = u, um = u, fp, fm, yp, ym;
-  for (Int j = 0; j < 4; ++j) {
-    const Real h = 1e-6 * std::max(1., std::abs(x(j, 0)));
-    xp = x;
-    xm = x;
-    xp(j, 0) += h;
-    xm(j, 0) -= h;
-    evaluate(xp, u, fp, yp);
-    evaluate(xm, u, fm, ym);
-    A.col(j) = (fp - fm) / (2 * h);
-    C.col(j) = (yp - ym) / (2 * h);
+
+  // Positive-sequence projection and its exact derivatives with respect to
+  // the packed real/imaginary phase-envelope inputs.
+  const std::array<Complex, 3> sequenceCoeff = {Complex(1., 0.), alpha,
+                                                std::conj(alpha)};
+  Complex positiveSequence = 0.;
+  for (Int phase = 0; phase < 3; ++phase)
+    positiveSequence +=
+        sequenceCoeff[phase] * Complex(u(2 * phase, 0), u(2 * phase + 1, 0));
+  positiveSequence /= 3. * mBaseV;
+
+  const Real theta = x(kTheta, 0);
+  const Complex dqVoltage = positiveSequence * std::polar(1., -theta);
+  const Real vd = dqVoltage.real();
+  const Real vq = dqVoltage.imag();
+
+  std::array<Real, 6> dVdDu{};
+  std::array<Real, 6> dVqDu{};
+  const Complex rotateToDQ = std::polar(1., -theta) / (3. * mBaseV);
+  for (Int phase = 0; phase < 3; ++phase) {
+    const Complex dVdRe = sequenceCoeff[phase] * rotateToDQ;
+    const Complex dVdIm = Complex(0., 1.) * dVdRe;
+    dVdDu[2 * phase] = dVdRe.real();
+    dVqDu[2 * phase] = dVdRe.imag();
+    dVdDu[2 * phase + 1] = dVdIm.real();
+    dVqDu[2 * phase + 1] = dVdIm.imag();
   }
-  for (Int j = 0; j < 6; ++j) {
-    const Real h = 1e-6 * std::max(1., std::abs(u(j, 0)));
-    up = u;
-    um = u;
-    up(j, 0) += h;
-    um(j, 0) -= h;
-    evaluate(x, up, fp, yp);
-    evaluate(x, um, fm, ym);
-    B.col(j) = (fp - fm) / (2 * h);
-    D.col(j) = (yp - ym) / (2 * h);
+
+  const Real det = mRa * mRa + mXdp * mXqp;
+  const Real idVd = mRa / det;
+  const Real idVq = mXqp / det;
+  const Real iqVd = -mXdp / det;
+  const Real iqVq = mRa / det;
+  const Real idEd = -idVd;
+  const Real idEq = -idVq;
+  const Real iqEd = -iqVd;
+  const Real iqEq = -iqVq;
+
+  const Real dd = vd - x(kEd, 0);
+  const Real dq = vq - x(kEq, 0);
+  const Real id = (mRa * dd + mXqp * dq) / det;
+  const Real iq = (-mXdp * dd + mRa * dq) / det;
+
+  // d(vd,vq)/d(theta) = (vq,-vd).
+  const Real vdTheta = vq;
+  const Real vqTheta = -vd;
+  const Real idTheta = idVd * vdTheta + idVq * vqTheta;
+  const Real iqTheta = iqVd * vdTheta + iqVq * vqTheta;
+
+  const Real edScale = -(mXq - mXqp) / mTq0p;
+  const Real eqScale = (mXd - mXdp) / mTd0p;
+  const Real powerScale = 1. / (2. * mH);
+
+  A(0, 0) = -1. / mTq0p + edScale * iqEd;
+  A(0, 1) = edScale * iqEq;
+  A(0, 3) = edScale * iqTheta;
+  A(1, 0) = eqScale * idEd;
+  A(1, 1) = -1. / mTd0p + eqScale * idEq;
+  A(1, 3) = eqScale * idTheta;
+  A(2, 0) = powerScale * (vd * idEd + vq * iqEd);
+  A(2, 1) = powerScale * (vd * idEq + vq * iqEq);
+  A(2, 2) = -mDamping * powerScale;
+  A(2, 3) =
+      powerScale * (vdTheta * id + vd * idTheta + vqTheta * iq + vq * iqTheta);
+  A(3, 2) = mOmega;
+
+  for (Int input = 0; input < 6; ++input) {
+    const Real idDu = idVd * dVdDu[input] + idVq * dVqDu[input];
+    const Real iqDu = iqVd * dVdDu[input] + iqVq * dVqDu[input];
+    B(0, input) = edScale * iqDu;
+    B(1, input) = eqScale * idDu;
+    B(2, input) = powerScale * (vd * idDu + vq * iqDu);
+  }
+
+  const Complex idq(id, iq);
+  const Complex phaseCurrentGain = mBaseI * std::polar(1., theta);
+  const std::array<Complex, 3> phaseCoeff = {Complex(1., 0.), std::conj(alpha),
+                                             alpha};
+  for (Int phase = 0; phase < 3; ++phase) {
+    const Complex gain = phaseCurrentGain * phaseCoeff[phase];
+    const Int reRow = 2 * phase;
+    const Int imRow = reRow + 1;
+
+    const Complex dIdqDEd(idEd, iqEd);
+    const Complex dIdqDEq(idEq, iqEq);
+    const Complex dIdqDTheta(idTheta, iqTheta);
+    const Complex dITheta = gain * (Complex(0., 1.) * idq + dIdqDTheta);
+    const Complex dIEd = gain * dIdqDEd;
+    const Complex dIEq = gain * dIdqDEq;
+    C(reRow, 0) = dIEd.real();
+    C(imRow, 0) = dIEd.imag();
+    C(reRow, 1) = dIEq.real();
+    C(imRow, 1) = dIEq.imag();
+    C(reRow, 3) = dITheta.real();
+    C(imRow, 3) = dITheta.imag();
+
+    for (Int input = 0; input < 6; ++input) {
+      const Real idDu = idVd * dVdDu[input] + idVq * dVqDu[input];
+      const Real iqDu = iqVd * dVdDu[input] + iqVq * dVqDu[input];
+      const Complex dI = gain * Complex(idDu, iqDu);
+      D(reRow, input) = dI.real();
+      D(imRow, input) = dI.imag();
+    }
   }
 }
 
 Bool DP::Ph3::SSN::SynchronGenerator4Order::updateComponentParameters() {
-  linearize(**mX, pack3(**mIntfVoltage), mA, mB, mC, mD);
-  Matrix f, y;
-  evaluate(**mX, pack3(**mIntfVoltage), f, y);
-  setStateOffset(f - mA * (**mX) - mB * pack3(**mIntfVoltage));
-  setOutputOffset(y - mC * (**mX) - mD * pack3(**mIntfVoltage));
+  for (Int phase = 0; phase < 3; ++phase) {
+    const Complex voltage = (**mIntfVoltage)(phase, 0);
+    mPackedVoltage(2 * phase, 0) = voltage.real();
+    mPackedVoltage(2 * phase + 1, 0) = voltage.imag();
+  }
+
+  linearize(**mX, mPackedVoltage, mA, mB, mC, mD);
+  evaluate(**mX, mPackedVoltage, mEvaluationDerivative, mEvaluationOutput);
+
+  mE = mEvaluationDerivative;
+  mE.noalias() -= mA * (**mX);
+  mE.noalias() -= mB * mPackedVoltage;
+  mF = mEvaluationOutput;
+  mF.noalias() -= mC * (**mX);
+  mF.noalias() -= mD * mPackedVoltage;
   return true;
 }
 

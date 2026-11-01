@@ -44,13 +44,15 @@ protected:
   std::vector<const Matrix *> mRightVectorStamps;
   Bool mUseSubcomponents = true;
   Attribute<Matrix>::Ptr mDirectState;
-  Matrix mDirectInductorAdmittance = Matrix::Zero(3, 3);
-  Matrix mDirectResistanceConductance = Matrix::Zero(3, 3);
-  Matrix mDirectCapAdmittance = Matrix::Zero(3, 3);
-  Matrix mDirectSeriesHistory = Matrix::Zero(3, 1);
-  Matrix mDirectInductorHistory = Matrix::Zero(3, 1);
-  Matrix mDirectCapHistory0 = Matrix::Zero(3, 1);
-  Matrix mDirectCapHistory1 = Matrix::Zero(3, 1);
+  MatrixFixedSize<3, 3> mDirectInductorAdmittance =
+      MatrixFixedSize<3, 3>::Zero();
+  MatrixFixedSize<3, 3> mDirectResistanceConductance =
+      MatrixFixedSize<3, 3>::Zero();
+  MatrixFixedSize<3, 3> mDirectCapAdmittance = MatrixFixedSize<3, 3>::Zero();
+  MatrixFixedSize<3, 1> mDirectSeriesHistory = MatrixFixedSize<3, 1>::Zero();
+  MatrixFixedSize<3, 1> mDirectInductorHistory = MatrixFixedSize<3, 1>::Zero();
+  MatrixFixedSize<3, 1> mDirectCapHistory0 = MatrixFixedSize<3, 1>::Zero();
+  MatrixFixedSize<3, 1> mDirectCapHistory1 = MatrixFixedSize<3, 1>::Zero();
 
 public:
   /// Defines UID, name and logging level

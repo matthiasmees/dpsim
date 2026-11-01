@@ -404,6 +404,7 @@ int main(int argc, char *argv[]) {
   const String simNameEMT =
       simName + (useCsvLogger ? "_EMT_CSVLogger" : "_EMT");
   Logger::setLogDir("logs/" + simNameEMT);
+  std::filesystem::create_directories("logs/" + simNameEMT);
 
   auto nGfmEMT = SimNode<Real>::make("nGfm", PhaseType::ABC);
   auto nLoadEMT = SimNode<Real>::make("nLoad", PhaseType::ABC);
@@ -604,7 +605,10 @@ int main(int argc, char *argv[]) {
   const auto wallStart = std::chrono::steady_clock::now();
   sim.run();
   const auto wallEnd = std::chrono::steady_clock::now();
-  reorderGfmCsvColumns("logs/" + simNameEMT + "/" + simNameEMT + ".csv");
+  const String measurementCsvPath =
+      useRealtimeLogger ? "logs/" + simNameEMT + "/" + simNameEMT + ".csv"
+                        : "logs/" + simNameEMT + ".csv";
+  reorderGfmCsvColumns(measurementCsvPath);
   // DPsim reports cumulative/average/max LU re-factorization and linear-solve
   // timings here. The per-step CSV above separately records every pre-step,
   // complete solver/integration, and post-step task.

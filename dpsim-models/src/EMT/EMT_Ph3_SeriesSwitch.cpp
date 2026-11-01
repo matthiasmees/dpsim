@@ -124,7 +124,8 @@ void EMT::Ph3::SeriesSwitch::mnaCompUpdateVoltage(const Matrix &leftVector) {
 
 void EMT::Ph3::SeriesSwitch::mnaCompUpdateCurrent(const Matrix &leftVector) {
   Real impedance = (**mIsClosed) ? **mClosedResistance : **mOpenResistance;
-  **mIntfCurrent = **mIntfVoltage / impedance;
+  const Real conductance = 1. / impedance;
+  **mIntfCurrent = **mIntfVoltage * conductance;
 
   SPDLOG_LOGGER_DEBUG(mSLog, "Current A: {}", (**mIntfCurrent)(0, 0));
 }

@@ -7,9 +7,15 @@ using namespace CPS;
 
 EMT::ITypeSSNComp::ITypeSSNComp(String uid, String name, Int inputSize,
                                 Int outputSize, Logger::Level logLevel)
-    : SSNComp(uid, name, inputSize, outputSize, logLevel) {
+    : SSNComp(uid, name, inputSize, outputSize, logLevel),
+      mWInverse(Matrix::Zero(outputSize, inputSize)) {
   **mIntfCurrent = Matrix::Zero(inputSize, 1);
   **mIntfVoltage = Matrix::Zero(outputSize, 1);
+}
+
+void EMT::ITypeSSNComp::recomputeDiscreteModel() {
+  SSNComp::recomputeDiscreteModel();
+  mWInverse = mW.inverse();
 }
 
 Attribute<Matrix>::Ptr EMT::ITypeSSNComp::inputAttribute() const {

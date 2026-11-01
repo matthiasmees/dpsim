@@ -52,12 +52,15 @@ public:
                                  Attribute<Matrix>::Ptr &leftVector) override;
 
 private:
+  using PhaseVector = Eigen::Matrix<Complex, 3, 1>;
+
   Attribute<MatrixComp>::Ptr mState;
   Real mActivePower = 0.;
   Real mReactivePower = 0.;
   Real mNominalVoltage = 0.;
   Real mShuntConductance = 0.;
   Real mShuntSusceptance = 0.;
+  Real mLoadConductance = 0.;
   Real mLoadInductance = 0.;
   Real mLoadCapacitance = 0.;
   MatrixComp mNodalAdmittance;
@@ -69,7 +72,8 @@ private:
   MatrixComp mHistoryShunt;
 
   void updateHistory();
-  MatrixComp nodeVoltage(const Matrix &leftVector);
+  PhaseVector nodeVoltage(const Matrix &leftVector);
+  void updateCurrentFromVoltage(const PhaseVector &voltage);
 };
 
 } // namespace SSN

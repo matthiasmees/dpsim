@@ -35,6 +35,8 @@ public:
                          Attribute<Matrix>::Ptr leftVector) override;
   void mnaCompApplySystemMatrixStamp(SparseMatrixRow &systemMatrix) override;
   void mnaCompApplyRightSideVectorStamp(Matrix &rightVector) override;
+  Bool mnaHasCompactRightSideVectorStamp() const override { return true; }
+  void mnaAddCompactRightSideVectorStamp(Matrix &rightVector) override;
   void mnaCompAddPreStepDependencies(
       AttributeBase::List &prevStepDependencies,
       AttributeBase::List &attributeDependencies,

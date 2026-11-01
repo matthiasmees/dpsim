@@ -42,7 +42,8 @@ protected:
   void updateLogAttributes(const Matrix &u) const override;
 
 private:
-  void evaluate(const Matrix &x, const Matrix &u, Matrix &f, Matrix &y) const;
+  void evaluate(const Matrix &x, const Matrix &u, MatrixFixedSize<4, 1> &f,
+                MatrixFixedSize<3, 1> &y) const;
   void linearize(const Matrix &x, const Matrix &u, Matrix &A, Matrix &B,
                  Matrix &C, Matrix &D) const;
   void initializeState(const Matrix &phaseVoltage);
@@ -54,6 +55,10 @@ private:
   Real mPm = 0., mQm = 0., mVpu = 1., mVangle = 0.;
   Real mEd0 = 0., mEq0 = 1., mId0 = 0., mIq0 = 0.;
   bool mConfigured = false, mInitialValuesConfigured = false;
+  MatrixFixedSize<4, 1> mEvaluationF = MatrixFixedSize<4, 1>::Zero();
+  MatrixFixedSize<3, 1> mEvaluationY = MatrixFixedSize<3, 1>::Zero();
+  Matrix mStateOffset = Matrix::Zero(4, 1);
+  Matrix mOutputOffset = Matrix::Zero(3, 1);
 };
 
 } // namespace CPS::EMT::Ph3::SSN

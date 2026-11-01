@@ -103,12 +103,14 @@ protected:
   // -------------------------------------------------------------------------
   // Helpers
   // -------------------------------------------------------------------------
-  Matrix getParkTransformMatrixPowerInvariant(Real theta) const;
-  Matrix getInverseParkTransformMatrixPowerInvariant(Real theta) const;
+  MatrixFixedSize<2, 3> getParkTransformMatrixPowerInvariant(Real theta) const;
+  MatrixFixedSize<3, 2>
+  getInverseParkTransformMatrixPowerInvariant(Real theta) const;
 
-  Matrix parkTransformPowerInvariant(Real theta, const Matrix &fabc) const;
-  Matrix inverseParkTransformPowerInvariant(Real theta,
-                                            const Matrix &fdq) const;
+  MatrixFixedSize<2, 1> parkTransformPowerInvariant(Real theta,
+                                                    const Matrix &fabc) const;
+  MatrixFixedSize<3, 1>
+  inverseParkTransformPowerInvariant(Real theta, const Matrix &fdq) const;
 
   void updateMeasurementAttributes(Real theta);
   void updatePowerAndFrequencyAttributes();

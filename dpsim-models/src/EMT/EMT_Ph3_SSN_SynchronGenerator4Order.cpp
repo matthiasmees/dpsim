@@ -10,24 +10,6 @@ using namespace CPS;
 namespace {
 constexpr Int kEd = 0, kEq = 1, kOmega = 2, kTheta = 3;
 constexpr Real kSqrtTwoThirds = 0.8164965809277260327;
-Matrix park(Real theta) {
-  Matrix t(2, 3);
-  for (Int p = 0; p < 3; ++p) {
-    const Real a = theta - 2. * PI * p / 3.;
-    t(0, p) = 2. / 3. * std::cos(a);
-    t(1, p) = -2. / 3. * std::sin(a);
-  }
-  return t;
-}
-Matrix invPark(Real theta) {
-  Matrix t(3, 2);
-  for (Int p = 0; p < 3; ++p) {
-    const Real a = theta - 2. * PI * p / 3.;
-    t(p, 0) = std::cos(a);
-    t(p, 1) = -std::sin(a);
-  }
-  return t;
-}
 } // namespace
 
 EMT::Ph3::SSN::SynchronGenerator4Order::SynchronGenerator4Order(
@@ -75,20 +57,26 @@ void EMT::Ph3::SSN::SynchronGenerator4Order::setPowerflowInitialValues(
   mInitialValuesConfigured = true;
 }
 
-void EMT::Ph3::SSN::SynchronGenerator4Order::evaluate(const Matrix &x,
-                                                      const Matrix &u,
-                                                      Matrix &f,
-                                                      Matrix &y) const {
+void EMT::Ph3::SSN::SynchronGenerator4Order::evaluate(
+    const Matrix &x, const Matrix &u, MatrixFixedSize<4, 1> &f,
+    MatrixFixedSize<3, 1> &y) const {
   const Real theta = x(kTheta, 0);
-  const Matrix vdq = park(theta) * u / mBaseV;
-  const Real vd = vdq(0, 0), vq = vdq(1, 0);
+  const Real phaseStep = 2. * PI / 3.;
+  Real vd = 0., vq = 0.;
+  Real cosPhase[3], sinPhase[3];
+  for (Int p = 0; p < 3; ++p) {
+    const Real angle = theta - phaseStep * p;
+    cosPhase[p] = std::cos(angle);
+    sinPhase[p] = std::sin(angle);
+    vd += (2. / 3.) * cosPhase[p] * u(p, 0) / mBaseV;
+    vq -= (2. / 3.) * sinPhase[p] * u(p, 0) / mBaseV;
+  }
   const Real dd = vd - x(kEd, 0), dq = vq - x(kEq, 0);
   const Real det = mRa * mRa + mXdp * mXqp;
   const Real id = (mRa * dd + mXqp * dq) / det;
   const Real iq = (-mXdp * dd + mRa * dq) / det;
-  Matrix idq(2, 1);
-  idq << id, iq;
-  y = mBaseI * invPark(theta) * idq;
+  for (Int p = 0; p < 3; ++p)
+    y(p, 0) = mBaseI * (cosPhase[p] * id - sinPhase[p] * iq);
 
   f.setZero(4, 1);
   f(kEd, 0) = (-(x(kEd, 0) - mEd0) - (mXq - mXqp) * (iq - mIq0)) / mTq0p;
@@ -182,10 +170,15 @@ void EMT::Ph3::SSN::SynchronGenerator4Order::linearize(const Matrix &x,
 
 Bool EMT::Ph3::SSN::SynchronGenerator4Order::updateComponentParameters() {
   linearize(**mX, **mIntfVoltage, mA, mB, mC, mD);
-  Matrix f, y;
-  evaluate(**mX, **mIntfVoltage, f, y);
-  setStateOffset(f - mA * (**mX) - mB * (**mIntfVoltage));
-  setOutputOffset(y - mC * (**mX) - mD * (**mIntfVoltage));
+  evaluate(**mX, **mIntfVoltage, mEvaluationF, mEvaluationY);
+  mStateOffset = mEvaluationF;
+  mStateOffset.noalias() -= mA * (**mX);
+  mStateOffset.noalias() -= mB * (**mIntfVoltage);
+  mOutputOffset = mEvaluationY;
+  mOutputOffset.noalias() -= mC * (**mX);
+  mOutputOffset.noalias() -= mD * (**mIntfVoltage);
+  setStateOffset(mStateOffset);
+  setOutputOffset(mOutputOffset);
   return true;
 }
 
@@ -232,9 +225,8 @@ void EMT::Ph3::SSN::SynchronGenerator4Order::initializeFromNodesAndTerminals(
   **mIntfVoltage = ph.real();
   initializeState(**mIntfVoltage);
   updateComponentParameters();
-  Matrix f, y;
-  evaluate(**mX, **mIntfVoltage, f, y);
-  **mIntfCurrent = y;
+  evaluate(**mX, **mIntfVoltage, mEvaluationF, mEvaluationY);
+  **mIntfCurrent = mEvaluationY;
 }
 
 std::vector<String>

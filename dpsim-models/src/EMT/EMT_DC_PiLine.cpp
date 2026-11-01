@@ -187,26 +187,28 @@ void EMT::DC::PiLine::mnaParentApplySystemMatrixStamp(
   if (mUseSubcomponents)
     return;
   updateMatrixNodeIndices();
-  MNAStampUtils::stampConductance(mDirectSeriesAdmittance, systemMatrix,
-                                  matrixNodeIndex(0), matrixNodeIndex(1),
-                                  terminalNotGrounded(0),
-                                  terminalNotGrounded(1), mSLog);
+  mDirectTerminalRows = {matrixNodeIndex(0), matrixNodeIndex(1)};
+  mDirectTerminalNotGrounded = {terminalNotGrounded(0), terminalNotGrounded(1)};
+  MNAStampUtils::stampConductance(
+      mDirectSeriesAdmittance, systemMatrix, mDirectTerminalRows[0],
+      mDirectTerminalRows[1], mDirectTerminalNotGrounded[0],
+      mDirectTerminalNotGrounded[1], mSLog);
   const Real shuntAdmittance =
       mDirectCapAdmittance + **mParallelConductance / 2.;
   for (UInt terminal = 0; terminal < 2; ++terminal)
     MNAStampUtils::stampConductance(
         shuntAdmittance, systemMatrix, matrixNodeIndex(terminal), 0,
-        terminalNotGrounded(terminal), false, mSLog);
+        mDirectTerminalNotGrounded[terminal], false, mSLog);
 }
 
 void EMT::DC::PiLine::mnaParentApplyRightSideVectorStamp(Matrix &rightVector) {
   if (mUseSubcomponents)
     return;
-  if (terminalNotGrounded(0))
-    Math::setVectorElement(rightVector, matrixNodeIndex(0),
+  if (mDirectTerminalNotGrounded[0])
+    Math::setVectorElement(rightVector, mDirectTerminalRows[0],
                            mDirectSeriesHistory - mDirectCapHistory0);
-  if (terminalNotGrounded(1))
-    Math::setVectorElement(rightVector, matrixNodeIndex(1),
+  if (mDirectTerminalNotGrounded[1])
+    Math::setVectorElement(rightVector, mDirectTerminalRows[1],
                            -mDirectSeriesHistory - mDirectCapHistory1);
 }
 
@@ -221,8 +223,8 @@ void EMT::DC::PiLine::mnaAddCompactRightSideVectorStamp(Matrix &rightVector) {
     return;
   }
   for (UInt terminal = 0; terminal < 2; ++terminal)
-    if (terminalNotGrounded(terminal)) {
-      const UInt index = matrixNodeIndex(terminal);
+    if (mDirectTerminalNotGrounded[terminal]) {
+      const UInt index = mDirectTerminalRows[terminal];
       Math::addToVectorElement(
           rightVector, index,
           Math::realFromVectorElement(**mRightVector, index));
@@ -271,27 +273,33 @@ void EMT::DC::PiLine::mnaParentPreStep(Real, Int) {
 
 void EMT::DC::PiLine::mnaParentPostStep(Real, Int,
                                         Attribute<Matrix>::Ptr &leftVector) {
-  mnaCompUpdateVoltage(**leftVector);
-  mnaCompUpdateCurrent(**leftVector);
-  if (!mUseSubcomponents) {
-    const Real voltage0 =
-        terminalNotGrounded(0)
-            ? Math::realFromVectorElement(**leftVector, matrixNodeIndex(0))
-            : 0.;
-    const Real voltage1 =
-        terminalNotGrounded(1)
-            ? Math::realFromVectorElement(**leftVector, matrixNodeIndex(1))
-            : 0.;
-    (**mDirectState)(0, 0) = (**mIntfCurrent)(0, 0);
-    (**mDirectState)(1, 0) =
-        (**mIntfVoltage)(0, 0) - **mSeriesResistance * (**mIntfCurrent)(0, 0);
-    (**mDirectState)(2, 0) = voltage0;
-    (**mDirectState)(3, 0) =
-        mDirectCapAdmittance * voltage0 + mDirectCapHistory0;
-    (**mDirectState)(4, 0) = voltage1;
-    (**mDirectState)(5, 0) =
-        mDirectCapAdmittance * voltage1 + mDirectCapHistory1;
+  if (mUseSubcomponents) {
+    mnaCompUpdateVoltage(**leftVector);
+    mnaCompUpdateCurrent(**leftVector);
+    return;
   }
+
+  const Real voltage0 =
+      mDirectTerminalNotGrounded[0]
+          ? Math::realFromVectorElement(**leftVector, mDirectTerminalRows[0])
+          : 0.;
+  const Real voltage1 =
+      mDirectTerminalNotGrounded[1]
+          ? Math::realFromVectorElement(**leftVector, mDirectTerminalRows[1])
+          : 0.;
+  (**mIntfVoltage)(0, 0) = voltage1;
+  (**mIntfVoltage)(0, 0) -= voltage0;
+  if (!Math::isFinite((**mIntfVoltage)(0, 0)))
+    throw std::runtime_error(
+        "DC pi-line voltage update produced a non-finite value.");
+  mnaCompUpdateCurrent(**leftVector);
+  (**mDirectState)(0, 0) = (**mIntfCurrent)(0, 0);
+  (**mDirectState)(1, 0) =
+      (**mIntfVoltage)(0, 0) - **mSeriesResistance * (**mIntfCurrent)(0, 0);
+  (**mDirectState)(2, 0) = voltage0;
+  (**mDirectState)(3, 0) = mDirectCapAdmittance * voltage0 + mDirectCapHistory0;
+  (**mDirectState)(4, 0) = voltage1;
+  (**mDirectState)(5, 0) = mDirectCapAdmittance * voltage1 + mDirectCapHistory1;
 }
 
 void EMT::DC::PiLine::mnaParentAddPreStepDependencies(

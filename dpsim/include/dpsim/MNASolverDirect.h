@@ -151,6 +151,10 @@ protected:
   void switchedMatrixStamp(
       std::size_t index,
       std::vector<std::shared_ptr<CPS::MNAInterface>> &comp) override;
+  /// Applies component and switch stamps for one frequency and factorizes it.
+  void switchedMatrixStamp(std::size_t swIdx, Int freqIdx,
+                           CPS::MNAInterface::List &components,
+                           CPS::MNASwitchInterface::List &switches) override;
 
   // #### Methods for system recomputation over time ####
   /// Stamps components into the variable system matrix
@@ -227,6 +231,12 @@ public:
         if (it->getRightVector()->get().size() != 0)
           mAttributeDependencies.push_back(it->getRightVector());
       }
+      // Switch interfaces are solved using the precomputed switch matrix
+      // bank, but their pre-step RHS stamps still feed the global solve.
+      for (auto it : solver.mMNAIntfSwitches) {
+        if (it->getRightVector()->get().size() != 0)
+          mAttributeDependencies.push_back(it->getRightVector());
+      }
       for (auto node : solver.mNodes) {
         mModifiedAttributes.push_back(node->mVoltage);
       }
@@ -252,6 +262,10 @@ public:
       setFastExecutor<SolveTaskHarm, &SolveTaskHarm::executeFastImpl>(this);
 
       for (auto it : solver.mMNAComponents) {
+        if (it->getRightVector()->get().size() != 0)
+          mAttributeDependencies.push_back(it->getRightVector());
+      }
+      for (auto it : solver.mMNAIntfSwitches) {
         if (it->getRightVector()->get().size() != 0)
           mAttributeDependencies.push_back(it->getRightVector());
       }

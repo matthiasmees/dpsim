@@ -287,7 +287,8 @@ static Real runRXLoad(const String &suffix, Bool useSubcomponents) {
       .count();
 }
 
-static Real runTransformer(const String &suffix, Bool useSubcomponents) {
+static Real runTransformer(const String &suffix, Bool useSubcomponents,
+                           Bool withResistiveLosses = false) {
   constexpr Real timeStep = 50e-6;
   constexpr Real finalTime = 0.5;
   constexpr Real highVoltage = 100e3;
@@ -305,7 +306,8 @@ static Real runTransformer(const String &suffix, Bool useSubcomponents) {
   source->setParameters(CPS::Math::singlePhaseVariableToThreePhase(
                             Complex(highVoltage * PEAK1PH_TO_RMS3PH, 0)),
                         50.);
-  auto transformer = Transformer::make("transformer", useSubcomponents);
+  auto transformer = Transformer::make("transformer", useSubcomponents,
+                                       Logger::Level::off, withResistiveLosses);
   transformer->setParameters(highVoltage, lowVoltage, 1e6, ratio, 0.,
                              CPS::Math::singlePhaseParameterToThreePhase(1.),
                              CPS::Math::singlePhaseParameterToThreePhase(0.1));
@@ -652,6 +654,13 @@ int main() {
   fmt::print(
       "transformer_legacy_wall_s={:.9f}\ntransformer_direct_wall_s={:.9f}\n",
       legacyTransformerTime, directTransformerTime);
+  const Real legacyLossyTransformerTime =
+      runTransformer("LossyLegacy", true, true);
+  const Real directLossyTransformerTime =
+      runTransformer("LossyDirect", false, true);
+  fmt::print("transformer_lossy_legacy_wall_s={:.9f}\n"
+             "transformer_lossy_direct_wall_s={:.9f}\n",
+             legacyLossyTransformerTime, directLossyTransformerTime);
   const Real legacyHalfLineTime = runHalfDecouplingLine("Legacy", true);
   const Real directHalfLineTime = runHalfDecouplingLine("Direct", false);
   fmt::print("half_line_legacy_wall_s={:.9f}\nhalf_line_direct_wall_s={:.9f}\n",

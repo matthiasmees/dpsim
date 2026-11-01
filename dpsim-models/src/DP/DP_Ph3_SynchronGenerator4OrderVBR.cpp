@@ -86,11 +86,26 @@ void DP::Ph3::SynchronGenerator4OrderVBR::mnaCompApplyRightSideVectorStamp(
   dqInternal << mNortonEd + mEdTransient - mInitialEdTransient,
       mNortonEq + mEqTransient - mInitialEqTransient, 0;
   mInternalVoltage = mBase_V * dq0ToAbcTransform(mThetaMech, dqInternal);
-  mNortonCurrent.noalias() = mAdmittance * mInternalVoltage;
+  // The phase-domain Norton admittance is diagonal with the same value in
+  // all three phases. Avoid dispatching a dense 3x3-by-3x1 product at every
+  // RHS refresh.
+  mNortonCurrent.noalias() = mAdmittance(0, 0) * mInternalVoltage;
   if (terminalNotGrounded(0)) {
     for (UInt phase = 0; phase < 3; ++phase)
       Math::setVectorElement(rightVector, matrixNodeIndex(0, phase),
                              mNortonCurrent(phase, 0));
+  }
+}
+
+void DP::Ph3::SynchronGenerator4OrderVBR::mnaAddCompactRightSideVectorStamp(
+    Matrix &rightVector) {
+  if (!terminalNotGrounded(0))
+    return;
+  const Matrix::Index imaginaryOffset = rightVector.rows() / 2;
+  for (UInt phase = 0; phase < 3; ++phase) {
+    const Matrix::Index row = matrixNodeIndex(0, phase);
+    rightVector(row, 0) += mNortonCurrent(phase, 0).real();
+    rightVector(row + imaginaryOffset, 0) += mNortonCurrent(phase, 0).imag();
   }
 }
 
@@ -116,7 +131,7 @@ void DP::Ph3::SynchronGenerator4OrderVBR::mnaCompPostStep(
     // makes the first dynamic step torque-balanced even when the machine and
     // MATPOWER use different power bases or the PF voltage has rounding.
     mVoltageDifference = **mIntfVoltage - mInternalVoltage;
-    **mIntfCurrent = mAdmittance * mVoltageDifference;
+    **mIntfCurrent = mAdmittance(0, 0) * mVoltageDifference;
     MatrixFixedSize<3, 1> dqVoltage =
         abcToDq0Transform(mThetaMech, **mIntfVoltage) / mBase_V;
     MatrixFixedSize<3, 1> dqCurrent =
@@ -138,7 +153,7 @@ void DP::Ph3::SynchronGenerator4OrderVBR::updateCurrentAndStates(Real time) {
   // Reconstruct the component current from the implicit Norton equivalent and
   // transform it into the rotor frame for the machine equations.
   mVoltageDifference = **mIntfVoltage - mInternalVoltage;
-  **mIntfCurrent = mAdmittance * mVoltageDifference;
+  **mIntfCurrent = mAdmittance(0, 0) * mVoltageDifference;
   MatrixFixedSize<3, 1> dqVoltage =
       abcToDq0Transform(mThetaMech, **mIntfVoltage) / mBase_V;
   MatrixFixedSize<3, 1> dqCurrent =

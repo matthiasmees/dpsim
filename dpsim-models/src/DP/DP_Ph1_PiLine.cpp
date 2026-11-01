@@ -264,9 +264,41 @@ void DP::Ph1::PiLine::mnaParentAddPostStepDependencies(
 
 void DP::Ph1::PiLine::mnaParentPostStep(Real time, Int timeStepCount,
                                         Attribute<Matrix>::Ptr &leftVector) {
-  // post-step of component itself
-  this->mnaUpdateVoltage(**leftVector);
-  this->mnaUpdateCurrent(**leftVector);
+  if (mUseSubcomponents) {
+    this->mnaUpdateVoltage(**leftVector);
+    this->mnaUpdateCurrent(**leftVector);
+    return;
+  }
+
+  const Matrix &solution = **leftVector;
+  const Bool terminal0Connected = terminalNotGrounded(0);
+  const Bool terminal1Connected = terminalNotGrounded(1);
+  for (UInt freq = 0; freq < mNumFreqs; ++freq) {
+    const Complex voltage0 =
+        terminal0Connected ? Math::complexFromVectorElement(
+                                 solution, matrixNodeIndex(0), mNumFreqs, freq)
+                           : Complex(0., 0.);
+    const Complex voltage1 =
+        terminal1Connected ? Math::complexFromVectorElement(
+                                 solution, matrixNodeIndex(1), mNumFreqs, freq)
+                           : Complex(0., 0.);
+    const Complex internalVoltage = Math::complexFromVectorElement(
+        solution, virtualNode(0)->matrixNodeIndex(), mNumFreqs, freq);
+
+    (**mIntfVoltage)(0, freq) = voltage1 - voltage0;
+    mDirectSeriesVoltage(freq, 0) = voltage1 - internalVoltage;
+    mDirectSeriesCurrent(freq, 0) =
+        mDirectSeriesCond(freq, 0) * mDirectSeriesVoltage(freq, 0) +
+        mDirectSeriesHistory(freq, 0);
+    (**mIntfCurrent)(0, freq) = mDirectSeriesCurrent(freq, 0);
+
+    mDirectCapVoltage0(freq, 0) = voltage0;
+    mDirectCapVoltage1(freq, 0) = voltage1;
+    mDirectCapCurrent0(freq, 0) =
+        mDirectCapCond(freq, 0) * voltage0 + mDirectCapHistory0(freq, 0);
+    mDirectCapCurrent1(freq, 0) =
+        mDirectCapCond(freq, 0) * voltage1 + mDirectCapHistory1(freq, 0);
+  }
 }
 
 void DP::Ph1::PiLine::mnaCompUpdateVoltage(const Matrix &leftVector) {

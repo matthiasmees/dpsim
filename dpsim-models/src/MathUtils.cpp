@@ -36,6 +36,15 @@ Real *cachedSparseValue(CPS::SparseMatrixRow &mat, Eigen::Index row,
     return nullptr;
   return mat.valuePtr() + valueIt->second;
 }
+
+Matrix trapezoidalStep(const Matrix &states, const Matrix &A,
+                       const Matrix &input, Real dt) {
+  const Matrix identity = Matrix::Identity(states.rows(), states.rows());
+  const Matrix lhs = identity - (dt / 2.) * A;
+  const Matrix rhs = (identity + (dt / 2.) * A) * states + dt * input;
+  return lhs.partialPivLu().solve(rhs);
+}
+
 } // namespace
 
 // #### Angular Operations ####
@@ -323,39 +332,49 @@ std::pair<Real, Real> Math::pccPowerFromFilterPowerReference(Real pFilterRef,
 
 Matrix Math::StateSpaceTrapezoidal(Matrix states, Matrix A, Matrix B, Real dt,
                                    Matrix u_new, Matrix u_old) {
-  Matrix::Index n = states.rows();
-  Matrix I = Matrix::Identity(n, n);
-
-  Matrix F1 = I + (dt / 2.) * A;
-  Matrix F2 = I - (dt / 2.) * A;
-  Matrix F2inv = F2.inverse();
-
-  return F2inv * F1 * states + F2inv * (dt / 2.) * B * (u_new + u_old);
+  return StateSpaceTrapezoidalNoCopy(states, A, B, dt, u_new, u_old);
 }
 
 Matrix Math::StateSpaceTrapezoidal(Matrix states, Matrix A, Matrix B, Matrix C,
                                    Real dt, Matrix u_new, Matrix u_old) {
-  Matrix::Index n = states.rows();
-  Matrix I = Matrix::Identity(n, n);
+  return StateSpaceTrapezoidalNoCopy(states, A, B, C, dt, u_new, u_old);
+}
 
-  Matrix F1 = I + (dt / 2.) * A;
-  Matrix F2 = I - (dt / 2.) * A;
-  Matrix F2inv = F2.inverse();
-
-  return F2inv * F1 * states + F2inv * (dt / 2.) * B * (u_new + u_old) +
-         F2inv * dt * C;
+Matrix Math::StateSpaceTrapezoidal(Matrix states, Matrix A, Matrix B, Real dt,
+                                   Matrix u) {
+  return StateSpaceTrapezoidalNoCopy(states, A, B, dt, u);
 }
 
 Matrix Math::StateSpaceTrapezoidal(Matrix states, Matrix A, Matrix B, Matrix C,
                                    Real dt, Matrix u) {
-  Matrix::Index n = states.rows();
-  Matrix I = Matrix::Identity(n, n);
+  return StateSpaceTrapezoidalNoCopy(states, A, B, C, dt, u);
+}
 
-  Matrix F1 = I + (dt / 2.) * A;
-  Matrix F2 = I - (dt / 2.) * A;
-  Matrix F2inv = F2.inverse();
+Matrix Math::StateSpaceTrapezoidal(Matrix states, Matrix A, Matrix input,
+                                   Real dt) {
+  return StateSpaceTrapezoidalNoCopy(states, A, input, dt);
+}
 
-  return F2inv * F1 * states + F2inv * dt * B * u + F2inv * dt * C;
+Matrix Math::StateSpaceTrapezoidalNoCopy(const Matrix &states, const Matrix &A,
+                                         const Matrix &B, Real dt,
+                                         const Matrix &u_new,
+                                         const Matrix &u_old) {
+  return trapezoidalStep(states, A, (0.5 * B * (u_new + u_old)).eval(), dt);
+}
+
+Matrix Math::StateSpaceTrapezoidalNoCopy(const Matrix &states, const Matrix &A,
+                                         const Matrix &B, const Matrix &C,
+                                         Real dt, const Matrix &u_new,
+                                         const Matrix &u_old) {
+  const Matrix input = (0.5 * B * (u_new + u_old) + C).eval();
+  return trapezoidalStep(states, A, input, dt);
+}
+
+Matrix Math::StateSpaceTrapezoidalNoCopy(const Matrix &states, const Matrix &A,
+                                         const Matrix &B, const Matrix &C,
+                                         Real dt, const Matrix &u) {
+  const Matrix input = (B * u + C).eval();
+  return trapezoidalStep(states, A, input, dt);
 }
 
 Real Math::StateSpaceTrapezoidal(Real states, Real A, Real B, Real C, Real dt,
@@ -367,28 +386,15 @@ Real Math::StateSpaceTrapezoidal(Real states, Real A, Real B, Real C, Real dt,
   return F2inv * F1 * states + F2inv * dt * B * u + F2inv * dt * C;
 }
 
-Matrix Math::StateSpaceTrapezoidal(Matrix states, Matrix A, Matrix B, Real dt,
-                                   Matrix u) {
-  Matrix::Index n = states.rows();
-  Matrix I = Matrix::Identity(n, n);
-
-  Matrix F1 = I + (dt / 2.) * A;
-  Matrix F2 = I - (dt / 2.) * A;
-  Matrix F2inv = F2.inverse();
-
-  return F2inv * F1 * states + F2inv * dt * B * u;
+Matrix Math::StateSpaceTrapezoidalNoCopy(const Matrix &states, const Matrix &A,
+                                         const Matrix &B, Real dt,
+                                         const Matrix &u) {
+  return trapezoidalStep(states, A, (B * u).eval(), dt);
 }
 
-Matrix Math::StateSpaceTrapezoidal(Matrix states, Matrix A, Matrix input,
-                                   Real dt) {
-  Matrix::Index n = states.rows();
-  Matrix I = Matrix::Identity(n, n);
-
-  Matrix F1 = I + (dt / 2.) * A;
-  Matrix F2 = I - (dt / 2.) * A;
-  Matrix F2inv = F2.inverse();
-
-  return F2inv * F1 * states + F2inv * dt * input;
+Matrix Math::StateSpaceTrapezoidalNoCopy(const Matrix &states, const Matrix &A,
+                                         const Matrix &input, Real dt) {
+  return trapezoidalStep(states, A, input, dt);
 }
 
 Real Math::StateSpaceTrapezoidal(Real states, Real A, Real B, Real dt, Real u) {
@@ -401,6 +407,20 @@ Real Math::StateSpaceTrapezoidal(Real states, Real A, Real B, Real dt, Real u) {
 
 Matrix Math::StateSpaceEuler(Matrix states, Matrix A, Matrix B, Real dt,
                              Matrix u) {
+  return StateSpaceEulerNoCopy(states, A, B, dt, u);
+}
+
+Matrix Math::StateSpaceEuler(Matrix states, Matrix A, Matrix B, Matrix C,
+                             Real dt, Matrix u) {
+  return StateSpaceEulerNoCopy(states, A, B, C, dt, u);
+}
+
+Matrix Math::StateSpaceEuler(Matrix states, Matrix A, Matrix input, Real dt) {
+  return StateSpaceEulerNoCopy(states, A, input, dt);
+}
+
+Matrix Math::StateSpaceEulerNoCopy(const Matrix &states, const Matrix &A,
+                                   const Matrix &B, Real dt, const Matrix &u) {
   return states + dt * (A * states + B * u);
 }
 
@@ -408,8 +428,9 @@ Real Math::StateSpaceEuler(Real states, Real A, Real B, Real dt, Real u) {
   return states + dt * (A * states + B * u);
 }
 
-Matrix Math::StateSpaceEuler(Matrix states, Matrix A, Matrix B, Matrix C,
-                             Real dt, Matrix u) {
+Matrix Math::StateSpaceEulerNoCopy(const Matrix &states, const Matrix &A,
+                                   const Matrix &B, const Matrix &C, Real dt,
+                                   const Matrix &u) {
   return states + dt * (A * states + B * u + C);
 }
 
@@ -418,7 +439,8 @@ Real Math::StateSpaceEuler(Real states, Real A, Real B, Real C, Real dt,
   return states + dt * (A * states + B * u + C);
 }
 
-Matrix Math::StateSpaceEuler(Matrix states, Matrix A, Matrix input, Real dt) {
+Matrix Math::StateSpaceEulerNoCopy(const Matrix &states, const Matrix &A,
+                                   const Matrix &input, Real dt) {
   return states + dt * (A * states + input);
 }
 

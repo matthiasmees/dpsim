@@ -248,6 +248,12 @@ template <> void MnaSolver<Complex>::initializeComponents() {
       if (stamp.size() != 0)
         mRightVectorStamps.push_back(&stamp);
     }
+    // Switch interfaces are stored separately from mMNAComponents, but their
+    // matrix node indices and DP state must still be initialized before the
+    // solver builds the per-frequency matrices for each switch combination.
+    for (auto sw : mMNAIntfSwitches)
+      sw->mnaInitializeHarm(mSystem.mSystemOmega, mTimeStep,
+                            mLeftSideVectorHarm);
     // Initialize nodes
     for (UInt nodeIdx = 0; nodeIdx < mNodes.size(); ++nodeIdx) {
       mNodes[nodeIdx]->mnaInitializeHarm(mLeftSideVectorHarm);
@@ -579,8 +585,9 @@ template <> void MnaSolver<Complex>::createEmptyVectors() {
     for (Int freq = 0; freq < mSystem.mFrequencies.size(); ++freq) {
       mRightSideVectorHarm.push_back(
           Matrix::Zero(2 * (mNumMatrixNodeIndices), 1));
-      mLeftSideVectorHarm.push_back(AttributeStatic<Matrix>::make(
-          Matrix::Zero(2 * (mNumMatrixNodeIndices), 1)));
+      if (mLeftSideVectorHarm.size() <= static_cast<std::size_t>(freq))
+        mLeftSideVectorHarm.push_back(AttributeStatic<Matrix>::make());
+      **mLeftSideVectorHarm[freq] = Matrix::Zero(2 * mNumMatrixNodeIndices, 1);
     }
   } else {
     mRightSideVector = Matrix::Zero(

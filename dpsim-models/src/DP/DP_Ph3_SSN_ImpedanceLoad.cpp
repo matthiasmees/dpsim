@@ -58,6 +58,9 @@ void DP::Ph3::SSN::ImpedanceLoad::setParameters(Real activePower,
   mNominalVoltage = nominalVoltage;
   mShuntConductance = shuntConductance;
   mShuntSusceptance = shuntSusceptance;
+  mLoadConductance = nominalVoltage > 0.
+                         ? activePower / (nominalVoltage * nominalVoltage)
+                         : 0.;
 }
 
 void DP::Ph3::SSN::ImpedanceLoad::initializeFromNodesAndTerminals(
@@ -95,20 +98,14 @@ void DP::Ph3::SSN::ImpedanceLoad::initializeFromNodesAndTerminals(
     (**mState).block<3, 1>(kLoadCapacitorVoltage, 0) = voltage;
     (**mState).block<3, 1>(kLoadCapacitorCurrent, 0) = capacitorCurrent;
   }
-  const Real loadConductance =
-      mNominalVoltage > 0. ? mActivePower / (mNominalVoltage * mNominalVoltage)
-                           : 0.;
-  **mIntfCurrent = -((loadConductance + mShuntConductance) * voltage +
+  **mIntfCurrent = -((mLoadConductance + mShuntConductance) * voltage +
                      inductorCurrent + capacitorCurrent);
 }
 
 void DP::Ph3::SSN::ImpedanceLoad::mnaCompInitialize(Real omega, Real timeStep,
                                                     Attribute<Matrix>::Ptr) {
   updateMatrixNodeIndices();
-  const Real loadConductance =
-      mNominalVoltage > 0. ? mActivePower / (mNominalVoltage * mNominalVoltage)
-                           : 0.;
-  mNodalAdmittance = (loadConductance + mShuntConductance) *
+  mNodalAdmittance = (mLoadConductance + mShuntConductance) *
                      MatrixComp::Identity(3, 3).cast<Complex>();
 
   const Real inductiveSusceptance =
@@ -167,10 +164,9 @@ void DP::Ph3::SSN::ImpedanceLoad::mnaCompApplyRightSideVectorStamp(
     Matrix &rightVector) {
   if (!terminalNotGrounded(0))
     return;
-  const MatrixComp history = mHistoryLoad + mHistoryShunt;
   for (UInt phase = 0; phase < 3; ++phase)
     Math::setVectorElement(rightVector, matrixNodeIndex(0, phase),
-                           -history(phase, 0));
+                           -(mHistoryLoad(phase, 0) + mHistoryShunt(phase, 0)));
 }
 
 void DP::Ph3::SSN::ImpedanceLoad::mnaAddCompactRightSideVectorStamp(
@@ -188,8 +184,9 @@ void DP::Ph3::SSN::ImpedanceLoad::mnaCompPreStep(Real, Int) {
   mnaCompApplyRightSideVectorStamp(**mRightVector);
 }
 
-MatrixComp DP::Ph3::SSN::ImpedanceLoad::nodeVoltage(const Matrix &leftVector) {
-  MatrixComp voltage = MatrixComp::Zero(3, 1);
+DP::Ph3::SSN::ImpedanceLoad::PhaseVector
+DP::Ph3::SSN::ImpedanceLoad::nodeVoltage(const Matrix &leftVector) {
+  PhaseVector voltage = PhaseVector::Zero();
   if (terminalNotGrounded(0))
     for (UInt phase = 0; phase < 3; ++phase)
       voltage(phase, 0) =
@@ -203,33 +200,40 @@ void DP::Ph3::SSN::ImpedanceLoad::mnaCompUpdateVoltage(
 }
 
 void DP::Ph3::SSN::ImpedanceLoad::mnaCompUpdateCurrent(const Matrix &) {
-  const MatrixComp voltage = **mIntfVoltage;
-  MatrixComp loadInductorCurrent = MatrixComp::Zero(3, 1);
-  MatrixComp loadCapacitorCurrent = MatrixComp::Zero(3, 1);
-  if (mLoadInductance > 0.)
-    loadInductorCurrent = mInductorAdmittance * voltage + mHistoryLoad;
-  if (mLoadCapacitance > 0.)
-    loadCapacitorCurrent = mCapacitorAdmittance * voltage + mHistoryShunt;
+  updateCurrentFromVoltage(**mIntfVoltage);
+}
 
-  const Real loadConductance =
-      mNominalVoltage > 0. ? mActivePower / (mNominalVoltage * mNominalVoltage)
-                           : 0.;
-  **mIntfCurrent = -((loadConductance + mShuntConductance) * voltage +
-                     loadInductorCurrent + loadCapacitorCurrent);
-  if (mLoadInductance > 0.) {
-    (**mState).block<3, 1>(kLoadInductorVoltage, 0) = voltage;
-    (**mState).block<3, 1>(kLoadInductorCurrent, 0) = loadInductorCurrent;
-  }
-  if (mLoadCapacitance > 0.) {
-    (**mState).block<3, 1>(kLoadCapacitorVoltage, 0) = voltage;
-    (**mState).block<3, 1>(kLoadCapacitorCurrent, 0) = loadCapacitorCurrent;
+void DP::Ph3::SSN::ImpedanceLoad::updateCurrentFromVoltage(
+    const PhaseVector &voltage) {
+  for (UInt phase = 0; phase < 3; ++phase) {
+    Complex inductorCurrent = 0.;
+    Complex capacitorCurrent = 0.;
+    if (mLoadInductance > 0.)
+      inductorCurrent = mInductorAdmittance(phase, phase) * voltage(phase) +
+                        mHistoryLoad(phase, 0);
+    if (mLoadCapacitance > 0.)
+      capacitorCurrent = mCapacitorAdmittance(phase, phase) * voltage(phase) +
+                         mHistoryShunt(phase, 0);
+
+    (**mIntfCurrent)(phase, 0) =
+        -((mLoadConductance + mShuntConductance) * voltage(phase) +
+          inductorCurrent + capacitorCurrent);
+    if (mLoadInductance > 0.) {
+      (**mState)(kLoadInductorVoltage + phase, 0) = voltage(phase);
+      (**mState)(kLoadInductorCurrent + phase, 0) = inductorCurrent;
+    }
+    if (mLoadCapacitance > 0.) {
+      (**mState)(kLoadCapacitorVoltage + phase, 0) = voltage(phase);
+      (**mState)(kLoadCapacitorCurrent + phase, 0) = capacitorCurrent;
+    }
   }
 }
 
 void DP::Ph3::SSN::ImpedanceLoad::mnaCompPostStep(
     Real, Int, Attribute<Matrix>::Ptr &leftVector) {
-  mnaCompUpdateVoltage(**leftVector);
-  mnaCompUpdateCurrent(**leftVector);
+  const PhaseVector voltage = nodeVoltage(**leftVector);
+  **mIntfVoltage = voltage;
+  updateCurrentFromVoltage(voltage);
 }
 
 void DP::Ph3::SSN::ImpedanceLoad::mnaCompAddPreStepDependencies(

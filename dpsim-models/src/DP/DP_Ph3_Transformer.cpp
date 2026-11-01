@@ -281,8 +281,10 @@ void DP::Ph3::Transformer::mnaParentInitialize(
                                    : initialVoltage(mReferenceTerminal);
   const MatrixComp secondNode =
       mNumVirtualNodes == 5 ? mVirtualNodes[4]->initialVoltage() : midpoint;
-  mDirectInductorVoltage0 = midpoint - firstNode;
-  mDirectInductorVoltage1 = ratioNode - secondNode;
+  // Virtual-node initial phasors are stored in RMS form. Match the primitive
+  // DP inductor initializers by converting them to phase-peak envelopes here.
+  mDirectInductorVoltage0 = RMS3PH_TO_PEAK1PH * (midpoint - firstNode);
+  mDirectInductorVoltage1 = RMS3PH_TO_PEAK1PH * (ratioNode - secondNode);
   mDirectInductorCurrent0 =
       (Complex(0., omega) * halfInductance.cast<Complex>()).inverse() *
       mDirectInductorVoltage0;
@@ -290,7 +292,7 @@ void DP::Ph3::Transformer::mnaParentInitialize(
       (Complex(0., omega) * halfInductance.cast<Complex>()).inverse() *
       mDirectInductorVoltage1;
   if (mRatedPower > 0.) {
-    mDirectMagnetizingVoltage = -midpoint;
+    mDirectMagnetizingVoltage = -RMS3PH_TO_PEAK1PH * midpoint;
     mDirectMagnetizingCurrent =
         (Complex(0., omega) * mMagnetizingInductance.cast<Complex>())
             .inverse() *
@@ -386,11 +388,15 @@ void DP::Ph3::Transformer::mnaParentApplyRightSideVectorStamp(
     if (mNumVirtualNodes == 5 || terminalNotGrounded(mReferenceTerminal))
       Math::setVectorElement(rightVector, firstNode + phase,
                              mDirectInductorHistory0(phase, 0));
-    Math::setVectorElement(
-        rightVector, midpoint + phase,
-        -mDirectInductorHistory0(phase, 0) + mDirectInductorHistory1(phase, 0) +
-            (mRatedPower > 0. ? mDirectMagnetizingHistory(phase, 0)
-                              : Complex(0., 0.)));
+    Complex midpointHistory = -mDirectInductorHistory0(phase, 0);
+    if (mNumVirtualNodes == 5)
+      Math::setVectorElement(rightVector, secondNode + phase,
+                             mDirectInductorHistory1(phase, 0));
+    else
+      midpointHistory += mDirectInductorHistory1(phase, 0);
+    if (mRatedPower > 0.)
+      midpointHistory += mDirectMagnetizingHistory(phase, 0);
+    Math::setVectorElement(rightVector, midpoint + phase, midpointHistory);
     Math::setVectorElement(rightVector, ratioNode + phase,
                            -mDirectInductorHistory1(phase, 0));
   }

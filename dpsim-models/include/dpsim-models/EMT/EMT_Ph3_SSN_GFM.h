@@ -137,9 +137,15 @@ private:
   // One scalar logging attribute per state, with unit-bearing, readable names.
   std::vector<Attribute<Real>::Ptr> mStateLogAttributes;
 
-  Matrix getParkTransformMatrix(Real theta) const;
+  // Reused workspaces for the per-step nonlinear state-space relinearization.
+  Matrix mStateDerivativeWorkspace = Matrix::Zero(mStateSize, 1);
+  Matrix mOutputWorkspace = Matrix::Zero(mOutputSize, 1);
+  Matrix mStateOffsetWorkspace = Matrix::Zero(mStateSize, 1);
+  Matrix mOutputOffsetWorkspace = Matrix::Zero(mOutputSize, 1);
 
-  Matrix getInverseParkTransformMatrix(Real theta) const;
+  MatrixFixedSize<2, 3> getParkTransformMatrix(Real theta) const;
+
+  MatrixFixedSize<3, 2> getInverseParkTransformMatrix(Real theta) const;
 
   /// \brief Evaluate the nonlinear state derivative x_dot = f(x,u).
   void evaluateStateDerivative(const Matrix &x, const Matrix &u,
@@ -151,7 +157,7 @@ private:
   /// \brief Construct the complete local affine state-space model.
   void buildStateSpaceModel(const Matrix &x, const Matrix &u, Matrix &A,
                             Matrix &B, Matrix &C, Matrix &D, Matrix &E,
-                            Matrix &F) const;
+                            Matrix &F);
 
   /// \brief Return a safe denominator for the VSG swing equation.
   Real regularizedOmega(Real omega) const;

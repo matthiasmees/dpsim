@@ -338,10 +338,13 @@ String simulationName(const String &domain, bool useSSNPiLine,
 }
 
 void runDP(const SystemTopology &systemPF, bool useSSNPiLine,
-           bool useSSNImpedanceLoad, bool useSSNTransformer,
-           bool useSSNGenerator, bool profile, bool shortRun, bool noLogger) {
+           bool usePiLineNoSub, bool useSSNImpedanceLoad,
+           bool useSSNTransformer, bool useSSNGenerator, bool profile,
+           bool shortRun, bool noLogger) {
   String name = simulationName("DP", useSSNPiLine, useSSNImpedanceLoad,
                                useSSNTransformer, useSSNGenerator);
+  if (usePiLineNoSub)
+    name += "_NoSubLine";
   if (profile)
     name += "_DetailedProfile";
   Logger::setLogDir("logs/" + name);
@@ -379,7 +382,7 @@ void runDP(const SystemTopology &systemPF, bool useSSNPiLine,
     }
   }
   addLoadsAndShuntsDP(nodes, components, useSSNImpedanceLoad);
-  addBranches(nodes, components, useSSNPiLine, false, false,
+  addBranches(nodes, components, useSSNPiLine, usePiLineNoSub, false,
               useSSNTransformer);
   SystemTopology system(frequency, systemNodes, components);
   system.initWithPowerflow(systemPF, Domain::DP);
@@ -774,8 +777,8 @@ int main(int argc, char **argv) {
   pf.doInitFromNodesAndTerminals(false);
   pf.run();
   if (std::string(argv[1]) == "dp")
-    runDP(systemPF, useSSNPiLine, useSSNImpedanceLoad, useSSNTransformer,
-          useSSNGenerator, profile, shortRun, noLogger);
+    runDP(systemPF, useSSNPiLine, usePiLineNoSub, useSSNImpedanceLoad,
+          useSSNTransformer, useSSNGenerator, profile, shortRun, noLogger);
   else
     runEMT(systemPF, useSSNPiLine, usePiLineNoSub, useRXLoadNoSub,
            useTransformerNoSub, useSSNImpedanceLoad, useSSNTransformer,

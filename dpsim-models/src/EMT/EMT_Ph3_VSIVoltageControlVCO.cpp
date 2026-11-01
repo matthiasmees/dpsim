@@ -8,6 +8,34 @@
 
 using namespace CPS;
 
+namespace {
+using ParkTransform = MatrixFixedSize<2, 3>;
+using InverseParkTransform = MatrixFixedSize<3, 2>;
+using PhaseVector = MatrixFixedSize<3, 1>;
+using DqVector = MatrixFixedSize<2, 1>;
+
+ParkTransform makePowerInvariantParkTransform(Real theta) {
+  const Real k = std::sqrt(2.0 / 3.0);
+  ParkTransform transform;
+  transform << k * std::cos(theta), k * std::cos(theta - 2.0 * M_PI / 3.0),
+      k * std::cos(theta + 2.0 * M_PI / 3.0), -k * std::sin(theta),
+      -k * std::sin(theta - 2.0 * M_PI / 3.0),
+      -k * std::sin(theta + 2.0 * M_PI / 3.0);
+  return transform;
+}
+
+InverseParkTransform makePowerInvariantInverseParkTransform(Real theta) {
+  const Real k = std::sqrt(2.0 / 3.0);
+  InverseParkTransform transform;
+  transform << k * std::cos(theta), -k * std::sin(theta),
+      k * std::cos(theta - 2.0 * M_PI / 3.0),
+      -k * std::sin(theta - 2.0 * M_PI / 3.0),
+      k * std::cos(theta + 2.0 * M_PI / 3.0),
+      -k * std::sin(theta + 2.0 * M_PI / 3.0);
+  return transform;
+}
+} // namespace
+
 EMT::Ph3::VSIVoltageControlVCO::VSIVoltageControlVCO(String uid, String name,
                                                      Logger::Level logLevel,
                                                      Bool withTrafo)
@@ -495,22 +523,26 @@ void EMT::Ph3::VSIVoltageControlVCO::addControlStepDependencies(
 
 void EMT::Ph3::VSIVoltageControlVCO::controlStep(Real time, Int timeStepCount) {
   // Transformation interface forward
-  Matrix vcdq, ircdq;
-  Real theta = mVCO->mOutputPrev->get();
-  vcdq = Math::parkTransformPowerInvariant(theta, **mVirtualNodes[2]->mVoltage);
+  const Real theta = mVCO->mOutputPrev->get();
+  const ParkTransform park = makePowerInvariantParkTransform(theta);
+  const PhaseVector capacitorVoltage = **mVirtualNodes[2]->mVoltage;
+  PhaseVector filterCurrent;
   if (mUseSubcomponents)
-    ircdq = Math::parkTransformPowerInvariant(theta,
-                                              -**mSubResistorF->mIntfCurrent);
+    filterCurrent = -**mSubResistorF->mIntfCurrent;
   else
-    ircdq = Math::parkTransformPowerInvariant(theta, -mDirectIf);
-  Matrix intfVoltageDQ =
-      Math::parkTransformPowerInvariant(mThetaN, **mIntfVoltage);
-  Matrix intfCurrentDQ =
-      Math::parkTransformPowerInvariant(mThetaN, **mIntfCurrent);
-  **mElecActivePower = -1. * (intfVoltageDQ(0, 0) * intfCurrentDQ(0, 0) +
-                              intfVoltageDQ(1, 0) * intfCurrentDQ(1, 0));
-  **mElecReactivePower = -1. * (intfVoltageDQ(1, 0) * intfCurrentDQ(0, 0) -
-                                intfVoltageDQ(0, 0) * intfCurrentDQ(1, 0));
+    filterCurrent = -mDirectIf;
+  const DqVector vcdq = park * capacitorVoltage;
+  const DqVector ircdq = park * filterCurrent;
+
+  const ParkTransform networkPark = makePowerInvariantParkTransform(mThetaN);
+  const PhaseVector interfaceVoltage = **mIntfVoltage;
+  const PhaseVector interfaceCurrent = **mIntfCurrent;
+  const DqVector intfVoltageDQ = networkPark * interfaceVoltage;
+  const DqVector intfCurrentDQ = networkPark * interfaceCurrent;
+  **mElecActivePower = -(intfVoltageDQ(0, 0) * intfCurrentDQ(0, 0) +
+                         intfVoltageDQ(1, 0) * intfCurrentDQ(1, 0));
+  **mElecReactivePower = -(intfVoltageDQ(1, 0) * intfCurrentDQ(0, 0) -
+                           intfVoltageDQ(0, 0) * intfCurrentDQ(1, 0));
   //vector of voltages
   **mVcd = vcdq(0, 0);
   **mVcq = vcdq(1, 0);
@@ -524,8 +556,11 @@ void EMT::Ph3::VSIVoltageControlVCO::controlStep(Real time, Int timeStepCount) {
   mVoltageControllerVSI->signalStep(time, timeStepCount);
 
   // Transformation interface backward
-  **mVsref = Math::inverseParkTransformPowerInvariant(
-      mVCO->mOutputPrev->get(), mVoltageControllerVSI->mOutputCurr->get());
+  DqVector voltageControllerOutput;
+  voltageControllerOutput << mVCO->mOutputPrev->get(),
+      mVoltageControllerVSI->mOutputCurr->get();
+  **mVsref =
+      makePowerInvariantInverseParkTransform(theta) * voltageControllerOutput;
   mThetaN = std::fmod(mThetaN + mTimeStep * **mOmegaN, 2 * PI);
 }
 
@@ -584,17 +619,20 @@ void EMT::Ph3::VSIVoltageControlVCO::mnaCompUpdateCurrent(
   else if (mUseSubcomponents)
     **mIntfCurrent = mSubResistorC->mIntfCurrent->get();
   else {
-    Matrix terminalVoltage = Matrix::Zero(3, 1);
+    PhaseVector terminalVoltage = PhaseVector::Zero();
     if (terminalNotGrounded(0))
       for (UInt phase = 0; phase < 3; ++phase)
         terminalVoltage(phase) =
             Math::realFromVectorElement(leftvector, matrixNodeIndex(0, phase));
     const UInt capacitor = mVirtualNodes[2]->matrixNodeIndex(PhaseType::A);
-    Matrix capacitorVoltage = Matrix::Zero(3, 1);
+    PhaseVector capacitorVoltage = PhaseVector::Zero();
     for (UInt phase = 0; phase < 3; ++phase)
       capacitorVoltage(phase) =
           Math::realFromVectorElement(leftvector, capacitor + phase);
-    **mIntfCurrent = mDirectRc * (terminalVoltage - capacitorVoltage);
+    const PhaseVector voltageDifference = terminalVoltage - capacitorVoltage;
+    PhaseVector current;
+    current.noalias() = mDirectRc * voltageDifference;
+    **mIntfCurrent = current;
   }
 }
 

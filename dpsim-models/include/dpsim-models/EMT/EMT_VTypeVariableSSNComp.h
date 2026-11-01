@@ -26,6 +26,8 @@ private:
   Matrix mE;
   Matrix mdE;
   Matrix mF;
+  /// Reused input-sum workspace for the per-step state recurrence.
+  Matrix mUpdateInput;
 
 protected:
   static constexpr Int mInitializationMaxIterations = 10;

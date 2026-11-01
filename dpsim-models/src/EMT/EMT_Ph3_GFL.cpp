@@ -264,50 +264,56 @@ void EMT::Ph3::GFL::setInitialStateValues(Real pInit, Real qInit, Real phiDInit,
                                              gammaDInit, gammaQInit);
 }
 
-Matrix EMT::Ph3::GFL::getParkTransformMatrixPowerInvariant(Real theta) const {
+MatrixFixedSize<2, 3>
+EMT::Ph3::GFL::getParkTransformMatrixPowerInvariant(Real theta) const {
 
-  Matrix transform = Matrix::Zero(2, 3);
+  MatrixFixedSize<2, 3> transform;
 
   const Real k = std::sqrt(2.0 / 3.0);
+  const Real c = std::cos(theta);
+  const Real s = std::sin(theta);
+  const Real c120 = 0.5 * std::sqrt(3.0);
 
-  transform << k * std::cos(theta), k * std::cos(theta - 2.0 * PI / 3.0),
-      k * std::cos(theta + 2.0 * PI / 3.0),
+  transform << k * c, k * (-0.5 * c + c120 * s), k * (-0.5 * c - c120 * s),
 
-      -k * std::sin(theta), -k * std::sin(theta - 2.0 * PI / 3.0),
-      -k * std::sin(theta + 2.0 * PI / 3.0);
+      -k * s, k * (0.5 * s + c120 * c), k * (0.5 * s - c120 * c);
 
   return transform;
 }
 
-Matrix
+MatrixFixedSize<3, 2>
 EMT::Ph3::GFL::getInverseParkTransformMatrixPowerInvariant(Real theta) const {
 
-  Matrix transform = Matrix::Zero(3, 2);
+  MatrixFixedSize<3, 2> transform;
 
   const Real k = std::sqrt(2.0 / 3.0);
+  const Real c = std::cos(theta);
+  const Real s = std::sin(theta);
+  const Real c120 = 0.5 * std::sqrt(3.0);
 
-  transform << k * std::cos(theta), -k * std::sin(theta),
+  transform << k * c, -k * s,
 
-      k * std::cos(theta - 2.0 * PI / 3.0),
-      -k * std::sin(theta - 2.0 * PI / 3.0),
+      k * (-0.5 * c + c120 * s), k * (0.5 * s + c120 * c),
 
-      k * std::cos(theta + 2.0 * PI / 3.0),
-      -k * std::sin(theta + 2.0 * PI / 3.0);
+      k * (-0.5 * c - c120 * s), k * (0.5 * s - c120 * c);
 
   return transform;
 }
 
-Matrix EMT::Ph3::GFL::parkTransformPowerInvariant(Real theta,
-                                                  const Matrix &fabc) const {
+MatrixFixedSize<2, 1>
+EMT::Ph3::GFL::parkTransformPowerInvariant(Real theta,
+                                           const Matrix &fabc) const {
 
-  return getParkTransformMatrixPowerInvariant(theta) * fabc;
+  const MatrixFixedSize<3, 1> phases = fabc;
+  return getParkTransformMatrixPowerInvariant(theta) * phases;
 }
 
-Matrix
+MatrixFixedSize<3, 1>
 EMT::Ph3::GFL::inverseParkTransformPowerInvariant(Real theta,
                                                   const Matrix &fdq) const {
 
-  return getInverseParkTransformMatrixPowerInvariant(theta) * fdq;
+  const MatrixFixedSize<2, 1> dq = fdq;
+  return getInverseParkTransformMatrixPowerInvariant(theta) * dq;
 }
 
 void EMT::Ph3::GFL::updateMeasurementAttributes(Real theta) {
@@ -323,9 +329,9 @@ void EMT::Ph3::GFL::updateMeasurementAttributes(Real theta) {
   // converter-to-grid injection.
   const Matrix iGridAbc = -**mIntfCurrent;
 
-  const Matrix vDq = parkTransformPowerInvariant(theta, vPccAbc);
+  const auto vDq = parkTransformPowerInvariant(theta, vPccAbc);
 
-  const Matrix iDq = parkTransformPowerInvariant(theta, iGridAbc);
+  const auto iDq = parkTransformPowerInvariant(theta, iGridAbc);
 
   **mVcd = vDq(0, 0);
   **mVcq = vDq(1, 0);
@@ -447,11 +453,11 @@ void EMT::Ph3::GFL::initializeParentFromNodesAndTerminals(Real frequency) {
 
   const Matrix vSourceAbc0 = vSource.real();
 
-  const Matrix vDq0 = parkTransformPowerInvariant(theta0, vPccAbc0);
+  const auto vDq0 = parkTransformPowerInvariant(theta0, vPccAbc0);
 
-  const Matrix iDq0 = parkTransformPowerInvariant(theta0, iGridAbc0);
+  const auto iDq0 = parkTransformPowerInvariant(theta0, iGridAbc0);
 
-  const Matrix vSourceDq0 = parkTransformPowerInvariant(theta0, vSourceAbc0);
+  const auto vSourceDq0 = parkTransformPowerInvariant(theta0, vSourceAbc0);
 
   **mVcd = vDq0(0, 0);
 

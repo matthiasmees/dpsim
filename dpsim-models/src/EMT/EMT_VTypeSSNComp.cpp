@@ -10,6 +10,13 @@ EMT::VTypeSSNComp::VTypeSSNComp(String uid, String name, Int inputSize,
     : SSNComp(uid, name, inputSize, outputSize, logLevel) {
   *mIntfVoltageValue = Matrix::Zero(inputSize, 1);
   *mIntfCurrentValue = Matrix::Zero(outputSize, 1);
+
+  // Some nonlinear SSN components assemble their initial history while
+  // initializing from the power-flow operating point, before the MNA solver
+  // calls mnaCompInitialize(). Bind the stable attribute storage here so
+  // stateValue()/inputValue() are valid during that initialization path too.
+  mXValue = &mX->get();
+  mInputValue = &mIntfVoltage->get();
 }
 
 Attribute<Matrix>::Ptr EMT::VTypeSSNComp::inputAttribute() const {

@@ -143,7 +143,6 @@ void EMT::Ph3::Shunt::mnaParentInitialize(Real omega, Real timeStep,
     mCapEquivalentConductance = (2.0 / (omega * timeStep)) * mSusceptance;
   if (mSusceptance(0, 0) < 0)
     mIndEquivalentConductance = (-0.5 * omega * timeStep) * mSusceptance;
-
   mCapEquivalentCurrent =
       -mCapBranchCurrent - mCapEquivalentConductance * **mIntfVoltage;
   mIndEquivalentCurrent =
@@ -154,7 +153,7 @@ void EMT::Ph3::Shunt::mnaParentApplySystemMatrixStamp(
     SparseMatrixRow &systemMatrix) {
   if (mUseSubcomponents)
     return;
-  Matrix conductance =
+  const Matrix conductance =
       mConductance + mCapEquivalentConductance + mIndEquivalentConductance;
   MNAStampUtils::stampConductanceMatrix(conductance, systemMatrix,
                                         matrixNodeIndex(0), 0,
@@ -164,10 +163,11 @@ void EMT::Ph3::Shunt::mnaParentApplySystemMatrixStamp(
 void EMT::Ph3::Shunt::mnaParentApplyRightSideVectorStamp(Matrix &rightVector) {
   if (mUseSubcomponents || !terminalNotGrounded(0))
     return;
-  const Matrix historyCurrent = mCapEquivalentCurrent + mIndEquivalentCurrent;
-  for (Int phase = 0; phase < 3; ++phase)
+  for (Int phase = 0; phase < 3; ++phase) {
     Math::setVectorElement(rightVector, matrixNodeIndex(0, phase),
-                           historyCurrent(phase, 0));
+                           mCapEquivalentCurrent(phase, 0) +
+                               mIndEquivalentCurrent(phase, 0));
+  }
 }
 
 void EMT::Ph3::Shunt::mnaParentAddPreStepDependencies(

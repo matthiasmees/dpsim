@@ -8,6 +8,8 @@
 #include <dpsim-models/EMT/EMT_DC_Inductor.h>
 #include <dpsim-models/EMT/EMT_DC_Resistor.h>
 
+#include <array>
+
 namespace CPS {
 namespace EMT {
 namespace DC {
@@ -82,6 +84,8 @@ private:
   Real mDirectSeriesHistory = 0.;
   Real mDirectCapHistory0 = 0.;
   Real mDirectCapHistory1 = 0.;
+  std::array<UInt, 2> mDirectTerminalRows{};
+  std::array<Bool, 2> mDirectTerminalNotGrounded{};
   std::shared_ptr<Resistor> mSeriesResistor;
   std::shared_ptr<Inductor> mSeriesInductor;
   std::shared_ptr<Resistor> mShuntResistor0;

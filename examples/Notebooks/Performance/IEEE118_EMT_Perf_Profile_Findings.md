@@ -99,33 +99,77 @@ These are single profiled runs. Task timing instrumentation adds overhead, and
 the “after pre/post” value includes solver and scheduler overhead; it is not a
 pure integration-kernel timer.
 
-## Compact RHS follow-up for the all-SSN network
+## Compact RHS follow-up for reduced-order VBR generators
 
-The all-SSN case already accumulates SSN PiLine and impedance-load RHS values
-only at their touched terminal rows. The remaining full-vector additions came
-from its conventional VBR generators and SSN transformers. I tried giving
-those two component types compact row-wise accumulation as well. Five 1 s
-profile runs averaged 3.790 s (1.894 ms/step), compared with 3.767 s
-(1.882 ms/step) for five matched runs with that change disabled. The difference
-was within run-to-run variation, so the extra hooks were removed. Clearing the
-single global RHS vector remains, but at this case size it is not a demonstrated
-hotspot. The next optimization should target measured KLU refactorization or
-SSN component post-step work instead of adding more RHS compaction.
+The IEEE118 benchmark uses `ReducedOrderSynchronGeneratorVBR` (not the
+separate full `SynchronGeneratorVBR` class). Its source stamp has only three
+active rows, but previously each of 54 generators added a full network-sized
+vector into the global RHS on every step. The reduced-order base now advertises
+and implements the existing compact RHS interface, selecting the three bus
+rows for Norton mode or the three internal voltage-source rows otherwise.
 
-## Standalone EMT PiLine without child components
+On matched 10 s, 50 µs profiles (200,000 steps), generator dense stamp calls
+fell from 10.8 million to zero. The resulting RHS-assembly totals were:
 
-The separate `EMT::Ph3::PiLine_NoSub` implementation directly stamps the same
-three-phase Pi R/L/C/G model and updates its state without constructing R/L/C
-children or a virtual node. In a matching 1 s, 0.5 ms IEEE118 EMT profile with
-conventional loads, shunts, transformers, and generators, it completed in
-4.810 s (2.403 ms/step). The optimized composite run completed in 7.300 s
-(3.648 ms/step), and the all-SSN network in 3.877 s (1.937 ms/step).
+| Case | Before (s) | After (s) | Change |
+| --- | ---: | ---: | ---: |
+| Conventional | 4.315 | 2.682 | −37.8% |
+| All-SSN | 2.925 | 2.492 | −14.8% |
+| Aggregate | 1.387 | 0.950 | −31.5% |
+| Grouped shared-map | 2.676 | 2.639 | −1.4% |
 
-Line pre-step time was 0.272 ms/step for `PiLine_NoSub` versus 0.582 ms/step for
-the optimized composite; line post-step time was 0.301 ms/step versus 1.013
-ms/step. This is consistent with removing child-task dispatch and repeated
-child voltage/current updates. The profile is a single run; electrical output
-comparison is still needed for validation. The plots and per-task breakdown are
+The grouped case gains little because the group callback and state updates
+dominate its RHS phase. In five clean 1 s, 50 µs aggregate runs, the wall-time
+mean was 2.258 s after the change versus 2.435 s in the matched five-run
+baseline; the medians were 2.249 s versus 2.367 s. Full-process timings include
+power-flow setup and vary more than the isolated RHS phase.
+
+The change preserves summation order at each RHS row. A same-revision disabled
+versus enabled trace comparison matched all 10,001 logged samples across 28
+channels bit-for-bit. Detailed 10 s per-task and solver-phase data, call counts,
+and plots are in
+[IEEE118_EMT_Deep_Solver_Profile.ipynb](IEEE118_EMT_Deep_Solver_Profile.ipynb).
+
+## Half-decoupling line constant-matrix work
+
+The half-decoupling line history-current update had been inverting its fixed
+terminating impedance and its square inside every timestep. Those matrices are
+constant after `setParameters()`, so their inverses are now calculated once
+during parameter setup and reused by both the direct stamp and history update.
+The timestep expression and multiplication order are otherwise unchanged.
+
+Five post-change runs of the EMT direct-component comparison executable were
+compared with ten pre-change runs. For the legacy and direct half-line cases,
+the median full-case timings changed from 0.10950 s to 0.09177 s (−16.2%) and
+from 0.11130 s to 0.09474 s (−14.9%), respectively. The pre-change direct mean
+was affected by one 0.189 s outlier, so medians are the more representative
+comparison. All four old/new legacy/direct trace files had 10,001 samples and
+13 columns; all 260,026 compared numeric values matched exactly at the logged
+precision.
+
+The DP `PQLoadCS` direct path was also retested in five runs against its legacy
+component path. It was about 2% slower in that small fixture, with both paths
+under 1.4 ms per run and identical full traces. It is therefore not retained
+as a claimed optimization target; the fixture is too small for a useful speed
+gain and the observed difference is within timing noise.
+
+## EMT PiLine non-subcomponent constructor validation
+
+The optional no-subcomponent path now lives in the existing `EMT::Ph3::PiLine`
+class; the historical standalone `PiLine_NoSub` class was removed. Its direct
+constructor stamps and updates the three-phase Pi R/L/C/G model without
+constructing the child components. Five matched IEEE118 EMT runs at 1 s and
+50 µs compared the conventional composite topology with `nosubline`; all runs
+used the same conventional loads, shunts, transformers, and generators.
+
+Both variants produced 10,002×28 finite traces. The traces were numerically
+very close but not byte-identical: maximum absolute logged difference was
+1.0e-6, peak-normalized maximum difference 3.38e-12, and peak-normalized RMSE
+2.13e-13. The simulation-calculation mean was 5.759 s composite versus 4.084 s
+non-subcomponent (29.1% faster); the median was 5.772 versus 4.080 s, with the
+non-subcomponent path faster in all five pairs. This validates the prior
+profiled speed advantage against the electrical output and replaces the older
+single-run, 0.5 ms profile-only claim. The per-task plots and breakdown remain
 in [IEEE118_EMT_Composite_Optimization_Comparison.ipynb](IEEE118_EMT_Composite_Optimization_Comparison.ipynb).
 
 ## Reproduction

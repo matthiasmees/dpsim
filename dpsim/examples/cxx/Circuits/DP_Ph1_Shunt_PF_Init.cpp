@@ -29,8 +29,25 @@ struct Csv {
 };
 
 Csv readCsv(const String &name) {
-  const String path = "logs/" + name + ".csv";
+  String path = "logs/" + name + "/" + name + ".csv";
   std::ifstream file(path);
+  if (!file) {
+    const String flatPath = "logs/" + name + ".csv";
+    file.open(flatPath);
+    if (file)
+      path = flatPath;
+  }
+  if (!file && std::filesystem::exists("logs")) {
+    for (const auto &entry :
+         std::filesystem::recursive_directory_iterator("logs")) {
+      if (entry.is_regular_file() && entry.path().filename() == name + ".csv") {
+        path = entry.path().string();
+        file.open(path);
+        if (file)
+          break;
+      }
+    }
+  }
   if (!file)
     throw std::runtime_error("Cannot open " + path);
   Csv csv;
@@ -618,58 +635,77 @@ Csv runTransformerComparison() {
 }
 
 Csv runThreePhaseTransformerComparison() {
-  const String name = "DP_Ph3_Transformer_DirectCompare";
-  auto legacyBus0 = SimNode<Complex>::make("legacy_bus0", PhaseType::ABC);
-  auto legacyBus1 = SimNode<Complex>::make("legacy_bus1", PhaseType::ABC);
-  auto directBus0 = SimNode<Complex>::make("direct_bus0", PhaseType::ABC);
-  auto directBus1 = SimNode<Complex>::make("direct_bus1", PhaseType::ABC);
-  auto legacySource = DP::Ph3::NetworkInjection::make("legacy_source", true);
-  auto directSource = DP::Ph3::NetworkInjection::make("direct_source", true);
-  const MatrixComp sourceVoltage =
-      Math::singlePhaseVariableToThreePhase(Complex(230., 0.));
-  legacySource->setParameters(sourceVoltage, frequency);
-  directSource->setParameters(sourceVoltage, frequency);
-  auto legacyTransformer = DP::Ph3::Transformer::make(
-      "legacy_transformer", "legacy_transformer", Logger::Level::off, true);
-  auto directTransformer = DP::Ph3::Transformer::make(
-      "direct_transformer", false, Logger::Level::off, true);
-  for (const auto &transformer : {legacyTransformer, directTransformer}) {
+  auto runIsolated = [](Bool useSubcomponents, const String &variant) {
+    const String name = "DP_Ph3_Transformer_" + variant + "_Isolated";
+    auto bus0 = SimNode<Complex>::make("bus0", PhaseType::ABC);
+    auto bus1 = SimNode<Complex>::make("bus1", PhaseType::ABC);
+    auto source = DP::Ph3::NetworkInjection::make("source", true);
+    const MatrixComp sourceVoltage =
+        Math::singlePhaseVariableToThreePhase(Complex(230., 0.));
+    bus0->setInitialVoltage(sourceVoltage);
+    bus1->setInitialVoltage(0.98 * sourceVoltage);
+    source->setParameters(sourceVoltage, frequency);
+    auto transformer =
+        useSubcomponents
+            ? DP::Ph3::Transformer::make("transformer", "transformer",
+                                         Logger::Level::off, true)
+            : DP::Ph3::Transformer::make("transformer", false,
+                                         Logger::Level::off, true);
     transformer->setReferenceWinding(WindingReference::Primary);
     transformer->setParameters(230., 230., 10000., 1., 0.,
                                0.1 * Matrix::Identity(3, 3),
                                1e-3 * Matrix::Identity(3, 3));
+    auto load = DP::Ph3::Resistor::make("load");
+    load->setParameters(100. * Matrix::Identity(3, 3));
+    source->connect({bus0});
+    transformer->connect({bus0, bus1});
+    load->connect({bus1, SimNode<Complex>::GND});
+    SystemTopology system(frequency, {bus0, bus1}, {source, transformer, load});
+    auto logger = DataLogger::make(name);
+    logger->logAttribute("voltage", transformer->attribute("v_intf"));
+    logger->logAttribute("current", transformer->attribute("i_intf"));
+    Simulation simulation(name, Logger::Level::off);
+    simulation.setSystem(system);
+    simulation.setDomain(Domain::DP);
+    simulation.setTimeStep(timeStep);
+    simulation.setFinalTime(finalTime);
+    simulation.addLogger(logger);
+    simulation.run();
+    return readCsv(name);
+  };
+
+  const Csv legacy = runIsolated(true, "Legacy");
+  const Csv direct = runIsolated(false, "Direct");
+  if (legacy.rows.size() != direct.rows.size())
+    throw std::runtime_error("Isolated transformer trace lengths differ");
+
+  Csv combined;
+  combined.columns["time"] = 0;
+  size_t nextColumn = 1;
+  for (const String &variant : {String("legacy"), String("direct")})
+    for (const String &quantity : {String("voltage"), String("current")})
+      for (UInt phase = 0; phase < 3; ++phase)
+        for (const String &part : {String("im"), String("re")})
+          combined.columns[variant + "_" + quantity + "_" +
+                           std::to_string(phase) + "." + part] = nextColumn++;
+  combined.rows.resize(legacy.rows.size(), std::vector<Real>(nextColumn));
+  for (size_t row = 0; row < legacy.rows.size(); ++row) {
+    combined.rows[row][0] = at(legacy, row, "time");
+    for (const auto &[variant, trace] :
+         {std::pair<String, const Csv *>("legacy", &legacy),
+          std::pair<String, const Csv *>("direct", &direct)}) {
+      for (const String &quantity : {String("voltage"), String("current")})
+        for (UInt phase = 0; phase < 3; ++phase)
+          for (const String &part : {String("im"), String("re")}) {
+            const String column =
+                quantity + "_" + std::to_string(phase) + "." + part;
+            combined.rows[row][combined.columns.at(
+                variant + "_" + quantity + "_" + std::to_string(phase) + "." +
+                part)] = at(*trace, row, column);
+          }
+    }
   }
-  auto legacyLoad = DP::Ph3::Resistor::make("legacy_load");
-  auto directLoad = DP::Ph3::Resistor::make("direct_load");
-  legacyLoad->setParameters(100. * Matrix::Identity(3, 3));
-  directLoad->setParameters(100. * Matrix::Identity(3, 3));
-  legacySource->connect({legacyBus0});
-  directSource->connect({directBus0});
-  legacyTransformer->connect({legacyBus0, legacyBus1});
-  directTransformer->connect({directBus0, directBus1});
-  legacyLoad->connect({legacyBus1, SimNode<Complex>::GND});
-  directLoad->connect({directBus1, SimNode<Complex>::GND});
-  SystemTopology system(frequency,
-                        {legacyBus0, legacyBus1, directBus0, directBus1},
-                        {legacySource, directSource, legacyTransformer,
-                         directTransformer, legacyLoad, directLoad});
-  auto logger = DataLogger::make(name);
-  logger->logAttribute("legacy_voltage",
-                       legacyTransformer->attribute("v_intf"));
-  logger->logAttribute("direct_voltage",
-                       directTransformer->attribute("v_intf"));
-  logger->logAttribute("legacy_current",
-                       legacyTransformer->attribute("i_intf"));
-  logger->logAttribute("direct_current",
-                       directTransformer->attribute("i_intf"));
-  Simulation simulation(name, Logger::Level::off);
-  simulation.setSystem(system);
-  simulation.setDomain(Domain::DP);
-  simulation.setTimeStep(timeStep);
-  simulation.setFinalTime(finalTime);
-  simulation.addLogger(logger);
-  simulation.run();
-  return readCsv(name);
+  return combined;
 }
 
 Real runNetworkInjectionCase(Bool useSubcomponents, UInt run) {

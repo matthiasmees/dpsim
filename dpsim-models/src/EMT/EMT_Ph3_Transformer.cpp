@@ -639,21 +639,31 @@ void EMT::Ph3::Transformer::mnaAddCompactRightSideVectorStamp(
     CompositePowerComp<Real>::mnaAddCompactRightSideVectorStamp(rightVector);
     return;
   }
-  for (const auto &node : mVirtualNodes)
-    for (UInt phase = 0; phase < 3; ++phase) {
-      const UInt index = node->matrixNodeIndex(static_cast<PhaseType>(phase));
-      Math::addToVectorElement(
-          rightVector, index,
-          Math::realFromVectorElement(**mRightVector, index));
-    }
-  for (UInt terminal = 0; terminal < 2; ++terminal)
-    if (terminalNotGrounded(terminal))
-      for (UInt phase = 0; phase < 3; ++phase) {
-        const UInt index = matrixNodeIndex(terminal, phase);
-        Math::addToVectorElement(
-            rightVector, index,
-            Math::realFromVectorElement(**mRightVector, index));
-      }
+  const UInt midpoint = mVirtualNodes[2]->matrixNodeIndex(PhaseType::A);
+  const UInt ratioNode = mVirtualNodes[0]->matrixNodeIndex(PhaseType::A);
+  const UInt firstInductor =
+      mWithResistiveLosses ? mVirtualNodes[3]->matrixNodeIndex(PhaseType::A)
+                           : matrixNodeIndex(mReferenceTerminal);
+  const UInt secondInductor =
+      mWithResistiveLosses ? mVirtualNodes[4]->matrixNodeIndex(PhaseType::A)
+                           : midpoint;
+  for (UInt phase = 0; phase < 3; ++phase) {
+    const UInt midpointIndex = midpoint + phase;
+    const UInt ratioIndex = ratioNode + phase;
+    const UInt firstIndex = firstInductor + phase;
+    const UInt secondIndex = secondInductor + phase;
+    if (mWithResistiveLosses || terminalNotGrounded(mReferenceTerminal))
+      Math::addToVectorElement(rightVector, firstIndex, mDirectHistory0(phase));
+    Math::addToVectorElement(
+        rightVector, midpointIndex,
+        -mDirectHistory0(phase) +
+            (mWithResistiveLosses ? 0. : mDirectHistory1(phase)) +
+            mDirectHistoryMag(phase));
+    if (mWithResistiveLosses)
+      Math::addToVectorElement(rightVector, secondIndex,
+                               mDirectHistory1(phase));
+    Math::addToVectorElement(rightVector, ratioIndex, -mDirectHistory1(phase));
+  }
 }
 
 void EMT::Ph3::Transformer::mnaParentAddPostStepDependencies(

@@ -241,10 +241,10 @@ void DP::Ph3::SSN::Transformer::mnaCompApplySystemMatrixStamp(
 
 void DP::Ph3::SSN::Transformer::updateHistory() {
   const auto &state = **mState;
-  const MatrixComp raw0 =
+  const PhaseVector raw0 =
       mInductorAdmittance * state.block<3, 1>(kVoltage0, 0) +
       mPreviousCurrentFactor * state.block<3, 1>(kCurrent0, 0);
-  const MatrixComp raw1 =
+  const PhaseVector raw1 =
       mInductorAdmittance * state.block<3, 1>(kVoltage1, 0) +
       mPreviousCurrentFactor * state.block<3, 1>(kCurrent1, 0);
   mHistory0 = mSeriesSystemInverse * raw0;
@@ -256,12 +256,12 @@ void DP::Ph3::SSN::Transformer::updateHistory() {
 
 void DP::Ph3::SSN::Transformer::mnaCompApplyRightSideVectorStamp(
     Matrix &rightVector) {
-  const MatrixComp midpointHistory =
+  const PhaseVector midpointHistory =
       -mHistory0 + mHistory1 + mHistoryMagnetizing;
-  const MatrixComp midpointSource = mMidpointInverse * midpointHistory;
-  const MatrixComp source0 = mHistory0 + mSeriesAdmittance * midpointSource;
-  const MatrixComp source1 = std::conj(mRatioFromReference) *
-                             (mSeriesAdmittance * midpointSource - mHistory1);
+  const PhaseVector midpointSource = mMidpointInverse * midpointHistory;
+  const PhaseVector source0 = mHistory0 + mSeriesAdmittance * midpointSource;
+  const PhaseVector source1 = std::conj(mRatioFromReference) *
+                              (mSeriesAdmittance * midpointSource - mHistory1);
   const UInt referenceTerminal = mReferenceTerminal;
   const UInt otherTerminal = nonReferenceTerminal();
   if (terminalNotGrounded(referenceTerminal))

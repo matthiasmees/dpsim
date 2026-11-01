@@ -12,6 +12,45 @@ set(CIRCUIT_SOURCES
 	Grids/IEEE118_Ph3.cpp
 	# DP examples
 	Circuits/DP_VS_RL1.cpp
+	Circuits/DP_Ph1_PQLoadCS_GridBenchmark.cpp
+	Circuits/DP_Ph1_Shunt_GridBenchmark.cpp
+	Circuits/DP_Ph1_RXLoad_GridBenchmark.cpp
+	Circuits/DP_Ph1_RxLine_GridBenchmark.cpp
+	Circuits/DP_Ph1_Resistor_GridBenchmark.cpp
+	Circuits/DP_Ph1_Capacitor_GridBenchmark.cpp
+	Circuits/DP_Ph1_ITypeSSN_GridBenchmark.cpp
+	Circuits/DP_Ph3_ITypeSSN_GridBenchmark.cpp
+	Circuits/EMT_Ph3_ITypeSSN_GridBenchmark.cpp
+	Circuits/DP_Ph1_VoltageSourceNorton_Optimization.cpp
+	Circuits/DP_Ph1_varResSwitch_Optimization.cpp
+	Circuits/DP_Ph3_SeriesResistor_Optimization.cpp
+	Circuits/DP_Ph3_SeriesSwitch_Optimization.cpp
+	Circuits/EMT_Ph3_SeriesResistor_Optimization.cpp
+	Circuits/EMT_Ph3_SeriesSwitch_Optimization.cpp
+	Circuits/EMT_Ph1_Switch_Audit.cpp
+	Circuits/EMT_Ph1_SwitchDense_Audit.cpp
+	Circuits/EMT_DC_Resistor_GridBenchmark.cpp
+	Circuits/EMT_DC_PiLine_GridBenchmark.cpp
+	Circuits/EMT_DC_CurrentSource_GridBenchmark.cpp
+	Circuits/DP_Ph1_Transformer_GridBenchmark.cpp
+	Circuits/EMT_DC_Capacitor_GridBenchmark.cpp
+	Circuits/EMT_DC_Inductor_GridBenchmark.cpp
+	Circuits/EMT_Ph3_RxLine_GridBenchmark.cpp
+	Circuits/EMT_Ph3_RXLoad_SwitchedAudit.cpp
+	Circuits/DP_Ph1_RXLoad_MultiFrequency_GridBenchmark.cpp
+	Circuits/DP_Ph1_SVC_GridBenchmark.cpp
+	Circuits/DP_Ph1_RXLoadSwitch_GridBenchmark.cpp
+	Circuits/DP_Ph3_NetworkInjection_GridBenchmark.cpp
+	Circuits/EMT_Ph1_CurrentSource_GridBenchmark.cpp
+	Circuits/EMT_Ph1_PiLine_GridBenchmark.cpp
+	Circuits/EMT_Ph3_ControlledVoltageSource_Audit.cpp
+	Circuits/EMT_Ph3_CurrentSource_GridBenchmark.cpp
+	Circuits/DP_Ph1_ControlledVoltageSource_Audit.cpp
+	Circuits/DP_Ph3_VoltageSource_Audit.cpp
+	Circuits/DP_Ph1_ControlledCurrentSource_Optimization.cpp
+	Circuits/EMT_Ph1_VoltageSourceNorton_Optimization.cpp
+	Circuits/EMT_Ph3_VoltageSourceNorton_Optimization.cpp
+	Circuits/EMT_Ph3_FourTerminalSSN_Optimization.cpp
 	Circuits/DP_Circuits.cpp
 	Circuits/DP_Basics_DP_Sims.cpp
 	Circuits/DP_PiLine.cpp
@@ -45,6 +84,7 @@ set(CIRCUIT_SOURCES
 	Circuits/EMT_Ph3_R3C1L1CS1_RC_vs_SSN.cpp
 	Circuits/EMT_Ph3_RLC1VS1_RC_vs_SSN.cpp
 	Circuits/EMT_Ph1_General2TerminalSSN.cpp
+	Circuits/EMT_Ph1_LargeStateSSNHistory.cpp
 	Circuits/EMT_RC_split_decoupled_node_DC.cpp
 	Circuits/EMT_RC_split_decoupled_node.cpp
 	Circuits/EMT_RC_split_decoupled_node_Ph3.cpp
@@ -62,8 +102,11 @@ set(CIRCUIT_SOURCES
 	Circuits/EMT_Slack_PiLine_VSI_with_PF_Init.cpp
 	Circuits/EMT_Slack_PiLine_VSI_Ramp_with_PF_Init.cpp
 	Circuits/EMT_Ph3_PQLoad.cpp
+	Circuits/EMT_Ph3_PQLoad_GridBenchmark.cpp
 
 	# SP examples
+	Circuits/SP_Ph3_Inductor_GridBenchmark.cpp
+	Circuits/SP_Ph3_Resistor_Optimization.cpp
 	Circuits/SP_Circuits.cpp
 	Circuits/SP_PiLine.cpp
 	Circuits/SP_ITM_withPiLine_Ph1.cpp
@@ -166,7 +209,8 @@ Components/DP_Ph1_MixedVariableSSN_vs_FixedSSN.cpp
 Components/DP_Ph1_AvVoltSourceInverterStateSpace.cpp
 Components/DP_Ph3_AvVoltSourceInverterStateSpace.cpp
 Components/EMT_SSN_GFM_Test.cpp
-Components/EMT_Ph3_SSN_GFM_JacobianCheck.cpp
+	Components/EMT_Ph3_SSN_GFM_JacobianCheck.cpp
+	Components/DP_Ph3_SSN_SynchronGenerator4Order_JacobianCheck.cpp
 Components/EMT_Ph3_GFL_Comparison.cpp
 Components/EMT_Ph3_SSN_InductionMotor_LoadSwitch.cpp
 )

@@ -32,7 +32,7 @@ MatrixComp EMT::Ph3::TwoTerminalITypeSSNComp::buildInitialInputFromNodes(Real) {
 
 void EMT::Ph3::TwoTerminalITypeSSNComp::mnaCompApplySystemMatrixStamp(
     SparseMatrixRow &systemMatrix) {
-  Matrix G = mW.inverse();
+  const Matrix &G = mWInverse;
 
   MNAStampUtils::stampConductanceMatrix(
       G, systemMatrix, matrixNodeIndex(0), matrixNodeIndex(1),
@@ -41,8 +41,7 @@ void EMT::Ph3::TwoTerminalITypeSSNComp::mnaCompApplySystemMatrixStamp(
 
 void EMT::Ph3::TwoTerminalITypeSSNComp::mnaCompApplyRightSideVectorStamp(
     Matrix &rightVector) {
-  Matrix G = mW.inverse();
-
+  const Matrix &G = mWInverse;
   // i = G * v - G * mYHist
   Matrix iHist = -G * mYHist;
 
@@ -62,7 +61,7 @@ void EMT::Ph3::TwoTerminalITypeSSNComp::mnaCompApplyRightSideVectorStamp(
 }
 
 void EMT::Ph3::TwoTerminalITypeSSNComp::mnaCompUpdateCurrent(const Matrix &) {
-  Matrix G = mW.inverse();
+  const Matrix &G = mWInverse;
 
   // I-type Norton-equivalent current:
   //

@@ -31,6 +31,9 @@ protected:
 
   Matrix mW;
   Matrix mYHist;
+  /// Reused workspaces for the per-step linear history evaluation.
+  mutable Matrix mHistoryState;
+  mutable Matrix mHistoryInput;
 
   Matrix mA;
   Matrix mB;

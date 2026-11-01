@@ -64,6 +64,7 @@ private:
   ComponentList mComponents;
   SimNode::List mAllNodes;
   std::vector<String> mRetainedNames;
+  std::vector<UInt> mRetainedMatrixIndices;
   std::vector<LinearSSNModel> mModels;
   Attribute<Matrix>::Ptr mState;
   SparseMatrixRow mF, mBi, mBn, mGin;
@@ -115,7 +116,7 @@ private:
                         Attribute<Matrix>::Ptr leftVector);
   void assembleFullHistory(Matrix &fullHistory) const;
   void currentHistory(Matrix &history) const;
-  Matrix terminalVoltage(const Matrix &leftVector);
+  void terminalVoltage(const Matrix &leftVector, Matrix &voltage);
 };
 
 } // namespace CPS::EMT

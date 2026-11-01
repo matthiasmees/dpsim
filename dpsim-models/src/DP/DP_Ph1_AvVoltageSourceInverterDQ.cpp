@@ -455,10 +455,10 @@ void DP::Ph1::AvVoltageSourceInverterDQ::addControlStepDependencies(
 void DP::Ph1::AvVoltageSourceInverterDQ::controlStep(Real time,
                                                      Int timeStepCount) {
   // Transformation interface forward
-  Complex vcdq, ircdq;
   const Complex pllVoltage = mWithConnectionTransformer
                                  ? mVirtualNodes[3]->singleVoltage()
                                  : (**mIntfVoltage)(0, 0);
+  Complex vcdq, ircdq;
   vcdq = Math::rotatingFrame2to1(
       pllVoltage, mPLL->attributeTyped<Matrix>("output_prev")->get()(0, 0),
       mThetaN);

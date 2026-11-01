@@ -64,14 +64,17 @@ private:
   void resolveWindingRoles();
   Bool mUseSubcomponents = true;
   Attribute<Matrix>::Ptr mDirectState;
-  Matrix mSeriesInductanceHalf = Matrix::Zero(3, 3);
-  Matrix mSeriesResistanceHalf = Matrix::Zero(3, 3);
-  Matrix mDirectInductorAdmittance = Matrix::Zero(3, 3);
-  Matrix mDirectMagnetizingInductorAdmittance = Matrix::Zero(3, 3);
-  Matrix mDirectMagnetizingConductance = Matrix::Zero(3, 3);
-  Matrix mDirectHistory0 = Matrix::Zero(3, 1);
-  Matrix mDirectHistory1 = Matrix::Zero(3, 1);
-  Matrix mDirectHistoryMag = Matrix::Zero(3, 1);
+  MatrixFixedSize<3, 3> mSeriesInductanceHalf = MatrixFixedSize<3, 3>::Zero();
+  MatrixFixedSize<3, 3> mSeriesResistanceHalf = MatrixFixedSize<3, 3>::Zero();
+  MatrixFixedSize<3, 3> mDirectInductorAdmittance =
+      MatrixFixedSize<3, 3>::Zero();
+  MatrixFixedSize<3, 3> mDirectMagnetizingInductorAdmittance =
+      MatrixFixedSize<3, 3>::Zero();
+  MatrixFixedSize<3, 3> mDirectMagnetizingConductance =
+      MatrixFixedSize<3, 3>::Zero();
+  MatrixFixedSize<3, 1> mDirectHistory0 = MatrixFixedSize<3, 1>::Zero();
+  MatrixFixedSize<3, 1> mDirectHistory1 = MatrixFixedSize<3, 1>::Zero();
+  MatrixFixedSize<3, 1> mDirectHistoryMag = MatrixFixedSize<3, 1>::Zero();
 
 public:
   /// Sets the magnetizing branch from the no-load test quantities

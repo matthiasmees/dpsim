@@ -40,6 +40,7 @@ protected:
   void updateLogAttributes(const Matrix &u) const override;
 
 private:
+  friend class SynchronGenerator4OrderJacobianCheck;
   void evaluate(const Matrix &x, const Matrix &u, Matrix &f, Matrix &y) const;
   void linearize(const Matrix &x, const Matrix &u, Matrix &A, Matrix &B,
                  Matrix &C, Matrix &D) const;
@@ -52,6 +53,9 @@ private:
   Real mPm = 0., mQm = 0., mVpu = 1., mVangle = 0.;
   Real mEd0 = 0., mEq0 = 1., mId0 = 0., mIq0 = 0.;
   bool mConfigured = false, mInitialValuesConfigured = false;
+  Matrix mPackedVoltage = Matrix::Zero(6, 1);
+  Matrix mEvaluationDerivative = Matrix::Zero(4, 1);
+  Matrix mEvaluationOutput = Matrix::Zero(6, 1);
 };
 
 } // namespace CPS::DP::Ph3::SSN

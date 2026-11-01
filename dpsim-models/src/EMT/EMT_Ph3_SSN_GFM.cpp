@@ -238,10 +238,11 @@ void EMT::Ph3::SSN_GFM::setReactivePowerDroop(Real droopGain, Real cutoff) {
   mReactiveDroopCutoff = cutoff;
 }
 
-Matrix EMT::Ph3::SSN_GFM::getParkTransformMatrix(Real theta) const {
+MatrixFixedSize<2, 3>
+EMT::Ph3::SSN_GFM::getParkTransformMatrix(Real theta) const {
 
   theta = std::remainder(theta, 2.0 * PI);
-  Matrix transform(2, 3);
+  MatrixFixedSize<2, 3> transform;
 
   constexpr Real scale = 2.0 / 3.0;
 
@@ -256,10 +257,11 @@ Matrix EMT::Ph3::SSN_GFM::getParkTransformMatrix(Real theta) const {
   return transform;
 }
 
-Matrix EMT::Ph3::SSN_GFM::getInverseParkTransformMatrix(Real theta) const {
+MatrixFixedSize<3, 2>
+EMT::Ph3::SSN_GFM::getInverseParkTransformMatrix(Real theta) const {
 
   theta = std::remainder(theta, 2.0 * PI);
-  Matrix transform(3, 2);
+  MatrixFixedSize<3, 2> transform;
 
   transform << std::cos(theta), -std::sin(theta),
 
@@ -308,18 +310,19 @@ void EMT::Ph3::SSN_GFM::evaluateStateDerivative(const Matrix &x,
   const Real delayVoltageD = x(DelayVoltageD, 0);
   const Real delayVoltageQ = x(DelayVoltageQ, 0);
 
-  const Matrix vcAbc = x.block(VcA, 0, 3, 1);
-  const Matrix ifAbc = x.block(IfA, 0, 3, 1);
+  const MatrixFixedSize<3, 1> vcAbc = x.block(VcA, 0, 3, 1);
+  const MatrixFixedSize<3, 1> ifAbc = x.block(IfA, 0, 3, 1);
 
-  const Matrix parkTransform = getParkTransformMatrix(theta);
-  const Matrix inverseParkTransform = getInverseParkTransformMatrix(theta);
+  const MatrixFixedSize<2, 3> parkTransform = getParkTransformMatrix(theta);
+  const MatrixFixedSize<3, 2> inverseParkTransform =
+      getInverseParkTransformMatrix(theta);
 
   // Positive physical grid current means inverter injection into the grid.
-  const Matrix iGridAbc = (vcAbc - u) / mRc;
+  const MatrixFixedSize<3, 1> iGridAbc = (vcAbc - u) / mRc;
 
-  const Matrix vcDq = parkTransform * vcAbc;
-  const Matrix ifDq = parkTransform * ifAbc;
-  const Matrix iGridDq = parkTransform * iGridAbc;
+  const MatrixFixedSize<2, 1> vcDq = parkTransform * vcAbc;
+  const MatrixFixedSize<2, 1> ifDq = parkTransform * ifAbc;
+  const MatrixFixedSize<2, 1> iGridDq = parkTransform * iGridAbc;
 
   const Real vcD = vcDq(0, 0);
   const Real vcQ = vcDq(1, 0);
@@ -454,7 +457,7 @@ void EMT::Ph3::SSN_GFM::evaluateStateDerivative(const Matrix &x,
   stateDerivative(DelayVoltageQ, 0) =
       mDelayBandwidth * (converterVoltageReferenceQ - delayVoltageQ);
 
-  Matrix converterVoltageDq(2, 1);
+  MatrixFixedSize<2, 1> converterVoltageDq;
   converterVoltageDq << delayVoltageD, delayVoltageQ;
 
   // ----------------------------------------------------------------------
@@ -464,11 +467,13 @@ void EMT::Ph3::SSN_GFM::evaluateStateDerivative(const Matrix &x,
   // if_dot = (v_inv - vc - Rf * if) / Lf
   // ----------------------------------------------------------------------
 
-  const Matrix converterVoltageAbc = inverseParkTransform * converterVoltageDq;
+  const MatrixFixedSize<3, 1> converterVoltageAbc =
+      inverseParkTransform * converterVoltageDq;
 
-  const Matrix vcDerivative = (ifAbc + (u - vcAbc) / mRc) / mCf;
+  const MatrixFixedSize<3, 1> vcDerivative = (ifAbc + (u - vcAbc) / mRc) / mCf;
 
-  const Matrix ifDerivative = (converterVoltageAbc - vcAbc - mRf * ifAbc) / mLf;
+  const MatrixFixedSize<3, 1> ifDerivative =
+      (converterVoltageAbc - vcAbc - mRf * ifAbc) / mLf;
 
   stateDerivative.block(VcA, 0, 3, 1) = vcDerivative;
   stateDerivative.block(IfA, 0, 3, 1) = ifDerivative;
@@ -485,7 +490,7 @@ void EMT::Ph3::SSN_GFM::evaluateOutput(const Matrix &x, const Matrix &u,
     throw std::invalid_argument(
         "SSN_GFM input vector has an invalid dimension.");
 
-  const Matrix vcAbc = x.block(VcA, 0, 3, 1);
+  const MatrixFixedSize<3, 1> vcAbc = x.block(VcA, 0, 3, 1);
 
   // SSN current entering the component.
   //
@@ -518,18 +523,20 @@ void EMT::Ph3::SSN_GFM::calculateAnalyticalJacobians(const Matrix &x,
   const Real delayVoltageD = x(DelayVoltageD, 0);
   const Real delayVoltageQ = x(DelayVoltageQ, 0);
 
-  const Matrix vcAbc = x.block(VcA, 0, 3, 1);
-  const Matrix ifAbc = x.block(IfA, 0, 3, 1);
+  const MatrixFixedSize<3, 1> vcAbc = x.block(VcA, 0, 3, 1);
+  const MatrixFixedSize<3, 1> ifAbc = x.block(IfA, 0, 3, 1);
 
-  const Matrix parkTransform = getParkTransformMatrix(theta);
-  const Matrix inverseParkTransform = getInverseParkTransformMatrix(theta);
+  const MatrixFixedSize<2, 3> parkTransform = getParkTransformMatrix(theta);
+  const MatrixFixedSize<3, 2> inverseParkTransform =
+      getInverseParkTransformMatrix(theta);
 
-  const Matrix tD = parkTransform.row(0);
-  const Matrix tQ = parkTransform.row(1);
-  const Matrix sD = inverseParkTransform.col(0);
-  const Matrix sQ = inverseParkTransform.col(1);
+  using ThreePhaseRow = Eigen::Matrix<Real, 1, 3, Eigen::RowMajor>;
+  const ThreePhaseRow tD = parkTransform.row(0);
+  const ThreePhaseRow tQ = parkTransform.row(1);
+  const MatrixFixedSize<3, 1> sD = inverseParkTransform.col(0);
+  const MatrixFixedSize<3, 1> sQ = inverseParkTransform.col(1);
 
-  const Matrix iGridAbc = (vcAbc - u) / mRc;
+  const MatrixFixedSize<3, 1> iGridAbc = (vcAbc - u) / mRc;
 
   const Real vcD = (tD * vcAbc)(0, 0);
   const Real vcQ = (tQ * vcAbc)(0, 0);
@@ -538,12 +545,14 @@ void EMT::Ph3::SSN_GFM::calculateAnalyticalJacobians(const Matrix &x,
   const Real iGridD = (tD * iGridAbc)(0, 0);
   const Real iGridQ = (tQ * iGridAbc)(0, 0);
 
-  Matrix dVcDByX = Matrix::Zero(1, mStateSize);
-  Matrix dVcQByX = Matrix::Zero(1, mStateSize);
-  Matrix dIfDByX = Matrix::Zero(1, mStateSize);
-  Matrix dIfQByX = Matrix::Zero(1, mStateSize);
-  Matrix dIGridDByX = Matrix::Zero(1, mStateSize);
-  Matrix dIGridQByX = Matrix::Zero(1, mStateSize);
+  using StateRow = Eigen::Matrix<Real, 1, mStateSize, Eigen::RowMajor>;
+  using InputRow = Eigen::Matrix<Real, 1, mInputSize, Eigen::RowMajor>;
+  StateRow dVcDByX = StateRow::Zero();
+  StateRow dVcQByX = StateRow::Zero();
+  StateRow dIfDByX = StateRow::Zero();
+  StateRow dIfQByX = StateRow::Zero();
+  StateRow dIGridDByX = StateRow::Zero();
+  StateRow dIGridQByX = StateRow::Zero();
 
   dVcDByX(0, Theta) = vcQ;
   dVcDByX.block(0, VcA, 1, 3) = tD;
@@ -560,22 +569,22 @@ void EMT::Ph3::SSN_GFM::calculateAnalyticalJacobians(const Matrix &x,
   dIGridQByX(0, Theta) = -iGridD;
   dIGridQByX.block(0, VcA, 1, 3) = tQ / mRc;
 
-  const Matrix dIGridDByU = -tD / mRc;
-  const Matrix dIGridQByU = -tQ / mRc;
+  const InputRow dIGridDByU = -tD / mRc;
+  const InputRow dIGridQByU = -tQ / mRc;
 
-  Matrix dPByX = 1.5 * (iGridD * dVcDByX + vcD * dIGridDByX + iGridQ * dVcQByX +
-                        vcQ * dIGridQByX);
-  const Matrix dPByU = 1.5 * (vcD * dIGridDByU + vcQ * dIGridQByU);
+  StateRow dPByX = 1.5 * (iGridD * dVcDByX + vcD * dIGridDByX +
+                          iGridQ * dVcQByX + vcQ * dIGridQByX);
+  const InputRow dPByU = 1.5 * (vcD * dIGridDByU + vcQ * dIGridQByU);
 
-  Matrix dQByX = 1.5 * (iGridD * dVcQByX + vcQ * dIGridDByX - iGridQ * dVcDByX -
-                        vcD * dIGridQByX);
-  const Matrix dQByU = 1.5 * (vcQ * dIGridDByU - vcD * dIGridQByU);
+  StateRow dQByX = 1.5 * (iGridD * dVcQByX + vcQ * dIGridDByX -
+                          iGridQ * dVcDByX - vcD * dIGridQByX);
+  const InputRow dQByU = 1.5 * (vcQ * dIGridDByU - vcD * dIGridQByU);
 
   dPByX(0, Theta) = 0.0;
   dQByX(0, Theta) = 0.0;
 
   const Real pccVoltageMagnitude = std::sqrt(vcD * vcD + vcQ * vcQ);
-  Matrix dPccVoltageMagnitudeByX = Matrix::Zero(1, mStateSize);
+  StateRow dPccVoltageMagnitudeByX = StateRow::Zero();
 
   if (pccVoltageMagnitude > 1e-12) {
     dPccVoltageMagnitudeByX =
@@ -583,12 +592,12 @@ void EMT::Ph3::SSN_GFM::calculateAnalyticalJacobians(const Matrix &x,
     dPccVoltageMagnitudeByX(0, Theta) = 0.0;
   }
 
-  Matrix unitOmega = Matrix::Zero(1, mStateSize);
-  Matrix unitVoltageMagnitude = Matrix::Zero(1, mStateSize);
-  Matrix unitVoltageIntegratorD = Matrix::Zero(1, mStateSize);
-  Matrix unitVoltageIntegratorQ = Matrix::Zero(1, mStateSize);
-  Matrix unitCurrentIntegratorD = Matrix::Zero(1, mStateSize);
-  Matrix unitCurrentIntegratorQ = Matrix::Zero(1, mStateSize);
+  StateRow unitOmega = StateRow::Zero();
+  StateRow unitVoltageMagnitude = StateRow::Zero();
+  StateRow unitVoltageIntegratorD = StateRow::Zero();
+  StateRow unitVoltageIntegratorQ = StateRow::Zero();
+  StateRow unitCurrentIntegratorD = StateRow::Zero();
+  StateRow unitCurrentIntegratorQ = StateRow::Zero();
 
   unitOmega(0, Omega) = 1.0;
   unitVoltageMagnitude(0, VoltageMagnitude) = 1.0;
@@ -597,47 +606,47 @@ void EMT::Ph3::SSN_GFM::calculateAnalyticalJacobians(const Matrix &x,
   unitCurrentIntegratorD(0, CurrentIntegratorD) = 1.0;
   unitCurrentIntegratorQ(0, CurrentIntegratorQ) = 1.0;
 
-  const Matrix dVoltageErrorDByX = unitVoltageMagnitude -
-                                   mVirtualResistance * dIfDByX +
-                                   mVirtualReactance * dIfQByX - dVcDByX;
-  const Matrix dVoltageErrorQByX =
+  const StateRow dVoltageErrorDByX = unitVoltageMagnitude -
+                                     mVirtualResistance * dIfDByX +
+                                     mVirtualReactance * dIfQByX - dVcDByX;
+  const StateRow dVoltageErrorQByX =
       -mVirtualResistance * dIfQByX - mVirtualReactance * dIfDByX - dVcQByX;
 
-  const Matrix dCurrentReferenceDByX =
+  const StateRow dCurrentReferenceDByX =
       mGridCurrentFeedforward * dIGridDByX -
       mCf * (vcQ * unitOmega + omega * dVcQByX) +
       mKpVoltage * dVoltageErrorDByX + mKiVoltage * unitVoltageIntegratorD;
-  const Matrix dCurrentReferenceDByU = mGridCurrentFeedforward * dIGridDByU;
+  const InputRow dCurrentReferenceDByU = mGridCurrentFeedforward * dIGridDByU;
 
-  const Matrix dCurrentReferenceQByX =
+  const StateRow dCurrentReferenceQByX =
       mGridCurrentFeedforward * dIGridQByX +
       mCf * (vcD * unitOmega + omega * dVcDByX) +
       mKpVoltage * dVoltageErrorQByX + mKiVoltage * unitVoltageIntegratorQ;
-  const Matrix dCurrentReferenceQByU = mGridCurrentFeedforward * dIGridQByU;
+  const InputRow dCurrentReferenceQByU = mGridCurrentFeedforward * dIGridQByU;
 
-  const Matrix dCurrentErrorDByX = dCurrentReferenceDByX - dIfDByX;
-  const Matrix dCurrentErrorQByX = dCurrentReferenceQByX - dIfQByX;
-  const Matrix dCurrentErrorDByU = dCurrentReferenceDByU;
-  const Matrix dCurrentErrorQByU = dCurrentReferenceQByU;
+  const StateRow dCurrentErrorDByX = dCurrentReferenceDByX - dIfDByX;
+  const StateRow dCurrentErrorQByX = dCurrentReferenceQByX - dIfQByX;
+  const InputRow dCurrentErrorDByU = dCurrentReferenceDByU;
+  const InputRow dCurrentErrorQByU = dCurrentReferenceQByU;
 
-  const Matrix dCapacitorCurrentDByX = dIfDByX - dIGridDByX;
-  const Matrix dCapacitorCurrentQByX = dIfQByX - dIGridQByX;
-  const Matrix dCapacitorCurrentDByU = -dIGridDByU;
-  const Matrix dCapacitorCurrentQByU = -dIGridQByU;
+  const StateRow dCapacitorCurrentDByX = dIfDByX - dIGridDByX;
+  const StateRow dCapacitorCurrentQByX = dIfQByX - dIGridQByX;
+  const InputRow dCapacitorCurrentDByU = -dIGridDByU;
+  const InputRow dCapacitorCurrentQByU = -dIGridQByU;
 
-  const Matrix dConverterVoltageReferenceDByX =
+  const StateRow dConverterVoltageReferenceDByX =
       dVcDByX - mLf * (ifQ * unitOmega + omega * dIfQByX) +
       mKpCurrent * dCurrentErrorDByX + mKiCurrent * unitCurrentIntegratorD -
       mActiveDampingGain * dCapacitorCurrentDByX;
-  const Matrix dConverterVoltageReferenceDByU =
+  const InputRow dConverterVoltageReferenceDByU =
       mKpCurrent * dCurrentErrorDByU -
       mActiveDampingGain * dCapacitorCurrentDByU;
 
-  const Matrix dConverterVoltageReferenceQByX =
+  const StateRow dConverterVoltageReferenceQByX =
       dVcQByX + mLf * (ifD * unitOmega + omega * dIfDByX) +
       mKpCurrent * dCurrentErrorQByX + mKiCurrent * unitCurrentIntegratorQ -
       mActiveDampingGain * dCapacitorCurrentQByX;
-  const Matrix dConverterVoltageReferenceQByU =
+  const InputRow dConverterVoltageReferenceQByU =
       mKpCurrent * dCurrentErrorQByU -
       mActiveDampingGain * dCapacitorCurrentQByU;
 
@@ -691,7 +700,7 @@ void EMT::Ph3::SSN_GFM::calculateAnalyticalJacobians(const Matrix &x,
   A(DelayVoltageQ, DelayVoltageQ) -= mDelayBandwidth;
   B.row(DelayVoltageQ) = mDelayBandwidth * dConverterVoltageReferenceQByU;
 
-  const Matrix identity = Matrix::Identity(3, 3);
+  const MatrixFixedSize<3, 3> identity = MatrixFixedSize<3, 3>::Identity();
 
   A.block(VcA, VcA, 3, 3) = -identity / (mCf * mRc);
   A.block(VcA, IfA, 3, 3) = identity / mCf;
@@ -770,33 +779,31 @@ void EMT::Ph3::SSN_GFM::calculateNumericalJacobians(const Matrix &x,
 
 void EMT::Ph3::SSN_GFM::buildStateSpaceModel(const Matrix &x, const Matrix &u,
                                              Matrix &A, Matrix &B, Matrix &C,
-                                             Matrix &D, Matrix &E,
-                                             Matrix &F) const {
+                                             Matrix &D, Matrix &E, Matrix &F) {
 
   calculateAnalyticalJacobians(x, u, A, B, C, D);
 
-  Matrix stateDerivative = Matrix::Zero(mStateSize, 1);
-  Matrix output = Matrix::Zero(mOutputSize, 1);
-
-  evaluateStateDerivative(x, u, stateDerivative);
-  evaluateOutput(x, u, output);
+  evaluateStateDerivative(x, u, mStateDerivativeWorkspace);
+  evaluateOutput(x, u, mOutputWorkspace);
 
   // Local affine offsets:
   //
   // E = f(x0,u0) - A*x0 - B*u0
   // F = g(x0,u0) - C*x0 - D*u0
-  E = stateDerivative - A * x - B * u;
-  F = output - C * x - D * u;
+  E = mStateDerivativeWorkspace;
+  E.noalias() -= A * x;
+  E.noalias() -= B * u;
+  F = mOutputWorkspace;
+  F.noalias() -= C * x;
+  F.noalias() -= D * u;
 }
 
 Bool EMT::Ph3::SSN_GFM::updateComponentParameters() {
-  Matrix eVector;
-  Matrix fVector;
+  buildStateSpaceModel(**mX, **mIntfVoltage, mA, mB, mC, mD,
+                       mStateOffsetWorkspace, mOutputOffsetWorkspace);
 
-  buildStateSpaceModel(**mX, **mIntfVoltage, mA, mB, mC, mD, eVector, fVector);
-
-  setStateOffset(eVector);
-  setOutputOffset(fVector);
+  setStateOffset(mStateOffsetWorkspace);
+  setOutputOffset(mOutputOffsetWorkspace);
 
   // The dq/abc transformations and nonlinear GFM controls make the local
   // state-space model time varying. The SSN equivalent must therefore be
@@ -813,16 +820,16 @@ void EMT::Ph3::SSN_GFM::updateLogAttributes(const Matrix &u) const {
 
   const Real theta = x(Theta, 0);
 
-  const Matrix parkTransform = getParkTransformMatrix(theta);
+  const MatrixFixedSize<2, 3> parkTransform = getParkTransformMatrix(theta);
 
-  const Matrix vcAbc = x.block(VcA, 0, 3, 1);
-  const Matrix ifAbc = x.block(IfA, 0, 3, 1);
+  const MatrixFixedSize<3, 1> vcAbc = x.block(VcA, 0, 3, 1);
+  const MatrixFixedSize<3, 1> ifAbc = x.block(IfA, 0, 3, 1);
 
-  const Matrix iGridAbc = (vcAbc - u) / mRc;
+  const MatrixFixedSize<3, 1> iGridAbc = (vcAbc - u) / mRc;
 
-  const Matrix vcDq = parkTransform * vcAbc;
-  const Matrix ifDq = parkTransform * ifAbc;
-  const Matrix iGridDq = parkTransform * iGridAbc;
+  const MatrixFixedSize<2, 1> vcDq = parkTransform * vcAbc;
+  const MatrixFixedSize<2, 1> ifDq = parkTransform * ifAbc;
+  const MatrixFixedSize<2, 1> iGridDq = parkTransform * iGridAbc;
 
   const Real vcD = vcDq(0, 0);
   const Real vcQ = vcDq(1, 0);
@@ -936,7 +943,7 @@ void EMT::Ph3::SSN_GFM::initializeFromNodesAndTerminals(Real frequency) {
   const MatrixComp emfPhasor = vcPhasor + virtualImpedance * ifPhasor;
   const Real theta0 = std::arg(emfPhasor(0, 0));
 
-  const Matrix parkTransform = getParkTransformMatrix(theta0);
+  const MatrixFixedSize<2, 3> parkTransform = getParkTransformMatrix(theta0);
 
   const Matrix vcDq0 = parkTransform * vcAbc0;
   const Matrix ifDq0 = parkTransform * ifAbc0;

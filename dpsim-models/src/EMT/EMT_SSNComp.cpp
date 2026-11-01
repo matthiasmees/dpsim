@@ -69,7 +69,18 @@ void EMT::SSNComp::setParameters(const Matrix &A, const Matrix &B,
 }
 
 void EMT::SSNComp::calculateHistoryVector(Matrix &history) const {
-  history = mC * (mdA * stateValue() + mdB * inputValue());
+  // Algebraic SSN components have no dynamic state. Their discrete history is
+  // identically zero; feedthrough remains represented by mW = D and is
+  // handled by the component's MNA stamp/update path.
+  if (mA.rows() == 0) {
+    history.setZero();
+    return;
+  }
+
+  mHistoryState.noalias() = mdA * stateValue();
+  mHistoryInput.noalias() = mdB * inputValue();
+  mHistoryState += mHistoryInput;
+  history.noalias() = mC * mHistoryState;
 }
 
 MatrixComp
@@ -90,6 +101,9 @@ EMT::SSNComp::calculateSteadyStateOutputFromInput(const MatrixComp &x,
 }
 
 void EMT::SSNComp::updateState(const Matrix &uOld, const Matrix &uNew) {
+  if (mA.rows() == 0)
+    return;
+
   **mX = mdA * (**mX) + mdB * (uNew + uOld);
 }
 
@@ -139,6 +153,8 @@ void EMT::SSNComp::mnaCompInitialize(Real, Real timeStep,
       mRightVectorAffectedIndices.end());
 
   recomputeDiscreteModel();
+  mHistoryState.resize(mA.rows(), 1);
+  mHistoryInput.resize(mA.rows(), 1);
   calculateHistoryVector(mYHist);
 }
 

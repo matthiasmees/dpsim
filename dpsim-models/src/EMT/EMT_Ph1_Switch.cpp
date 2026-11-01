@@ -49,9 +49,8 @@ void EMT::Ph1::Switch::initializeFromNodesAndTerminals(Real frequency) {
 }
 
 void EMT::Ph1::Switch::mnaCompInitialize(Real omega, Real timeStep,
-                                         Attribute<Matrix>::Ptr leftVector) {
+                                         Attribute<Matrix>::Ptr) {
   updateMatrixNodeIndices();
-  mMnaTasks.push_back(std::make_shared<MnaPostStep>(*this, leftVector));
 }
 
 Bool EMT::Ph1::Switch::mnaIsClosed() { return **mIsClosed; }
