@@ -50,6 +50,10 @@ public:
                               const Edges &inEdges, const Edges &outEdges) = 0;
   /// Performs a single simulation step
   virtual void step(Real time, Int timeStepCount) = 0;
+  /// Optionally execute an entire simulation interval without per-step calls
+  /// from Simulation::run(). Schedulers must return false without changing
+  /// state when they cannot safely own the whole interval.
+  virtual Bool runSimulation(Real, Int, UInt) { return false; }
   /// Called on simulation stop to reliably clean up e.g. running helper threads
   virtual void stop() {}
 

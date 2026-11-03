@@ -18,6 +18,19 @@ public:
   using Component = MNASimPowerComp<Real>;
   using ComponentList = std::vector<Component::Ptr>;
 
+  /// Accelerator-neutral snapshot of the fully eliminated linear group.
+  /// The matrices are the already-discrete maps used directly by the EMT
+  /// timestep: h = historyMap*x and x+ = stateMap*x + inputMap*u.  It lets a
+  /// device executor upload the realization once and keep its state resident.
+  struct PrecomputedStateMaps {
+    SparseMatrixRow historyMap;
+    SparseMatrixRow stateMap;
+    SparseMatrixRow inputMap;
+    Matrix terminalAdmittance;
+    Matrix initialState;
+    std::vector<UInt> terminalMatrixIndices;
+  };
+
   static Ptr make(String name, ComponentList components, SimNode::List allNodes,
                   SimNode::List retainedNodes,
                   Logger::Level level = Logger::Level::off) {
@@ -40,6 +53,7 @@ public:
   void setFullyReducedInternalMaps(Bool enabled) {
     mUseFullyReducedInternalMaps = enabled;
   }
+  PrecomputedStateMaps precomputedStateMaps() const;
 
 protected:
   void mnaCompInitialize(Real omega, Real timeStep,

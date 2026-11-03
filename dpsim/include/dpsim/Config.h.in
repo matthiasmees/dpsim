@@ -28,6 +28,7 @@
 #cmakedefine WITH_CUDA
 #cmakedefine WITH_CUDA_SPARSE
 #cmakedefine WITH_MAGMA
+#cmakedefine WITH_METAL
 #cmakedefine WITH_KLU
 #cmakedefine WITH_MNASOLVERPLUGIN
 #cmakedefine WITH_JSON

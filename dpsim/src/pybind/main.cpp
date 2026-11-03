@@ -125,7 +125,13 @@ PYBIND11_MODULE(dpsimpy, m) {
       .value("KLU", DPsim::DirectLinearSolverImpl::KLU)
       .value("CUDADense", DPsim::DirectLinearSolverImpl::CUDADense)
       .value("CUDASparse", DPsim::DirectLinearSolverImpl::CUDASparse)
-      .value("CUDAMagma", DPsim::DirectLinearSolverImpl::CUDAMagma);
+      .value("CUDAMagma", DPsim::DirectLinearSolverImpl::CUDAMagma)
+      .value("MetalDense", DPsim::DirectLinearSolverImpl::MetalDense)
+#ifdef WITH_METAL
+      .value("MetalSparseBiCGSTAB",
+             DPsim::DirectLinearSolverImpl::MetalSparseBiCGSTAB)
+#endif
+      ;
 
   py::enum_<DPsim::SCALING_METHOD>(m, "scaling_method")
       .value("no_scaling", DPsim::SCALING_METHOD::NO_SCALING)

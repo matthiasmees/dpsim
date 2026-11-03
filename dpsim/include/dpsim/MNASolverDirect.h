@@ -38,6 +38,10 @@
 #include <dpsim/GpuMagmaAdapter.h>
 #endif
 #endif
+#ifdef WITH_METAL
+#include <dpsim/GPU/Apple/MetalDenseAdapter.h>
+#include <dpsim/GPU/Apple/MetalSparseBiCGSTABAdapter.h>
+#endif
 #include <dpsim-models/AttributeList.h>
 #include <dpsim-models/SimPowerComp.h>
 #include <dpsim-models/SimSignalComp.h>
@@ -55,6 +59,8 @@ enum DirectLinearSolverImpl {
   CUDADense,
   CUDASparse,
   CUDAMagma,
+  MetalDense,
+  MetalSparseBiCGSTAB,
   Plugin
 };
 

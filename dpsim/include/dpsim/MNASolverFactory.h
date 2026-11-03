@@ -51,6 +51,10 @@ public:
         DirectLinearSolverImpl::CUDAMagma,
 #endif // WITH_MAGMA
 #endif // WITH_CUDA
+#ifdef WITH_METAL
+        DirectLinearSolverImpl::MetalDense,
+        DirectLinearSolverImpl::MetalSparseBiCGSTAB,
+#endif // WITH_METAL
         DirectLinearSolverImpl::DenseLU,
 #ifdef WITH_SPARSE
         DirectLinearSolverImpl::SparseLU,
@@ -143,6 +147,26 @@ public:
       return gpuMagmaSolver;
     }
 #endif
+#endif
+#ifdef WITH_METAL
+    case DirectLinearSolverImpl::MetalDense: {
+      SPDLOG_LOGGER_INFO(log,
+                         "creating MetalDenseAdapter solver implementation");
+      std::shared_ptr<MnaSolverDirect<VarType>> metalSolver =
+          std::make_shared<MnaSolverDirect<VarType>>(name, domain, logLevel);
+      metalSolver->setDirectLinearSolverImplementation(
+          DirectLinearSolverImpl::MetalDense);
+      return metalSolver;
+    }
+    case DirectLinearSolverImpl::MetalSparseBiCGSTAB: {
+      SPDLOG_LOGGER_INFO(
+          log, "creating MetalSparseBiCGSTABAdapter solver implementation");
+      std::shared_ptr<MnaSolverDirect<VarType>> metalSolver =
+          std::make_shared<MnaSolverDirect<VarType>>(name, domain, logLevel);
+      metalSolver->setDirectLinearSolverImplementation(
+          DirectLinearSolverImpl::MetalSparseBiCGSTAB);
+      return metalSolver;
+    }
 #endif
 #ifdef WITH_MNASOLVERPLUGIN
     case DirectLinearSolverImpl::Plugin:

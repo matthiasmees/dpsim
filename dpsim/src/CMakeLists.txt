@@ -99,6 +99,16 @@ if(WITH_CUDA)
 	endif()
 endif()
 
+if(WITH_METAL)
+	list(APPEND DPSIM_SOURCES GPU/Apple/MetalDenseAdapter.mm GPU/Apple/MetalSparseLUAdapter.mm GPU/Apple/MetalSparseBiCGSTABAdapter.mm GPU/Apple/MetalLinearSSNGroupAdapter.mm GPU/Apple/MetalVBRGeneratorAdapter.mm GPU/Apple/MetalResidentScheduler.mm)
+	set_source_files_properties(GPU/Apple/MetalDenseAdapter.mm GPU/Apple/MetalSparseLUAdapter.mm GPU/Apple/MetalSparseBiCGSTABAdapter.mm GPU/Apple/MetalLinearSSNGroupAdapter.mm GPU/Apple/MetalVBRGeneratorAdapter.mm GPU/Apple/MetalResidentScheduler.mm PROPERTIES COMPILE_OPTIONS "-fno-objc-arc")
+	list(APPEND DPSIM_LIBRARIES
+		"-framework Foundation"
+		"-framework Metal"
+		"-framework MetalPerformanceShaders"
+	)
+endif()
+
 if(WITH_OPENMP)
 	list(APPEND DPSIM_SOURCES OpenMPLevelScheduler.cpp)
 	list(APPEND DPSIM_LIBRARIES OpenMP::OpenMP_CXX)

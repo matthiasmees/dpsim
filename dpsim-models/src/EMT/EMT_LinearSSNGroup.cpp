@@ -190,6 +190,23 @@ void EMT::LinearSSNGroup::initializeFromNodesAndTerminals(Real frequency) {
     component->initializeFromNodesAndTerminals(frequency);
 }
 
+EMT::LinearSSNGroup::PrecomputedStateMaps
+EMT::LinearSSNGroup::precomputedStateMaps() const {
+  if (!mReady || !mUseFullyReducedInternalMaps)
+    throw std::logic_error(
+        "LinearSSNGroup accelerator snapshot requires initialized, fully "
+        "reduced state maps.");
+
+  PrecomputedStateMaps snapshot;
+  snapshot.historyMap = mReducedHistoryMap;
+  snapshot.stateMap = mReducedStateMap;
+  snapshot.inputMap = mReducedInputMap;
+  snapshot.terminalAdmittance = mDd;
+  snapshot.initialState = mState->get();
+  snapshot.terminalMatrixIndices = mRetainedMatrixIndices;
+  return snapshot;
+}
+
 void EMT::LinearSSNGroup::buildRealization(Real omega, Real timeStep,
                                            Attribute<Matrix>::Ptr leftVector) {
   mModels.clear();

@@ -736,6 +736,12 @@ MnaSolverDirect<VarType>::createDirectSolverImplementation(
     return std::make_shared<GpuMagmaAdapter>(mSLog);
 #endif
 #endif
+#ifdef WITH_METAL
+  case DirectLinearSolverImpl::MetalDense:
+    return std::make_shared<MetalDenseAdapter>(mSLog);
+  case DirectLinearSolverImpl::MetalSparseBiCGSTAB:
+    return std::make_shared<MetalSparseBiCGSTABAdapter>(mSLog);
+#endif
   default:
     throw CPS::SystemError("unsupported linear solver implementation.");
   }

@@ -2,7 +2,9 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <iomanip>
+#include <limits>
 #include <stdexcept>
 #include <typeindex>
 
@@ -464,6 +466,28 @@ Real Simulation::next() {
 
 void Simulation::run() {
   start();
+
+  // Device-resident schedulers may own an entire deterministic run interval.
+  // Only allow that fast path when bypassing Simulation::step cannot skip
+  // events, user logging, interfaces, or requested per-step timing samples.
+  const Real stepSize = **mTimeStep;
+  const Real totalStepRatio = **mFinalTime / stepSize;
+  const Real roundedStepRatio = std::round(totalStepRatio);
+  const Bool hasIntegralStepCount =
+      std::isfinite(totalStepRatio) &&
+      std::abs(totalStepRatio - roundedStepRatio) <=
+          8.0 * std::numeric_limits<Real>::epsilon() *
+              std::max<Real>(1.0, std::abs(totalStepRatio));
+  if (!mLogStepTimes && mLoggers.empty() && mInterfaces.empty() &&
+      mEvents.empty() && hasIntegralStepCount && roundedStepRatio >= 0.0 &&
+      roundedStepRatio <= static_cast<Real>(std::numeric_limits<UInt>::max()) &&
+      mScheduler->runSimulation(mTime, mTimeStepCount,
+                                static_cast<UInt>(roundedStepRatio))) {
+    mTime += roundedStepRatio * stepSize;
+    mTimeStepCount += static_cast<Int>(roundedStepRatio);
+    stop();
+    return;
+  }
 
   while (mTime < **mFinalTime + DOUBLE_EPSILON) {
     step();
