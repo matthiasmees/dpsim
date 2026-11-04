@@ -187,6 +187,9 @@ void EMT::Ph3::ReducedOrderSynchronGeneratorVBR::mnaCompInitialize(
 void EMT::Ph3::ReducedOrderSynchronGeneratorVBR::mnaCompApplySystemMatrixStamp(
     SparseMatrixRow &systemMatrix) {
 
+  if (mDeviceMatrixManaged)
+    return;
+
   if (mModelAsNortonSource) {
     MNAStampUtils::stamp3x3ConductanceMatrixNodeToGround(
         mConductanceMatrix, systemMatrix, matrixNodeIndex(0), mSLog);
@@ -243,6 +246,8 @@ void EMT::Ph3::ReducedOrderSynchronGeneratorVBR::
 
 void EMT::Ph3::ReducedOrderSynchronGeneratorVBR::
     mnaAddCompactRightSideVectorStamp(Matrix &rightVector) {
+  if (mDeviceRhsManaged)
+    return;
   const Matrix &stamp = **mRightVector;
   const PhaseType phases[] = {PhaseType::A, PhaseType::B, PhaseType::C};
   for (UInt phase = 0; phase < 3; ++phase) {

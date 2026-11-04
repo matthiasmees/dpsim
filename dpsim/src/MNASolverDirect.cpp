@@ -10,10 +10,15 @@
 
 #include <dpsim-models/MathUtils.h>
 #include <dpsim/SequentialScheduler.h>
+#ifdef WITH_HIP
+#include <dpsim/HipSparseBiCGStabAdapter.h>
+#include <dpsim/HipSparseQrAdapter.h>
+#endif
 
 #include <algorithm>
 #include <fstream>
 #include <numeric>
+#include <unordered_set>
 
 using namespace DPsim;
 using namespace CPS;
@@ -150,43 +155,107 @@ void MnaSolverDirect<VarType>::solveWithSystemMatrixRecomputation(
     Real time, Int timeStepCount) {
   auto profileStart = std::chrono::steady_clock::now();
   // Reset source vector
-  mRightSideVector.setZero();
+#ifdef WITH_HIP
+  if (!mHipDeviceAssemblyReady)
+#endif
+    mRightSideVector.setZero();
   auto profileEnd = std::chrono::steady_clock::now();
   if (Solver::mLogSolveTimes)
     recordProfileMeasurement("rhs_zero", profileStart, profileEnd);
 
+#ifdef WITH_HIP
+  updateHipSG4PreStep(time);
+  updateHipLinearSSNHistories();
+#endif
+
   // Add together the right side vector (computed by the components'
   // pre-step tasks)
   profileStart = std::chrono::steady_clock::now();
-  addRightVectorStamps(mRightSideVector);
+#ifdef WITH_HIP
+  if (!mHipDeviceAssemblyReady)
+#endif
+    addRightVectorStamps(mRightSideVector);
   profileEnd = std::chrono::steady_clock::now();
   if (Solver::mLogSolveTimes)
     recordProfileMeasurement("rhs_assembly", profileStart, profileEnd);
 
   // Get switch and variable comp status and update system matrix and lu factorization accordingly
   profileStart = std::chrono::steady_clock::now();
+#ifdef WITH_HIP
+  if (mHipDeviceAssemblyReady)
+    mVariableComponentChanged = false;
+  else
+    mVariableComponentChanged = hasVariableComponentChanged();
+#else
   mVariableComponentChanged = hasVariableComponentChanged();
+#endif
   profileEnd = std::chrono::steady_clock::now();
   if (Solver::mLogSolveTimes)
     recordProfileMeasurement("variable_change_detection", profileStart,
                              profileEnd);
   if (mVariableComponentChanged)
     recomputeSystemMatrix(time);
+#ifdef WITH_HIP
+  if (mHipSparseDeviceSolver)
+    for (auto &adapter : mHipSG4Adapters)
+      adapter->scatterDeviceMatrix();
+  if (mHipDeviceAssemblyReady && mHipSparseDeviceSolver)
+    mHipSparseDeviceSolver->refactorizeDevice();
+#endif
 
   // Calculate new solution vector
   auto start = std::chrono::steady_clock::now();
-  mDirectLinearSolverVariableSystemMatrix->solveInto(mRightSideVector,
-                                                     *mLeftSideVectorValue);
+  bool synchronizeNodeOutputs = true;
+#ifdef WITH_HIP
+  synchronizeNodeOutputs =
+      !mHipDeviceAssemblyReady || mSLog->should_log(spdlog::level::info);
+  if (mHipSparseDeviceSolver) {
+    if (mHipDeviceAssemblyReady)
+      mHipSparseDeviceSolver->clearDeviceRightHandSide();
+    else
+      mHipSparseDeviceSolver->uploadRightHandSide(mRightSideVector);
+    for (auto &adapter : mHipSG4Adapters)
+      adapter->accumulateDeviceRhs();
+    for (auto &adapter : mHipLinearSSNAdapters)
+      adapter->accumulateDeviceRhs();
+    mHipSparseDeviceSolver->solveDevice(synchronizeNodeOutputs);
+    if (synchronizeNodeOutputs)
+      mHipSparseDeviceSolver->copyDeviceSolutionToHost(*mLeftSideVectorValue);
+  } else
+#endif
+  {
+    mDirectLinearSolverVariableSystemMatrix->solveInto(mRightSideVector,
+                                                       *mLeftSideVectorValue);
+  }
   auto end = std::chrono::steady_clock::now();
   std::chrono::duration<Real> diff = end - start;
   mSolveTimes.push_back(diff.count());
   if (Solver::mLogSolveTimes)
     recordProfileMeasurement("numeric_solve", start, end);
 
+#ifdef WITH_HIP
+  if (mHipSparseDeviceSolver) {
+    for (auto &adapter : mHipSG4Adapters)
+      adapter->postStepDevice(*mLeftSideVectorValue,
+                              mHipSparseDeviceSolver->deviceSolution(),
+                              synchronizeNodeOutputs);
+    if (mHipDeviceAssemblyReady)
+      for (auto &adapter : mHipLinearSSNAdapters)
+        adapter->updateStatesDevice(*mLeftSideVectorValue,
+                                    mHipSparseDeviceSolver->deviceSolution());
+    else
+      updateHipLinearSSNStates(*mLeftSideVectorValue);
+  } else {
+    updateHipSG4PostStep(*mLeftSideVectorValue);
+    updateHipLinearSSNStates(*mLeftSideVectorValue);
+  }
+#endif
+
   // TODO split into separate task? (dependent on x, updating all v attributes)
   profileStart = std::chrono::steady_clock::now();
-  for (UInt nodeIdx = 0; nodeIdx < mNumNetNodes; ++nodeIdx)
-    mNodes[nodeIdx]->mnaUpdateVoltage(*mLeftSideVectorValue);
+  if (synchronizeNodeOutputs)
+    for (UInt nodeIdx = 0; nodeIdx < mNumNetNodes; ++nodeIdx)
+      mNodes[nodeIdx]->mnaUpdateVoltage(*mLeftSideVectorValue);
   profileEnd = std::chrono::steady_clock::now();
   if (Solver::mLogSolveTimes)
     recordProfileMeasurement("node_voltage_propagation", profileStart,
@@ -294,14 +363,122 @@ template <> void MnaSolverDirect<Complex>::createEmptySystemMatrix() {
 template <typename VarType>
 std::shared_ptr<CPS::Task> MnaSolverDirect<VarType>::createSolveTask() {
   prepareCompactRightVectorStamps();
+#ifdef WITH_HIP
+  initializeHipLinearSSNAdapters();
+#endif
   return std::make_shared<MnaSolverDirect<VarType>::SolveTask>(*this);
 }
 
 template <typename VarType>
 std::shared_ptr<CPS::Task> MnaSolverDirect<VarType>::createSolveTaskRecomp() {
   prepareCompactRightVectorStamps();
+#ifdef WITH_HIP
+  initializeHipLinearSSNAdapters();
+#endif
   return std::make_shared<MnaSolverDirect<VarType>::SolveTaskRecomp>(*this);
 }
+
+#ifdef WITH_HIP
+template <typename VarType>
+void MnaSolverDirect<VarType>::initializeHipLinearSSNAdapters() {
+  if (mHipAdaptersInitialized)
+    return;
+  if (mImplementationInUse != DirectLinearSolverImpl::HIPDense &&
+      mImplementationInUse != DirectLinearSolverImpl::HIPSparseBiCGStab &&
+      mImplementationInUse != DirectLinearSolverImpl::HIPSparseLURefactor &&
+      mImplementationInUse != DirectLinearSolverImpl::HIPSparseQR)
+    return;
+  mHipAdaptersInitialized = true;
+  std::vector<std::shared_ptr<CPS::EMT::Ph3::SynchronGenerator4OrderVBR>>
+      supportedGenerators;
+  std::unordered_set<const CPS::MNAInterface *> seen;
+  auto initializeComponent = [this, &supportedGenerators,
+                              &seen](const auto &component) {
+    if (!component || !seen.insert(component.get()).second)
+      return;
+    if (auto fused =
+            std::dynamic_pointer_cast<CPS::EMT::LinearSSNFused>(component))
+      mHipLinearSSNAdapters.emplace_back(
+          std::make_unique<HipLinearSSNFusedAdapter>(*fused));
+    if (auto generator = std::dynamic_pointer_cast<
+            CPS::EMT::Ph3::SynchronGenerator4OrderVBR>(component))
+      if (generator->supportsHipBatch())
+        supportedGenerators.push_back(std::move(generator));
+  };
+  for (const auto &component : mMNAComponents)
+    initializeComponent(component);
+  for (const auto &component : mMNAIntfVariableComps)
+    initializeComponent(component);
+  if (!supportedGenerators.empty())
+    mHipSG4Adapters.emplace_back(
+        std::make_unique<HipSG4BatchAdapter>(std::move(supportedGenerators)));
+  if ((mImplementationInUse == DirectLinearSolverImpl::HIPSparseBiCGStab ||
+       mImplementationInUse == DirectLinearSolverImpl::HIPSparseLURefactor) &&
+      !mHipSG4Adapters.empty()) {
+    bool allRightStampsManaged = !mRightVectorStampOperations.empty();
+    for (const auto &operation : mRightVectorStampOperations) {
+      if (!operation.compact) {
+        allRightStampsManaged = false;
+        break;
+      }
+      auto *generator =
+          dynamic_cast<CPS::EMT::Ph3::SynchronGenerator4OrderVBR *>(
+              operation.compact);
+      const bool isSg4 = generator && generator->supportsHipBatch();
+      const bool isFused =
+          dynamic_cast<CPS::EMT::LinearSSNFused *>(operation.compact);
+      if (!isSg4 && !isFused) {
+        allRightStampsManaged = false;
+        break;
+      }
+    }
+    if (!allRightStampsManaged)
+      throw std::runtime_error(
+          "HIP sparse solvers require fully supported device-side RHS "
+          "assembly; select the IEEE118 allssn aggregate configuration.");
+    mHipSparseDeviceSolver = dynamic_cast<HipSparseDeviceSolver *>(
+        mDirectLinearSolverVariableSystemMatrix.get());
+    if (!mHipSparseDeviceSolver)
+      throw std::runtime_error(
+          "HIP sparse implementation did not create its device solver");
+    for (auto &adapter : mHipSG4Adapters) {
+      adapter->configureDeviceAssembly(
+          mVariableSystemMatrix, mBaseSystemMatrix,
+          mHipSparseDeviceSolver->deviceValues(),
+          mHipSparseDeviceSolver->deviceRightHandSide());
+    }
+    for (auto &adapter : mHipLinearSSNAdapters)
+      adapter->configureDeviceRhs(
+          mHipSparseDeviceSolver->deviceRightHandSide());
+    mHipDeviceAssemblyReady = true;
+  }
+}
+
+template <typename VarType>
+void MnaSolverDirect<VarType>::updateHipLinearSSNHistories() {
+  for (auto &adapter : mHipLinearSSNAdapters)
+    adapter->updateHistories();
+}
+
+template <typename VarType>
+void MnaSolverDirect<VarType>::updateHipLinearSSNStates(
+    const Matrix &leftVector) {
+  for (auto &adapter : mHipLinearSSNAdapters)
+    adapter->updateStates(leftVector);
+}
+
+template <typename VarType>
+void MnaSolverDirect<VarType>::updateHipSG4PreStep(Real time) {
+  for (auto &adapter : mHipSG4Adapters)
+    adapter->preStep(time);
+}
+
+template <typename VarType>
+void MnaSolverDirect<VarType>::updateHipSG4PostStep(const Matrix &leftVector) {
+  for (auto &adapter : mHipSG4Adapters)
+    adapter->postStep(leftVector);
+}
+#endif
 
 template <typename VarType>
 void MnaSolverDirect<VarType>::prepareCompactRightVectorStamps() {
@@ -389,6 +566,11 @@ void MnaSolverDirect<VarType>::solve(Real time, Int timeStepCount) {
   if (profile)
     recordProfileMeasurement("rhs_zero", profileStart,
                              std::chrono::steady_clock::now());
+
+#ifdef WITH_HIP
+  updateHipSG4PreStep(time);
+  updateHipLinearSSNHistories();
+#endif
 
   // Add together the right side vector (computed by the components' pre-step tasks)
   addRightVectorStamps(mRightSideVector);
@@ -493,6 +675,11 @@ void MnaSolverDirect<VarType>::solve(Real time, Int timeStepCount) {
       }
     } while (numCompsRequireIter > 0);
   }
+
+#ifdef WITH_HIP
+  updateHipSG4PostStep(*mLeftSideVectorValue);
+  updateHipLinearSSNStates(*mLeftSideVectorValue);
+#endif
 
   mSystemMatrixChanged = (mCurrentSwitchStatus != previousSwitchStatus);
 
@@ -741,6 +928,21 @@ MnaSolverDirect<VarType>::createDirectSolverImplementation(
     return std::make_shared<MetalDenseAdapter>(mSLog);
   case DirectLinearSolverImpl::MetalSparseBiCGSTAB:
     return std::make_shared<MetalSparseBiCGSTABAdapter>(mSLog);
+#endif
+#ifdef WITH_HIP
+  case DirectLinearSolverImpl::HIPSparseQR:
+    return std::make_shared<HipSparseQrAdapter>(mSLog);
+  case DirectLinearSolverImpl::HIPDense:
+    return std::make_shared<HipDenseAdapter>(mSLog);
+  case DirectLinearSolverImpl::HIPSparseBiCGStab:
+    return std::make_shared<HipSparseBiCGStabAdapter>(mSLog);
+  case DirectLinearSolverImpl::HIPSparseLURefactor:
+#ifdef WITH_KLU
+    return std::make_shared<HipSparseLURefactorAdapter>(mSLog);
+#else
+    throw CPS::SystemError(
+        "HIP sparse LU refactorization requires the KLU seed solver");
+#endif
 #endif
   default:
     throw CPS::SystemError("unsupported linear solver implementation.");

@@ -60,6 +60,11 @@ public:
   const Attribute<Real>::Ptr mEf;
   /// induced emf by the field current under no-load conditions at time k (p.u.)
   Real mEf_prev;
+  /// Set by an external HIP batch executor; CPU callbacks remain active by
+  /// default and on every non-HIP solver path.
+  Bool mDeviceManaged = false;
+  Bool mDeviceMatrixManaged = false;
+  Bool mDeviceRhsManaged = false;
 
   /// Destructor - does nothing.
   virtual ~ReducedOrderSynchronGenerator() {}

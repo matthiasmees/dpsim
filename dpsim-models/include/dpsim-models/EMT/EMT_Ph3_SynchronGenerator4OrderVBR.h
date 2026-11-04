@@ -12,9 +12,30 @@
 
 #include <dpsim-models/EMT/EMT_Ph3_ReducedOrderSynchronGeneratorVBR.h>
 
+#include <array>
+
 namespace CPS {
 namespace EMT {
 namespace Ph3 {
+struct HipSG4State {
+  double theta = 0.0, delta = 0.0, omega = 1.0;
+  double electricalTorque = 0.0, mechanicalTorque = 0.0;
+  double previousMechanicalTorque = 0.0;
+  double fieldVoltage = 0.0, previousFieldVoltage = 0.0;
+  double timestep = 0.0, inertia = 0.0, damping = 0.0;
+  double baseOmegaMech = 0.0, baseVoltage = 0.0, baseCurrent = 0.0;
+  double lqTransient = 0.0, ldTransient = 0.0;
+  double adTransient = 0.0, bdTransient = 0.0;
+  double aqTransient = 0.0, bqTransient = 0.0, dqTransient = 0.0;
+  double idq0[3]{}, vdq0[3]{}, edq0Transient[3]{};
+  double conductanceDq0[9]{}, conductanceAbc[9]{};
+  double historyDq0[3]{}, emfAbc[3]{}, currentSourceAbc[3]{};
+  double terminalVoltageAbc[3]{}, terminalCurrentAbc[3]{};
+  double voltageDq0[3]{}, currentDq0[3]{};
+  int busRows[3]{};
+  int grounded = 0;
+};
+
 /// @brief Voltage-Behind-Reactance (VBR) implementation
 /// of 4th order synchronous generator model
 class SynchronGenerator4OrderVBR
@@ -81,6 +102,11 @@ public:
   void stepInPerUnit() final;
 
   MetalDeviceData metalDeviceData();
+  /// Export/import the SG4 VBR subset supported by the HIP batch kernel.
+  bool supportsHipBatch() noexcept;
+  HipSG4State exportHipState();
+  void applyHipPreState(const HipSG4State &state, Real time);
+  void applyHipPostState(const HipSG4State &state);
 };
 } // namespace Ph3
 } // namespace EMT

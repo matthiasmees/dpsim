@@ -39,6 +39,14 @@ void EMT::LinearSSNFused::addVectorValue(Matrix &vector, UInt index,
   Math::addToVectorElement(vector, index, value);
 }
 
+void EMT::LinearSSNFused::setDeviceHistories(
+    const std::vector<Matrix> &histories) {
+  if (histories.size() != mHistories.size())
+    throw std::invalid_argument(
+        "LinearSSNFused device history count does not match its models.");
+  mHistories = histories;
+}
+
 void EMT::LinearSSNFused::mnaCompInitialize(Real omega, Real timeStep,
                                             Attribute<Matrix>::Ptr leftVector) {
   mModels.clear();
@@ -203,10 +211,15 @@ void EMT::LinearSSNFused::mnaCompApplyRightSideVectorStamp(
 
 void EMT::LinearSSNFused::mnaAddCompactRightSideVectorStamp(
     Matrix &rightVector) {
+  if (mDeviceRhsManaged)
+    return;
   addHistoryStamp(rightVector);
 }
 
-void EMT::LinearSSNFused::mnaCompPreStep(Real, Int) { updateHistories(); }
+void EMT::LinearSSNFused::mnaCompPreStep(Real, Int) {
+  if (!mDeviceManaged)
+    updateHistories();
+}
 
 void EMT::LinearSSNFused::updateStates(const Matrix &leftVector) {
   for (UInt modelIndex = 0; modelIndex < mModels.size(); ++modelIndex) {
@@ -300,8 +313,10 @@ void EMT::LinearSSNFused::updateStates(const Matrix &leftVector) {
 
 void EMT::LinearSSNFused::mnaCompPostStep(Real, Int timeStepCount,
                                           Attribute<Matrix>::Ptr &leftVector) {
-  updateStates(**leftVector);
-  mFusedState->get()(0, 0) = static_cast<Real>(timeStepCount);
+  if (!mDeviceManaged)
+    updateStates(**leftVector);
+  if (!mDeviceManaged)
+    mFusedState->get()(0, 0) = static_cast<Real>(timeStepCount);
 }
 
 void EMT::LinearSSNFused::mnaCompUpdateVoltage(const Matrix &) {}

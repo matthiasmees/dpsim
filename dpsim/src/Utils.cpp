@@ -227,6 +227,14 @@ void CommandLineArgs::parseArguments(int argc, char *argv[]) {
         directImpl = DirectLinearSolverImpl::MetalDense;
       } else if (arg == "MetalSparseBiCGSTAB") {
         directImpl = DirectLinearSolverImpl::MetalSparseBiCGSTAB;
+      } else if (arg == "HIPDense") {
+        directImpl = DirectLinearSolverImpl::HIPDense;
+      } else if (arg == "HIPSparseBiCGStab") {
+        directImpl = DirectLinearSolverImpl::HIPSparseBiCGStab;
+      } else if (arg == "HIPSparseLURefactor") {
+        directImpl = DirectLinearSolverImpl::HIPSparseLURefactor;
+      } else if (arg == "HIPSparseQR") {
+        directImpl = DirectLinearSolverImpl::HIPSparseQR;
       } else if (arg == "Plugin") {
         directImpl = DirectLinearSolverImpl::Plugin;
       } else {

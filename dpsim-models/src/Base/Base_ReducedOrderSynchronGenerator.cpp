@@ -502,6 +502,8 @@ void Base::ReducedOrderSynchronGenerator<VarType>::mnaCompInitialize(
 template <>
 void Base::ReducedOrderSynchronGenerator<Complex>::mnaCompPreStep(
     Real time, Int timeStepCount) {
+  if (mDeviceManaged)
+    return;
   mSimTime = time;
 
   // update controller variables
@@ -541,6 +543,8 @@ void Base::ReducedOrderSynchronGenerator<Complex>::mnaCompPreStep(
 template <>
 void Base::ReducedOrderSynchronGenerator<Real>::mnaCompPreStep(
     Real time, Int timeStepCount) {
+  if (mDeviceManaged)
+    return;
   mSimTime = time;
 
   // update controller variables
@@ -589,6 +593,8 @@ void Base::ReducedOrderSynchronGenerator<VarType>::
 template <typename VarType>
 void Base::ReducedOrderSynchronGenerator<VarType>::mnaCompPreStep(
     Real time, Int timeStepCount) {
+  if (mDeviceManaged)
+    return;
   mSimTime = time;
   stepInPerUnit();
   (**mRightVector).setZero();
@@ -608,6 +614,8 @@ void Base::ReducedOrderSynchronGenerator<VarType>::
 template <typename VarType>
 void Base::ReducedOrderSynchronGenerator<VarType>::mnaCompPostStep(
     Real time, Int timeStepCount, Attribute<Matrix>::Ptr &leftVector) {
+  if (mDeviceManaged)
+    return;
   mnaCompPostStep(**leftVector);
 }
 

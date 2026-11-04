@@ -216,7 +216,8 @@ void KLUAdapter::solveInto(Matrix &rightSideVector, Matrix &solution) {
 }
 
 void KLUAdapter::syncKluValues(const SparseMatrix &systemMatrix) {
-  if (systemMatrix.nonZeros() != mRowToKluValueIndex.size())
+  if (static_cast<std::size_t>(systemMatrix.nonZeros()) !=
+      mRowToKluValueIndex.size())
     throw std::runtime_error(
         "KLU matrix pattern changed without preprocessing");
   const Real *source = systemMatrix.valuePtr();

@@ -26,6 +26,16 @@
 #ifdef WITH_SPARSE
 #include <dpsim/SparseLUAdapter.h>
 #endif
+#ifdef WITH_HIP
+#include <dpsim/HipDenseAdapter.h>
+#include <dpsim/HipLinearSSNFusedAdapter.h>
+#include <dpsim/HipSG4BatchAdapter.h>
+#include <dpsim/HipSparseBiCGStabAdapter.h>
+#include <dpsim/HipSparseDeviceSolver.h>
+#ifdef WITH_KLU
+#include <dpsim/HipSparseLURefactorAdapter.h>
+#endif
+#endif
 #ifdef WITH_KLU
 #include <dpsim/KLUAdapter.h>
 #endif
@@ -61,7 +71,11 @@ enum DirectLinearSolverImpl {
   CUDAMagma,
   MetalDense,
   MetalSparseBiCGSTAB,
-  Plugin
+  Plugin,
+  HIPDense,
+  HIPSparseBiCGStab,
+  HIPSparseLURefactor,
+  HIPSparseQR
 };
 
 /// Solver class using Modified Nodal Analysis (MNA).
@@ -138,6 +152,18 @@ protected:
     std::size_t count = 0;
   };
   std::map<String, ProfileMeasurement> mProfileMeasurements;
+#ifdef WITH_HIP
+  std::vector<std::unique_ptr<HipLinearSSNFusedAdapter>> mHipLinearSSNAdapters;
+  std::vector<std::unique_ptr<HipSG4BatchAdapter>> mHipSG4Adapters;
+  HipSparseDeviceSolver *mHipSparseDeviceSolver = nullptr;
+  bool mHipDeviceAssemblyReady = false;
+  bool mHipAdaptersInitialized = false;
+  void initializeHipLinearSSNAdapters();
+  void updateHipLinearSSNHistories();
+  void updateHipLinearSSNStates(const Matrix &leftVector);
+  void updateHipSG4PreStep(Real time);
+  void updateHipSG4PostStep(const Matrix &leftVector);
+#endif
   void recordProfileMeasurement(const String &phase,
                                 std::chrono::steady_clock::time_point start,
                                 std::chrono::steady_clock::time_point end);

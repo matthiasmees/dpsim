@@ -126,10 +126,18 @@ PYBIND11_MODULE(dpsimpy, m) {
       .value("CUDADense", DPsim::DirectLinearSolverImpl::CUDADense)
       .value("CUDASparse", DPsim::DirectLinearSolverImpl::CUDASparse)
       .value("CUDAMagma", DPsim::DirectLinearSolverImpl::CUDAMagma)
-      .value("MetalDense", DPsim::DirectLinearSolverImpl::MetalDense)
 #ifdef WITH_METAL
+      .value("MetalDense", DPsim::DirectLinearSolverImpl::MetalDense)
       .value("MetalSparseBiCGSTAB",
              DPsim::DirectLinearSolverImpl::MetalSparseBiCGSTAB)
+#endif
+#ifdef WITH_HIP
+      .value("HIPDense", DPsim::DirectLinearSolverImpl::HIPDense)
+      .value("HIPSparseBiCGStab",
+             DPsim::DirectLinearSolverImpl::HIPSparseBiCGStab)
+      .value("HIPSparseLURefactor",
+             DPsim::DirectLinearSolverImpl::HIPSparseLURefactor)
+      .value("HIPSparseQR", DPsim::DirectLinearSolverImpl::HIPSparseQR)
 #endif
       ;
 

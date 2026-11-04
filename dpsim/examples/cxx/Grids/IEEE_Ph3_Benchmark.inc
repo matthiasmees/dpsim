@@ -20,9 +20,9 @@ namespace IEEEGridData = IEEE118Data;
 #include <dpsim-models/EMT/EMT_Ph3_SSN_SynchronGenerator4Order.h>
 #include <dpsim-models/EMT/EMT_Ph3_SSN_Transformer.h>
 #include <dpsim-models/EMT/EMT_Ph3_SynchronGenerator4OrderVBR.h>
+#include <dpsim/GPU/Apple/MetalResidentScheduler.h>
 #include <dpsim/SequentialScheduler.h>
 #include <dpsim/ThreadLevelScheduler.h>
-#include <dpsim/GPU/Apple/MetalResidentScheduler.h>
 
 #include <algorithm>
 #include <cmath>
@@ -415,17 +415,18 @@ void runDP(const SystemTopology &systemPF, bool useSSNPiLine,
 }
 
 void runEMT(const SystemTopology &systemPF, bool useSSNPiLine,
-            bool usePiLineNoSub, bool useRXLoadNoSub,
-            bool useTransformerNoSub, bool useSSNImpedanceLoad,
-            bool useSSNTransformer, bool useSSNGenerator, bool profile,
-            bool shortRun, bool noLogger, bool useKluPartial,
-            bool use50usStep,
-            bool useLinearAggregate, bool usePaperSSNGroup, bool use10sRun,
-            bool useSparseLU, bool useExactDenseLU,
-            bool usePrecomputedGroupMaps, bool useFullyReducedGroupMaps,
-            bool useMetalSolver, bool useMetalSparseBiCGSTAB,
-            bool useMetalResident, bool useMetalHostStepLoop,
-            bool useMetalMpsLu, bool useMetalGpuIcb, Int cpuThreads) {
+            bool usePiLineNoSub, bool useRXLoadNoSub, bool useTransformerNoSub,
+            bool useSSNImpedanceLoad, bool useSSNTransformer,
+            bool useSSNGenerator, bool profile, bool shortRun, bool noLogger,
+            bool useKluPartial, bool use50usStep, bool useLinearAggregate,
+            bool usePaperSSNGroup, bool use10sRun, bool useSparseLU,
+            bool useExactDenseLU, bool usePrecomputedGroupMaps,
+            bool useFullyReducedGroupMaps, bool useHipDense,
+            bool useHipSparseBiCGStab, bool useHipSparseLURefactor,
+            bool useHipSparseQr, bool useMetalSolver,
+            bool useMetalSparseBiCGSTAB, bool useMetalResident,
+            bool useMetalHostStepLoop, bool useMetalMpsLu, bool useMetalGpuIcb,
+            Int cpuThreads) {
   String name = simulationName("EMT", useSSNPiLine, useSSNImpedanceLoad,
                                useSSNTransformer, useSSNGenerator);
   if (usePiLineNoSub || useRXLoadNoSub || useTransformerNoSub) {
@@ -572,8 +573,7 @@ void runEMT(const SystemTopology &systemPF, bool useSSNPiLine,
     aggregateComponents.reserve(linearComponents.size());
     for (const auto &component : linearComponents)
       aggregateComponents.push_back(
-          std::dynamic_pointer_cast<EMT::LinearSSNFused::Component>(
-              component));
+          std::dynamic_pointer_cast<EMT::LinearSSNFused::Component>(component));
     components.push_back(EMT::LinearSSNFused::make(
         "LinearNetwork", std::move(aggregateComponents), nodes));
   } else if (usePaperSSNGroup) {
@@ -586,9 +586,9 @@ void runEMT(const SystemTopology &systemPF, bool useSSNPiLine,
     retainedNodes.reserve(retainedByBus.size());
     for (const auto &gen : generators)
       retainedNodes.push_back(retainedByBus.at(gen.bus));
-    paperGroup = EMT::LinearSSNGroup::make(
-        "LinearNetworkGroup", std::move(groupComponents), nodes,
-        std::move(retainedNodes));
+    paperGroup = EMT::LinearSSNGroup::make("LinearNetworkGroup",
+                                           std::move(groupComponents), nodes,
+                                           std::move(retainedNodes));
     paperGroup->setPrecomputedInternalMaps(usePrecomputedGroupMaps);
     paperGroup->setFullyReducedInternalMaps(useFullyReducedGroupMaps);
     components.push_back(paperGroup);
@@ -604,6 +604,8 @@ void runEMT(const SystemTopology &systemPF, bool useSSNPiLine,
   }
   Simulation sim(name, noLogger ? Logger::Level::off : Logger::Level::info);
   sim.setSystem(system);
+  if (cpuThreads > 1)
+    sim.setScheduler(std::make_shared<ThreadLevelScheduler>(cpuThreads));
   sim.setDomain(Domain::EMT);
   sim.setSolverType(Solver::Type::MNA);
   if (useMetalSolver) {
@@ -615,15 +617,27 @@ void runEMT(const SystemTopology &systemPF, bool useSSNPiLine,
 #endif
   } else if (useMetalSparseBiCGSTAB) {
 #ifdef WITH_METAL
-    sim.setDirectLinearSolverImplementation(DirectLinearSolverImpl::MetalSparseBiCGSTAB);
+    sim.setDirectLinearSolverImplementation(
+        DirectLinearSolverImpl::MetalSparseBiCGSTAB);
 #else
-    throw std::runtime_error(
-        "MetalSparseBiCGSTAB was requested, but DPsim was built without WITH_METAL");
+    throw std::runtime_error("MetalSparseBiCGSTAB was requested, but DPsim was "
+                             "built without WITH_METAL");
 #endif
   } else if (useMetalResident) {
     // CPU direct solver remains active only for DPsim's initialization path;
     // MetalResidentScheduler owns the timestep solve and component state.
     sim.setDirectLinearSolverImplementation(DirectLinearSolverImpl::DenseLU);
+  } else if (useHipSparseQr) {
+    sim.setDirectLinearSolverImplementation(
+        DirectLinearSolverImpl::HIPSparseQR);
+  } else if (useHipSparseLURefactor) {
+    sim.setDirectLinearSolverImplementation(
+        DirectLinearSolverImpl::HIPSparseLURefactor);
+  } else if (useHipSparseBiCGStab) {
+    sim.setDirectLinearSolverImplementation(
+        DirectLinearSolverImpl::HIPSparseBiCGStab);
+  } else if (useHipDense) {
+    sim.setDirectLinearSolverImplementation(DirectLinearSolverImpl::HIPDense);
   } else if (usePaperSSNGroup && useSparseLU) {
     sim.setDirectLinearSolverImplementation(DirectLinearSolverImpl::SparseLU);
   } else if (usePaperSSNGroup && !useKluPartial) {
@@ -659,7 +673,8 @@ void runEMT(const SystemTopology &systemPF, bool useSSNPiLine,
         "logs/" + name + "/" + name + "_TaskTimes.csv", Logger::Level::off));
   } else if (cpuThreads > 1) {
     if (useMetalResident)
-      throw std::invalid_argument("CPU threaded scheduler cannot be combined with metalresident");
+      throw std::invalid_argument(
+          "CPU threaded scheduler cannot be combined with metalresident");
     sim.setScheduler(std::make_shared<ThreadLevelScheduler>(cpuThreads));
   } else if (!noLogger && !useMetalResident) {
     sim.addLogger(logger);
@@ -673,7 +688,8 @@ void runEMT(const SystemTopology &systemPF, bool useSSNPiLine,
       throw std::invalid_argument(
           "metalresident requires paper groupfull, all linear SSN components, "
           "and conventional generators");
-    std::vector<std::shared_ptr<EMT::Ph3::SynchronGenerator4OrderVBR>> metalGenerators;
+    std::vector<std::shared_ptr<EMT::Ph3::SynchronGenerator4OrderVBR>>
+        metalGenerators;
     EMT::SimNode::List metalTraceNodes;
     metalGenerators.reserve(generators.size());
     metalTraceNodes.reserve(generators.size());
@@ -681,22 +697,23 @@ void runEMT(const SystemTopology &systemPF, bool useSSNPiLine,
       metalTraceNodes.push_back(retainedByBus.at(gen.bus));
     for (const auto &component : components) {
       auto generator =
-          std::dynamic_pointer_cast<EMT::Ph3::SynchronGenerator4OrderVBR>(component);
+          std::dynamic_pointer_cast<EMT::Ph3::SynchronGenerator4OrderVBR>(
+              component);
       if (generator)
         metalGenerators.push_back(std::move(generator));
     }
-    const UInt expectedSteps = static_cast<UInt>(std::llround(
-        (use10sRun ? 10. : (shortRun ? 1. : 30.)) /
-        (use50usStep ? 5e-5 : 5e-4)));
+    const UInt expectedSteps = static_cast<UInt>(
+        std::llround((use10sRun ? 10. : (shortRun ? 1. : 30.)) /
+                     (use50usStep ? 5e-5 : 5e-4)));
     if (metalGenerators.size() != generators.size() || !paperGroup ||
         systemNodes.size() != generators.size())
-      throw std::runtime_error(
-          "metalresident model does not match the supported IEEE118 grouped topology");
+      throw std::runtime_error("metalresident model does not match the "
+                               "supported IEEE118 grouped topology");
     sim.setScheduler(std::make_shared<MetalResidentScheduler>(
         paperGroup, std::move(metalGenerators), std::move(metalTraceNodes),
         use50usStep ? 5e-5 : 5e-4, expectedSteps,
-        name + "_MetalResidentTrace.csv", !useMetalHostStepLoop,
-        useMetalMpsLu, useMetalGpuIcb));
+        name + "_MetalResidentTrace.csv", !useMetalHostStepLoop, useMetalMpsLu,
+        useMetalGpuIcb));
 #else
     throw std::runtime_error(
         "metalresident was requested, but DPsim was built without WITH_METAL");
@@ -752,14 +769,17 @@ void runEMT(const SystemTopology &systemPF, bool useSSNPiLine,
 } // namespace
 
 int main(int argc, char **argv) {
-  if (argc < 2 || argc > 17 ||
+  if (argc < 2 || argc > 22 ||
       (std::string(argv[1]) != "dp" && std::string(argv[1]) != "emt")) {
     std::cerr << "Usage: IEEE118_Ph3/IEEE300_Ph3 dp|emt "
                  "[allssn|ssn|nosub] [ssnload] "
                  "[ssntrafo] [ssngen] [conventional] [short] [nolog] "
                  "[profile] [dt50us] [aggregate] [paper] [sparselu] "
                  "[denseexact] [groupfull|groupshared|groupbaseline] "
-                 "[metaldense|metalbicgstab|metalresident|metalhostloop|metaldenselu|metalgpuicb]\n";
+                 "[metaldense|metalbicgstab|metalresident|metalhostloop|"
+                 "metaldenselu|metalgpuicb] "
+                 "[hipdense|hipbicgstab|hiplu|hipsparseqr] "
+                 "[hiplog] [cpu-threads=N]\n";
     return 2;
   }
 #ifdef IEEE300_CASE
@@ -799,6 +819,11 @@ int main(int argc, char **argv) {
   bool useExactDenseLU = false;
   bool usePrecomputedGroupMaps = true;
   bool useFullyReducedGroupMaps = false;
+  bool useHipDense = false;
+  bool useHipSparseBiCGStab = false;
+  bool useHipSparseLURefactor = false;
+  bool useHipSparseQr = false;
+  bool useHipHostTrace = false;
   bool useMetalSolver = false;
   bool useMetalSparseBiCGSTAB = false;
   bool useMetalResident = false;
@@ -866,14 +891,25 @@ int main(int argc, char **argv) {
     } else if (mode == "metalgpuicb") {
       useMetalResident = true;
       useMetalGpuIcb = true;
-    } else if (mode == "cpu2") {
+    } else if (mode == "hipdense")
+      useHipDense = true;
+    else if (mode == "hipbicgstab")
+      useHipSparseBiCGStab = true;
+    else if (mode == "hiplu")
+      useHipSparseLURefactor = true;
+    else if (mode == "hipsparseqr")
+      useHipSparseQr = true;
+    else if (mode == "hiplog")
+      useHipHostTrace = true;
+    else if (mode == "cpu2") {
       cpuThreads = 2;
     } else if (mode == "cpu4") {
       cpuThreads = 4;
     } else if (mode == "cpu8") {
       cpuThreads = 8;
-    }
-    else if (mode == "groupbaseline")
+    } else if (mode.rfind("cpu-threads=", 0) == 0) {
+      cpuThreads = std::max(1, std::stoi(mode.substr(12)));
+    } else if (mode == "groupbaseline")
       usePrecomputedGroupMaps = useFullyReducedGroupMaps = false;
     else if (mode == "groupshared") {
       usePrecomputedGroupMaps = true;
@@ -881,8 +917,7 @@ int main(int argc, char **argv) {
     } else if (mode == "groupfull") {
       usePrecomputedGroupMaps = true;
       useFullyReducedGroupMaps = true;
-    }
-    else {
+    } else {
       std::cerr << "Optional modes are 'allssn', 'ssn', 'nosub', 'ssnload', "
                    "'ssntrafo', 'ssngen', 'short', 'nolog', 'klupartial', "
                    "'profile', 'dt50us', '10s', 'aggregate', 'paper', "
@@ -890,8 +925,10 @@ int main(int argc, char **argv) {
                    "'conventional', 'sparselu', 'denseexact', and "
                    "'groupfull', 'groupshared', 'groupbaseline', "
                    "'metaldense', 'metalbicgstab', 'metalresident', "
-                   "'metalhostloop', 'metaldenselu', and 'metalgpuicb'.\n";
-      std::cerr << "CPU task-parallel modes are 'cpu2', 'cpu4', and 'cpu8'.\n";
+                   "'metalhostloop', 'metaldenselu', and 'metalgpuicb', "
+                   "'hipdense', 'hipbicgstab', 'hiplu', 'hipsparseqr', "
+                   "and 'hiplog'.\n";
+      std::cerr << "CPU parallel modes: cpu2/cpu4/cpu8 or cpu-threads=N.\n";
       return 2;
     }
   }
@@ -903,11 +940,49 @@ int main(int argc, char **argv) {
     useLinearAggregate = false;
     usePaperSSNGroup = false;
   }
-  if (useLinearAggregate && (!useSSNPiLine || !useSSNImpedanceLoad ||
-                             !useSSNTransformer || usePiLineNoSub ||
-                             useRXLoadNoSub || useTransformerNoSub)) {
+  // The HIP resident timestep is implemented for the batched SSN network.
+  // Select that device-compatible representation automatically when the GPU
+  // backend is requested, so the regular IEEE118 command can opt into GPU
+  // execution without also having to know the internal aggregate switches.
+  const bool useHipSparseSolver =
+      useHipSparseBiCGStab || useHipSparseLURefactor;
+  if (useHipSparseBiCGStab && useHipSparseLURefactor) {
+    std::cerr << "Select either hipbicgstab or hiplu, not both.\n";
+    return 2;
+  }
+  if (useHipSparseSolver && !forceConventional && !usePaperSSNGroup) {
+    useSSNPiLine = true;
+    useSSNImpedanceLoad = true;
+    useSSNTransformer = true;
+    useLinearAggregate = true;
+  }
+  if (useLinearAggregate &&
+      (!useSSNPiLine || !useSSNImpedanceLoad || !useSSNTransformer ||
+       usePiLineNoSub || useRXLoadNoSub || useTransformerNoSub)) {
     std::cerr << "aggregate requires allssn and cannot be combined with "
                  "nosub or conventional.\n";
+    return 2;
+  }
+  if (useHipSparseSolver &&
+      (forceConventional || usePaperSSNGroup || !useLinearAggregate)) {
+    std::cerr << "HIP sparse solvers require the device-compatible allssn "
+                 "aggregate model; remove conventional or paper mode.\n";
+    return 2;
+  }
+  if (useHipSparseSolver && useHipHostTrace)
+    noLogger = false;
+  else if (useHipSparseSolver && !noLogger) {
+    std::cerr << "HIP sparse solver mode keeps timestep results on the GPU; "
+                 "disabling "
+                 "the host-side per-step logger. The existing real-time "
+                 "logger also reads attributes on the CPU each step.\n";
+    noLogger = true;
+  }
+  if (useHipDense || useHipSparseQr) {
+    std::cerr << "hipdense and hipsparseqr are hybrid prototypes with "
+                 "CPU-side assembly; use hipbicgstab or hiplu with allssn "
+                 "aggregate "
+                 "for the GPU-resident IEEE118 timestep.\n";
     return 2;
   }
   if (usePaperSSNGroup &&
@@ -934,11 +1009,11 @@ int main(int argc, char **argv) {
   else
     runEMT(systemPF, useSSNPiLine, usePiLineNoSub, useRXLoadNoSub,
            useTransformerNoSub, useSSNImpedanceLoad, useSSNTransformer,
-           useSSNGenerator, profile, shortRun, noLogger,
-           useKluPartial, use50usStep, useLinearAggregate,
-           usePaperSSNGroup,
-           use10sRun, useSparseLU, useExactDenseLU,
-           usePrecomputedGroupMaps, useFullyReducedGroupMaps, useMetalSolver,
+           useSSNGenerator, profile, shortRun, noLogger, useKluPartial,
+           use50usStep, useLinearAggregate, usePaperSSNGroup, use10sRun,
+           useSparseLU, useExactDenseLU, usePrecomputedGroupMaps,
+           useFullyReducedGroupMaps, useHipDense, useHipSparseBiCGStab,
+           useHipSparseLURefactor, useHipSparseQr, useMetalSolver,
            useMetalSparseBiCGSTAB, useMetalResident, useMetalHostStepLoop,
            useMetalMpsLu, useMetalGpuIcb, cpuThreads);
   return 0;

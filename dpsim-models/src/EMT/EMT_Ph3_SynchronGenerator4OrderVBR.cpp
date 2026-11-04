@@ -8,6 +8,8 @@
 
 #include <dpsim-models/EMT/EMT_Ph3_SynchronGenerator4OrderVBR.h>
 
+#include <stdexcept>
+
 using namespace CPS;
 
 EMT::Ph3::SynchronGenerator4OrderVBR::SynchronGenerator4OrderVBR(
@@ -125,4 +127,100 @@ void EMT::Ph3::SynchronGenerator4OrderVBR::stepInPerUnit() {
 
   // convert Edq_t into the abc reference frame
   mEvbr = mDq0ToAbc * mEhs_vbr * mBase_V;
+}
+
+bool EMT::Ph3::SynchronGenerator4OrderVBR::supportsHipBatch() noexcept {
+  return mModelAsNortonSource && !mHasExciter && !mHasPSS &&
+         !mHasGovernorAndTurbine && !mHasTurbineGovernor &&
+         terminalNotGrounded(0);
+}
+
+EMT::Ph3::HipSG4State EMT::Ph3::SynchronGenerator4OrderVBR::exportHipState() {
+  if (!supportsHipBatch())
+    throw std::invalid_argument(
+        "HIP SG4 batch supports only ungrounded Norton generators without "
+        "controllers");
+  HipSG4State state;
+  state.theta = **mThetaMech;
+  state.delta = **mDelta;
+  state.omega = **mOmMech;
+  state.electricalTorque = **mElecTorque;
+  state.mechanicalTorque = **mMechTorque;
+  state.previousMechanicalTorque = mMechTorque_prev;
+  state.fieldVoltage = **mEf;
+  state.previousFieldVoltage = mEf_prev;
+  state.timestep = mTimeStep;
+  state.inertia = mH;
+  state.damping = mDamping;
+  state.baseOmegaMech = mBase_OmMech;
+  state.baseVoltage = mBase_V;
+  state.baseCurrent = mBase_I;
+  state.lqTransient = mLq_t;
+  state.ldTransient = mLd_t;
+  state.adTransient = mAd_t;
+  state.bdTransient = mBd_t;
+  state.aqTransient = mAq_t;
+  state.bqTransient = mBq_t;
+  state.dqTransient = mDq_t;
+  for (int index = 0; index < 3; ++index) {
+    state.idq0[index] = (**mIdq0)(index, 0);
+    state.vdq0[index] = (**mVdq0)(index, 0);
+    state.edq0Transient[index] = (**mEdq0_t)(index, 0);
+    state.busRows[index] = static_cast<int>(matrixNodeIndex(0, index));
+  }
+  for (int col = 0; col < 3; ++col)
+    for (int row = 0; row < 3; ++row)
+      state.conductanceDq0[col * 3 + row] = mConductanceMatrixDq0(row, col);
+  state.grounded = 0;
+  return state;
+}
+
+void EMT::Ph3::SynchronGenerator4OrderVBR::applyHipPreState(
+    const HipSG4State &state, Real time) {
+  if (mEvbr.size() != 3)
+    mEvbr.resize(3, 1);
+  if (mIvbr.size() != 3)
+    mIvbr.resize(3, 1);
+  mSimTime = time;
+  **mThetaMech = state.theta;
+  **mDelta = state.delta;
+  **mOmMech = state.omega;
+  **mElecTorque = state.electricalTorque;
+  **mMechTorque = state.mechanicalTorque;
+  mMechTorque_prev = state.previousMechanicalTorque;
+  **mEf = state.fieldVoltage;
+  mEf_prev = state.previousFieldVoltage;
+  for (int index = 0; index < 3; ++index) {
+    (**mEdq0_t)(index, 0) = state.edq0Transient[index];
+    mEhs_vbr(index, 0) = state.historyDq0[index];
+    mEvbr(index, 0) = state.emfAbc[index];
+    mIvbr(index, 0) = state.currentSourceAbc[index];
+  }
+  for (int col = 0; col < 3; ++col)
+    for (int row = 0; row < 3; ++row)
+      mConductanceMatrix(row, col) = state.conductanceAbc[col * 3 + row];
+  (**mRightVector).setZero();
+  if (!state.grounded)
+    for (int phase = 0; phase < 3; ++phase)
+      (**mRightVector)(state.busRows[phase], 0) = state.currentSourceAbc[phase];
+}
+
+void EMT::Ph3::SynchronGenerator4OrderVBR::applyHipPostState(
+    const HipSG4State &state) {
+  // Keep host-visible machine attributes current when a caller requests a
+  // synchronized device state (for example, the optional hiplog trace).
+  **mThetaMech = state.theta;
+  **mDelta = state.delta;
+  **mOmMech = state.omega;
+  **mElecTorque = state.electricalTorque;
+  **mMechTorque = state.mechanicalTorque;
+  mMechTorque_prev = state.previousMechanicalTorque;
+  **mEf = state.fieldVoltage;
+  mEf_prev = state.previousFieldVoltage;
+  for (int index = 0; index < 3; ++index) {
+    (**mIntfVoltage)(index, 0) = state.terminalVoltageAbc[index];
+    (**mIntfCurrent)(index, 0) = state.terminalCurrentAbc[index];
+    (**mVdq0)(index, 0) = state.voltageDq0[index];
+    (**mIdq0)(index, 0) = state.currentDq0[index];
+  }
 }

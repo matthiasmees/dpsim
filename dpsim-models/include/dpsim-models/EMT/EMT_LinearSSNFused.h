@@ -32,6 +32,16 @@ public:
   Bool mnaHasCompactRightSideVectorStamp() const override { return true; }
   void mnaAddCompactRightSideVectorStamp(Matrix &rightVector) override;
 
+  /// Enable an external device executor for the fused component's runtime
+  /// state. The device executor must keep the model states current and call
+  /// setDeviceHistories() before the component's RHS stamp is requested.
+  void setDeviceManaged(bool enabled) noexcept { mDeviceManaged = enabled; }
+  void setDeviceRhsManaged(bool enabled) noexcept {
+    mDeviceRhsManaged = enabled;
+  }
+  const std::vector<LinearSSNModel> &models() const noexcept { return mModels; }
+  void setDeviceHistories(const std::vector<Matrix> &histories);
+
 protected:
   void mnaCompInitialize(Real omega, Real timeStep,
                          Attribute<Matrix>::Ptr leftVector) override;
@@ -58,6 +68,8 @@ private:
   std::vector<Matrix> mHistories;
   Attribute<Matrix>::Ptr mFusedState;
   Bool mModelsReady = false;
+  Bool mDeviceManaged = false;
+  Bool mDeviceRhsManaged = false;
 
   void updateHistories();
   void addHistoryStamp(Matrix &rightVector) const;
