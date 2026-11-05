@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
+#include <dpsim-fmi/CoSimulationSSN.h>
 #include <dpsim-fmi/NonlinearSSN.h>
 #include <pybind11/functional.h>
 #include <pybind11/pybind11.h>
@@ -83,6 +84,59 @@ void addFMIBindings(py::module_ root) {
                              py::return_value_policy::reference_internal)
       .def("supports_rollback", &DPsim::FMI::ModelExchange::supportsRollback);
 
+  py::class_<DPsim::FMI::CoSimulationOptions>(fmi, "CoSimulationOptions")
+      .def(py::init<>())
+      .def_readwrite("logging_on", &DPsim::FMI::CoSimulationOptions::loggingOn);
+
+  py::class_<DPsim::FMI::CoSimulation, DPsim::FMI::CoSimulation::Ptr>(
+      fmi, "CoSimulation")
+      .def(py::init<const std::string &, DPsim::FMI::CoSimulationOptions>(),
+           "path"_a, "options"_a = DPsim::FMI::CoSimulationOptions{})
+      .def(py::init<const std::string &,
+                    const std::vector<DPsim::FMI::ScalarInput> &,
+                    DPsim::FMI::CoSimulationOptions>(),
+           "path"_a, "inputs"_a,
+           "options"_a = DPsim::FMI::CoSimulationOptions{})
+      .def_property_readonly("description",
+                             &DPsim::FMI::CoSimulation::description,
+                             py::return_value_policy::reference_internal)
+      .def_property_readonly("time", &DPsim::FMI::CoSimulation::time)
+      .def("set_input", &DPsim::FMI::CoSimulation::setInput, "name"_a,
+           "value"_a)
+      .def(
+          "do_step",
+          [](DPsim::FMI::CoSimulation &model, double currentTime,
+             double stepSize) {
+            const auto &values = model.doStep(currentTime, stepSize);
+            return std::vector<double>(values.data(),
+                                       values.data() + values.size());
+          },
+          "current_communication_point"_a, "communication_step_size"_a);
+
+  py::class_<DPsim::FMI::CoSimulationElectricalPort>(
+      fmi, "CoSimulationElectricalPort")
+      .def(py::init<>())
+      .def_readwrite("voltage_inputs",
+                     &DPsim::FMI::CoSimulationElectricalPort::voltageInputs)
+      .def_readwrite("current_outputs",
+                     &DPsim::FMI::CoSimulationElectricalPort::currentOutputs)
+      .def_readwrite(
+          "current_sign_to_passive",
+          &DPsim::FMI::CoSimulationElectricalPort::currentSignToPassive);
+
+  py::class_<DPsim::FMI::CoSimulationSSN,
+             std::shared_ptr<DPsim::FMI::CoSimulationSSN>,
+             CPS::SimPowerComp<CPS::Real>>(fmi, "CoSimulationFMU",
+                                           py::multiple_inheritance())
+      .def("connect",
+           static_cast<void (DPsim::FMI::CoSimulationSSN::*)(
+               CPS::SimNode<CPS::Real>::Ptr)>(
+               &DPsim::FMI::CoSimulationSSN::connect),
+           "node"_a)
+      .def("set_input_function", &DPsim::FMI::CoSimulationSSN::setInputFunction,
+           "name"_a, "function"_a,
+           "discontinuity_times"_a = std::vector<double>{});
+
   py::class_<DPsim::FMI::NonlinearSSN,
              std::shared_ptr<DPsim::FMI::NonlinearSSN>,
              CPS::SimPowerComp<CPS::Real>>(fmi, "NonlinearFMU",
@@ -106,6 +160,32 @@ void addFMIBindings(py::module_ root) {
       .def("set_input_function", &DPsim::FMI::NonlinearSSN::setInputFunction,
            "name"_a, "function"_a,
            "discontinuity_times"_a = std::vector<double>{});
+
+  fmi.def(
+      "import_cosimulation_fmu",
+      [](const std::string &path, const std::string &name,
+         const std::vector<std::string> &voltageInputs,
+         const std::vector<std::string> &currentOutputs, double currentSign,
+         const DPsim::FMI::CoSimulationOptions &options) {
+        if (voltageInputs.size() != currentOutputs.size() ||
+            (voltageInputs.size() != 1 && voltageInputs.size() != 3))
+          throw std::invalid_argument(
+              "Co-Simulation requires one or three voltage/current channels");
+        auto model = std::make_shared<DPsim::FMI::CoSimulation>(path, options);
+        DPsim::FMI::CoSimulationElectricalPort port{
+            voltageInputs, currentOutputs, currentSign};
+        const auto componentName =
+            name.empty() ? model->description().modelName : name;
+        return DPsim::FMI::CoSimulationSSN::make(
+            componentName, std::move(model), std::move(port));
+      },
+      "path"_a, "name"_a = "",
+      "voltage_inputs"_a = std::vector<std::string>{"u_a", "u_b", "u_c"},
+      "current_outputs"_a = std::vector<std::string>{"i_a", "i_b", "i_c"},
+      "current_sign_to_passive"_a = -1.0,
+      "options"_a = DPsim::FMI::CoSimulationOptions{},
+      "Import an FMI 2.0/3.0 Co-Simulation FMU with explicit electrical "
+      "ports. ");
 
   fmi.def(
       "import_fmu",

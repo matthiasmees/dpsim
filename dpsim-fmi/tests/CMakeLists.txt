@@ -477,3 +477,81 @@ endfunction()
 
 add_fmi_lifecycle_fixture(snapshot_isolation SNAPSHOTS DEFINITIONS FIXTURE_SNAPSHOTS=1)
 add_fmi_lifecycle_fixture(skip_completed_step NO_COMPLETED DEFINITIONS FIXTURE_FORBID_COMPLETED=1)
+
+# Native FMI 3.0 and FMI 2.0 Co-Simulation fixtures exercise communication
+# point validation, input mapping, step advancement, and output retrieval.
+set(STAGE "${CMAKE_CURRENT_BINARY_DIR}/stage/cosimulation3")
+file(MAKE_DIRECTORY "${STAGE}")
+configure_file(modelDescription3CoSimulation.xml "${STAGE}/modelDescription.xml" COPYONLY)
+add_library(fmi_fixture_cosimulation3 MODULE CoSimulationModel3.cpp)
+target_include_directories(fmi_fixture_cosimulation3 PRIVATE ../third_party/fmi3)
+set_target_properties(fmi_fixture_cosimulation3 PROPERTIES
+	PREFIX "" OUTPUT_NAME CoSimulationModel3 SUFFIX "${FMI_SUFFIX}"
+	LIBRARY_OUTPUT_DIRECTORY "${STAGE}/binaries/${FMI_PLATFORM}"
+	RUNTIME_OUTPUT_DIRECTORY "${STAGE}/binaries/${FMI_PLATFORM}"
+)
+set(COSIM3_FMU "${CMAKE_CURRENT_BINARY_DIR}/cosimulation3.fmu")
+add_custom_command(OUTPUT "${COSIM3_FMU}"
+	COMMAND ${CMAKE_COMMAND} -E tar cf "${COSIM3_FMU}" --format=zip -- modelDescription.xml binaries
+	WORKING_DIRECTORY "${STAGE}"
+	DEPENDS fmi_fixture_cosimulation3 "${STAGE}/modelDescription.xml"
+)
+add_custom_target(fmi_package_cosimulation3 DEPENDS "${COSIM3_FMU}")
+
+set(STAGE "${CMAKE_CURRENT_BINARY_DIR}/stage/cosimulation2")
+file(MAKE_DIRECTORY "${STAGE}")
+configure_file(modelDescription2CoSimulation.xml "${STAGE}/modelDescription.xml" COPYONLY)
+add_library(fmi_fixture_cosimulation2 MODULE CoSimulationModel2.cpp)
+target_include_directories(fmi_fixture_cosimulation2 PRIVATE ../third_party/fmi2)
+set_target_properties(fmi_fixture_cosimulation2 PROPERTIES
+	PREFIX "" OUTPUT_NAME CoSimulationModel2 SUFFIX "${FMI_SUFFIX}"
+	LIBRARY_OUTPUT_DIRECTORY "${STAGE}/binaries/${FMI2_PLATFORM}"
+	RUNTIME_OUTPUT_DIRECTORY "${STAGE}/binaries/${FMI2_PLATFORM}"
+)
+set(COSIM2_FMU "${CMAKE_CURRENT_BINARY_DIR}/cosimulation2.fmu")
+add_custom_command(OUTPUT "${COSIM2_FMU}"
+	COMMAND ${CMAKE_COMMAND} -E tar cf "${COSIM2_FMU}" --format=zip -- modelDescription.xml binaries
+	WORKING_DIRECTORY "${STAGE}"
+	DEPENDS fmi_fixture_cosimulation2 "${STAGE}/modelDescription.xml"
+)
+add_custom_target(fmi_package_cosimulation2 DEPENDS "${COSIM2_FMU}")
+
+add_executable(FMI_CoSimulationTest CoSimulationTest.cpp)
+target_link_libraries(FMI_CoSimulationTest PRIVATE dpsim-fmi)
+add_dependencies(FMI_CoSimulationTest fmi_package_cosimulation2 fmi_package_cosimulation3)
+add_test(NAME fmi_cosimulation3 COMMAND FMI_CoSimulationTest "${COSIM3_FMU}")
+add_test(NAME fmi_cosimulation2 COMMAND FMI_CoSimulationTest "${COSIM2_FMU}")
+
+set(STAGE "${CMAKE_CURRENT_BINARY_DIR}/stage/cosimulation3ph")
+file(MAKE_DIRECTORY "${STAGE}")
+configure_file(modelDescription3CoSimulationPh.xml "${STAGE}/modelDescription.xml" COPYONLY)
+add_library(fmi_fixture_cosimulation3ph MODULE CoSimulationModel3Ph.cpp)
+target_include_directories(fmi_fixture_cosimulation3ph PRIVATE ../third_party/fmi3)
+set_target_properties(fmi_fixture_cosimulation3ph PROPERTIES
+	PREFIX "" OUTPUT_NAME CoSimulationModel3Ph SUFFIX "${FMI_SUFFIX}"
+	LIBRARY_OUTPUT_DIRECTORY "${STAGE}/binaries/${FMI_PLATFORM}"
+	RUNTIME_OUTPUT_DIRECTORY "${STAGE}/binaries/${FMI_PLATFORM}"
+)
+set(COSIM3PH_FMU "${CMAKE_CURRENT_BINARY_DIR}/cosimulation3ph.fmu")
+add_custom_command(OUTPUT "${COSIM3PH_FMU}"
+	COMMAND ${CMAKE_COMMAND} -E tar cf "${COSIM3PH_FMU}" --format=zip -- modelDescription.xml binaries
+	WORKING_DIRECTORY "${STAGE}"
+	DEPENDS fmi_fixture_cosimulation3ph "${STAGE}/modelDescription.xml"
+)
+add_custom_target(fmi_package_cosimulation3ph DEPENDS "${COSIM3PH_FMU}")
+
+if(TARGET FMI_EMT_CoSimulation)
+	add_dependencies(FMI_EMT_CoSimulation fmi_package_cosimulation3)
+	add_test(NAME fmi_cosimulation_mna_scalar
+		COMMAND FMI_EMT_CoSimulation "${COSIM3_FMU}" u y 0.0001)
+endif()
+if(TARGET FMI_EMT_Ph3_CoSimulation)
+	add_dependencies(FMI_EMT_Ph3_CoSimulation fmi_package_cosimulation3ph)
+	add_test(NAME fmi_cosimulation_mna_threephase
+		COMMAND FMI_EMT_Ph3_CoSimulation "${COSIM3PH_FMU}" u_a u_b u_c i_a i_b i_c -1 0.0001 0.00001)
+endif()
+if(TARGET FMI_EMT_Ph3_TwoCoSimulations)
+	add_dependencies(FMI_EMT_Ph3_TwoCoSimulations fmi_package_cosimulation3ph)
+	add_test(NAME fmi_cosimulation_mna_two_fmus
+		COMMAND FMI_EMT_Ph3_TwoCoSimulations "${COSIM3PH_FMU}" "${COSIM3PH_FMU}" 0.0001 0.00001)
+endif()

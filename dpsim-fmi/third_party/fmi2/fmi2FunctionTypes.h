@@ -1,5 +1,5 @@
 /*
- * Minimal FMI 2.0 Model Exchange function declarations used by DPsim.
+ * Minimal FMI 2.0 Model Exchange and Co-Simulation declarations used by DPsim.
  * The declarations follow the FMI 2.0 specification and are released under
  * the same 2-Clause BSD license as the official FMI headers.
  */
@@ -93,6 +93,9 @@ typedef fmi2Status fmi2EnterContinuousTimeModeTYPE(fmi2Component);
 typedef fmi2Status fmi2GetFMUstateTYPE(fmi2Component, fmi2FMUstate *);
 typedef fmi2Status fmi2SetFMUstateTYPE(fmi2Component, fmi2FMUstate);
 typedef fmi2Status fmi2FreeFMUstateTYPE(fmi2Component, fmi2FMUstate *);
+typedef fmi2Status fmi2DoStepTYPE(fmi2Component, fmi2Real, fmi2Real,
+                                  fmi2Boolean);
+typedef fmi2Status fmi2CancelStepTYPE(fmi2Component);
 
 #ifdef __cplusplus
 }

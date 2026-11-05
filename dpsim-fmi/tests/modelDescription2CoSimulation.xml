@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<fmiModelDescription fmiVersion="2.0" modelName="CoSimulationLinearFixture"
+                     guid="dpsim-cosim-2" variableNamingConvention="flat">
+  <CoSimulation modelIdentifier="CoSimulationModel2"
+                canHandleVariableCommunicationStepSize="true"
+                canRunAsynchronuously="false" canGetAndSetFMUstate="false"
+                canSerializeFMUstate="false"/>
+  <ModelVariables>
+    <ScalarVariable name="u" valueReference="0" causality="input" variability="continuous">
+      <Real start="1"/>
+    </ScalarVariable>
+    <ScalarVariable name="y" valueReference="1" causality="output" variability="continuous">
+      <Real/>
+    </ScalarVariable>
+  </ModelVariables>
+  <ModelStructure>
+    <Outputs><Unknown index="2"/></Outputs>
+  </ModelStructure>
+</fmiModelDescription>

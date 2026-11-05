@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<fmiModelDescription fmiVersion="3.0" modelName="CoSimulationThreePhaseFixture"
+                     instantiationToken="dpsim-cosim-3ph" variableNamingConvention="flat">
+  <CoSimulation modelIdentifier="CoSimulationModel3Ph" eventModeUsed="false"
+                canGetAndSetFMUState="false" canSerializeFMUState="false"
+                canHandleVariableCommunicationStepSize="true"/>
+  <ModelVariables>
+    <Float64 name="u_a" valueReference="0" causality="input" variability="continuous" start="0"/>
+    <Float64 name="u_b" valueReference="1" causality="input" variability="continuous" start="0"/>
+    <Float64 name="u_c" valueReference="2" causality="input" variability="continuous" start="0"/>
+    <Float64 name="i_a" valueReference="3" causality="output" variability="continuous" initial="calculated"/>
+    <Float64 name="i_b" valueReference="4" causality="output" variability="continuous" initial="calculated"/>
+    <Float64 name="i_c" valueReference="5" causality="output" variability="continuous" initial="calculated"/>
+  </ModelVariables>
+  <ModelStructure>
+    <Output valueReference="3"/><Output valueReference="4"/><Output valueReference="5"/>
+  </ModelStructure>
+</fmiModelDescription>

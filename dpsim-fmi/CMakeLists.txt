@@ -37,6 +37,8 @@ target_include_directories(dpsim-fmi-zip PRIVATE
 
 add_library(dpsim-fmi
 	src/ModelExchange.cpp
+	src/CoSimulation.cpp
+	src/CoSimulationSSN.cpp
 	src/LinearModel.cpp
 	src/LinearSSN.cpp
 	src/NonlinearSSN.cpp
@@ -117,7 +119,18 @@ if(DPSIM_BUILD_EXAMPLES)
 
 	add_executable(FMI_EMT_LinearSSN examples/linear_scalar/FMI_EMT_LinearSSN.cpp)
 	target_link_libraries(FMI_EMT_LinearSSN PRIVATE dpsim-fmi)
-	foreach(example IN ITEMS FMI_EMT_Ph3_TwoGenerators FMI_EMT_Ph3_Mixed FMI_EMT_Ph3_TwoConverters FMI_MicrogridNetwork_Candidate FMI_PowerFactoryGenerator_Candidate FMI_EMT_Ph3_Nonlinear FMI_EMT_Ph3_LinearSSN FMI_EMT_LinearSSN)
+
+	add_executable(FMI_EMT_Ph3_CoSimulation examples/cosimulation/FMI_EMT_Ph3_CoSimulation.cpp)
+	target_link_libraries(FMI_EMT_Ph3_CoSimulation PRIVATE dpsim-fmi)
+	add_executable(FMI_EMT_Ph3_DualInterfaceRL examples/cosimulation/FMI_EMT_Ph3_DualInterfaceRL.cpp)
+	target_link_libraries(FMI_EMT_Ph3_DualInterfaceRL PRIVATE dpsim-fmi)
+	add_executable(FMI_IEEE39_AvgInverter examples/ieee39_inverter/IEEE39_AvgInverter.cpp)
+	target_link_libraries(FMI_IEEE39_AvgInverter PRIVATE dpsim-fmi)
+	add_executable(FMI_EMT_Ph3_TwoCoSimulations examples/cosimulation/FMI_EMT_Ph3_TwoCoSimulations.cpp)
+	target_link_libraries(FMI_EMT_Ph3_TwoCoSimulations PRIVATE dpsim-fmi)
+	add_executable(FMI_EMT_CoSimulation examples/cosimulation/FMI_EMT_CoSimulation.cpp)
+	target_link_libraries(FMI_EMT_CoSimulation PRIVATE dpsim-fmi)
+	foreach(example IN ITEMS FMI_EMT_Ph3_TwoGenerators FMI_EMT_Ph3_Mixed FMI_EMT_Ph3_TwoConverters FMI_MicrogridNetwork_Candidate FMI_PowerFactoryGenerator_Candidate FMI_EMT_Ph3_Nonlinear FMI_EMT_Ph3_LinearSSN FMI_EMT_LinearSSN FMI_EMT_Ph3_CoSimulation FMI_EMT_Ph3_DualInterfaceRL FMI_IEEE39_AvgInverter FMI_EMT_Ph3_TwoCoSimulations FMI_EMT_CoSimulation)
 		target_include_directories(${example} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/examples/common")
 	endforeach()
 
