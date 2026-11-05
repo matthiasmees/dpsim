@@ -138,6 +138,7 @@ protected:
   using MnaSolver<VarType>::hasVariableComponentChanged;
   using MnaSolver<VarType>::mNumRecomputations;
   using MnaSolver<VarType>::mSyncGen;
+  using MnaSolver<VarType>::mNonlinearComps;
   using MnaSolver<VarType>::mFactorizeTimes;
   using MnaSolver<VarType>::mSolveTimes;
   using MnaSolver<VarType>::mRecomputationTimes;

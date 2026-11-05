@@ -1,0 +1,20 @@
+{
+  "frequency_Hz": 60,
+  "voltage_peak_V": 20412.41452319315,
+  "phase_rad": -1.5707963267948966,
+  "step_s": 5e-05,
+  "stop_time_s": 0.02,
+  "series_R_ohm": 1.7677669529663689,
+  "series_L_H": 0.03282403235894725,
+  "load_R_ohm": 12500,
+  "initial_voltage_scale": 1,
+  "initialize_line_current_from_load": true,
+  "grid_event_time_s": 0.005,
+  "grid_sag_end_s": 0.01,
+  "grid_sag_scale": 0.7,
+  "endpoint_state_events": true,
+  "allow_continuous_state_resets": true,
+  "multirate_mode": "single_pass_explicit",
+  "jacobian_reuse_steps": 64,
+  "fmu_variant": "V3"
+}

@@ -1,0 +1,171 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
+<fmiModelDescription fmiVersion="3.0" generationDateAndTime="2026-10-19T13:42:44Z" generationTool="Simulink (R2025a)" instantiationToken="{330e2477-8ef6-858d-33ee-37d98a458233}" modelName="dpsim_sg_3ph_second" variableNamingConvention="structured" version="1.1">
+  <ModelExchange canBeInstantiatedOnlyOncePerProcess="true" canGetAndSetFMUState="true" canSerializeFMUState="true" modelIdentifier="dpsim_sg_3ph_second" needsExecutionTool="false"/>
+  <DefaultExperiment startTime="0" stepSize="0.08" stopTime="4"/>
+  <ModelVariables>
+    <Float64 causality="input" description="u_a" initial="exact" name="u_a" start="0" valueReference="0" variability="continuous"/>
+    <Float64 causality="input" description="u_b" initial="exact" name="u_b" start="0" valueReference="1" variability="continuous"/>
+    <Float64 causality="input" description="u_c" initial="exact" name="u_c" start="0" valueReference="2" variability="continuous"/>
+    <Float64 causality="input" description="vref_pu" initial="exact" name="vref_pu" start="0" valueReference="3" variability="continuous"/>
+    <Float64 causality="input" description="pmref_pu" initial="exact" name="pmref_pu" start="0" valueReference="4" variability="continuous"/>
+    <Float64 causality="output" description="i_a" initial="calculated" name="i_a" valueReference="5" variability="continuous"/>
+    <Float64 causality="output" description="i_b" initial="calculated" name="i_b" valueReference="6" variability="continuous"/>
+    <Float64 causality="output" description="i_c" initial="calculated" name="i_c" valueReference="7" variability="continuous"/>
+    <Float64 causality="output" description="speed_pu" initial="calculated" name="speed_pu" valueReference="8" variability="continuous"/>
+    <Float64 causality="output" description="theta_e_rad" initial="calculated" name="theta_e_rad" valueReference="9" variability="continuous"/>
+    <Float64 causality="output" description="field_current_A" initial="calculated" name="field_current_A" valueReference="10" variability="continuous"/>
+    <Float64 causality="output" description="p_gap_W" initial="calculated" name="p_gap_W" valueReference="11" variability="continuous"/>
+    <Float64 causality="output" description="p_gen_W" initial="calculated" name="p_gen_W" valueReference="12" variability="continuous"/>
+    <Float64 causality="output" description="v_measured_pu" initial="calculated" name="v_measured_pu" valueReference="13" variability="continuous"/>
+    <Float64 causality="output" description="avr_raw_pu" initial="calculated" name="avr_raw_pu" valueReference="14" variability="continuous"/>
+    <Float64 causality="output" description="avr_limited_pu" initial="calculated" name="avr_limited_pu" valueReference="15" variability="continuous"/>
+    <Float64 causality="output" description="pm_pu" initial="calculated" name="pm_pu" valueReference="16" variability="continuous"/>
+    <Float64 causality="output" description="governor_raw_pu" initial="calculated" name="governor_raw_pu" valueReference="17" variability="continuous"/>
+    <Float64 causality="output" description="governor_limited_pu" initial="calculated" name="governor_limited_pu" valueReference="18" variability="continuous"/>
+    <Float64 causality="output" description="v2_filter_pu" initial="calculated" name="v2_filter_pu" valueReference="19" variability="continuous"/>
+    <Float64 causality="output" description="avr_integral_pu" initial="calculated" name="avr_integral_pu" valueReference="20" variability="continuous"/>
+    <Float64 causality="output" description="efd_pu" initial="calculated" name="efd_pu" valueReference="21" variability="continuous"/>
+    <Float64 causality="output" description="psi_d_Wb" initial="calculated" name="psi_d_Wb" valueReference="22" variability="continuous"/>
+    <Float64 causality="output" description="psi_q_Wb" initial="calculated" name="psi_q_Wb" valueReference="23" variability="continuous"/>
+    <Float64 causality="output" description="psi_0_Wb" initial="calculated" name="psi_0_Wb" valueReference="24" variability="continuous"/>
+    <Float64 causality="output" description="psi_f_Wb" initial="calculated" name="psi_f_Wb" valueReference="25" variability="continuous"/>
+    <Float64 causality="output" description="theta_state_rad" initial="calculated" name="theta_state_rad" valueReference="26" variability="continuous"/>
+    <Float64 causality="output" description="speed_state_pu" initial="calculated" name="speed_state_pu" valueReference="27" variability="continuous"/>
+    <Float64 causality="independent" description="time" name="time" valueReference="28" variability="continuous"/>
+    <Float64 causality="local" description="ContState1" initial="calculated" name="ContState1" valueReference="29" variability="continuous"/>
+    <Float64 causality="local" description="ContState2" initial="calculated" name="ContState2" valueReference="30" variability="continuous"/>
+    <Float64 causality="local" description="ContState3" initial="calculated" name="ContState3" valueReference="31" variability="continuous"/>
+    <Float64 causality="local" description="ContState4" initial="calculated" name="ContState4" valueReference="32" variability="continuous"/>
+    <Float64 causality="local" description="ContState5" initial="calculated" name="ContState5" valueReference="33" variability="continuous"/>
+    <Float64 causality="local" description="ContState6" initial="calculated" name="ContState6" valueReference="34" variability="continuous"/>
+    <Float64 causality="local" description="ContState7" initial="calculated" name="ContState7" valueReference="35" variability="continuous"/>
+    <Float64 causality="local" description="ContState8" initial="calculated" name="ContState8" valueReference="36" variability="continuous"/>
+    <Float64 causality="local" description="ContState9" initial="calculated" name="ContState9" valueReference="37" variability="continuous"/>
+    <Float64 causality="local" description="ContState10" initial="calculated" name="ContState10" valueReference="38" variability="continuous"/>
+    <Float64 causality="local" derivative="29" description="Deriv1" initial="calculated" name="Deriv1" valueReference="39" variability="continuous"/>
+    <Float64 causality="local" derivative="30" description="Deriv2" initial="calculated" name="Deriv2" valueReference="40" variability="continuous"/>
+    <Float64 causality="local" derivative="31" description="Deriv3" initial="calculated" name="Deriv3" valueReference="41" variability="continuous"/>
+    <Float64 causality="local" derivative="32" description="Deriv4" initial="calculated" name="Deriv4" valueReference="42" variability="continuous"/>
+    <Float64 causality="local" derivative="33" description="Deriv5" initial="calculated" name="Deriv5" valueReference="43" variability="continuous"/>
+    <Float64 causality="local" derivative="34" description="Deriv6" initial="calculated" name="Deriv6" valueReference="44" variability="continuous"/>
+    <Float64 causality="local" derivative="35" description="Deriv7" initial="calculated" name="Deriv7" valueReference="45" variability="continuous"/>
+    <Float64 causality="local" derivative="36" description="Deriv8" initial="calculated" name="Deriv8" valueReference="46" variability="continuous"/>
+    <Float64 causality="local" derivative="37" description="Deriv9" initial="calculated" name="Deriv9" valueReference="47" variability="continuous"/>
+    <Float64 causality="local" derivative="38" description="Deriv10" initial="calculated" name="Deriv10" valueReference="48" variability="continuous"/>
+  </ModelVariables>
+  <ModelStructure>
+    <Output valueReference="5"/>
+    <Output valueReference="6"/>
+    <Output valueReference="7"/>
+    <Output valueReference="8"/>
+    <Output valueReference="9"/>
+    <Output valueReference="10"/>
+    <Output valueReference="11"/>
+    <Output valueReference="12"/>
+    <Output valueReference="13"/>
+    <Output valueReference="14"/>
+    <Output valueReference="15"/>
+    <Output valueReference="16"/>
+    <Output valueReference="17"/>
+    <Output valueReference="18"/>
+    <Output valueReference="19"/>
+    <Output valueReference="20"/>
+    <Output valueReference="21"/>
+    <Output valueReference="22"/>
+    <Output valueReference="23"/>
+    <Output valueReference="24"/>
+    <Output valueReference="25"/>
+    <Output valueReference="26"/>
+    <Output valueReference="27"/>
+    <ContinuousStateDerivative valueReference="39"/>
+    <ContinuousStateDerivative valueReference="40"/>
+    <ContinuousStateDerivative valueReference="41"/>
+    <ContinuousStateDerivative valueReference="42"/>
+    <ContinuousStateDerivative valueReference="43"/>
+    <ContinuousStateDerivative valueReference="44"/>
+    <ContinuousStateDerivative valueReference="45"/>
+    <ContinuousStateDerivative valueReference="46"/>
+    <ContinuousStateDerivative valueReference="47"/>
+    <ContinuousStateDerivative valueReference="48"/>
+    <InitialUnknown valueReference="5"/>
+    <InitialUnknown valueReference="6"/>
+    <InitialUnknown valueReference="7"/>
+    <InitialUnknown valueReference="8"/>
+    <InitialUnknown valueReference="9"/>
+    <InitialUnknown valueReference="10"/>
+    <InitialUnknown valueReference="11"/>
+    <InitialUnknown valueReference="12"/>
+    <InitialUnknown valueReference="13"/>
+    <InitialUnknown valueReference="14"/>
+    <InitialUnknown valueReference="15"/>
+    <InitialUnknown valueReference="16"/>
+    <InitialUnknown valueReference="17"/>
+    <InitialUnknown valueReference="18"/>
+    <InitialUnknown valueReference="19"/>
+    <InitialUnknown valueReference="20"/>
+    <InitialUnknown valueReference="21"/>
+    <InitialUnknown valueReference="22"/>
+    <InitialUnknown valueReference="23"/>
+    <InitialUnknown valueReference="24"/>
+    <InitialUnknown valueReference="25"/>
+    <InitialUnknown valueReference="26"/>
+    <InitialUnknown valueReference="27"/>
+    <InitialUnknown valueReference="29"/>
+    <InitialUnknown valueReference="30"/>
+    <InitialUnknown valueReference="31"/>
+    <InitialUnknown valueReference="32"/>
+    <InitialUnknown valueReference="33"/>
+    <InitialUnknown valueReference="34"/>
+    <InitialUnknown valueReference="35"/>
+    <InitialUnknown valueReference="36"/>
+    <InitialUnknown valueReference="37"/>
+    <InitialUnknown valueReference="38"/>
+    <InitialUnknown valueReference="39"/>
+    <InitialUnknown valueReference="40"/>
+    <InitialUnknown valueReference="41"/>
+    <InitialUnknown valueReference="42"/>
+    <InitialUnknown valueReference="43"/>
+    <InitialUnknown valueReference="44"/>
+    <InitialUnknown valueReference="45"/>
+    <InitialUnknown valueReference="46"/>
+    <InitialUnknown valueReference="47"/>
+    <InitialUnknown valueReference="48"/>
+  </ModelStructure>
+  <Annotations>
+    <Annotation type="com.mathworks.Simulink">
+      <Simulink>
+        <ImportCompatibility FMUProduct="standalone FMU" canSourceFileCodeGeneration="false" requireMATLABOnPath="no" requireRelease="all"/>
+        <SimulinkModelInterface>
+          <Inport blockPath="dpsim_sg_3ph_second/u_a" dataType="double" dimension="[1]" portName="u_a" portNumber="1" sampleTime="[0 0]" uniquePortName="u_a" unit=""/>
+          <Inport blockPath="dpsim_sg_3ph_second/u_b" dataType="double" dimension="[1]" portName="u_b" portNumber="2" sampleTime="[0 0]" uniquePortName="u_b" unit=""/>
+          <Inport blockPath="dpsim_sg_3ph_second/u_c" dataType="double" dimension="[1]" portName="u_c" portNumber="3" sampleTime="[0 0]" uniquePortName="u_c" unit=""/>
+          <Inport blockPath="dpsim_sg_3ph_second/vref_pu" dataType="double" dimension="[1]" portName="vref_pu" portNumber="4" sampleTime="[0 0]" uniquePortName="vref_pu" unit=""/>
+          <Inport blockPath="dpsim_sg_3ph_second/pmref_pu" dataType="double" dimension="[1]" portName="pmref_pu" portNumber="5" sampleTime="[0 0]" uniquePortName="pmref_pu" unit=""/>
+          <Outport blockPath="dpsim_sg_3ph_second/i_a" dataType="double" dimension="[1  1]" portName="i_a" portNumber="1" sampleTime="[0 0]" uniquePortName="i_a" unit=""/>
+          <Outport blockPath="dpsim_sg_3ph_second/i_b" dataType="double" dimension="[1  1]" portName="i_b" portNumber="2" sampleTime="[0 0]" uniquePortName="i_b" unit=""/>
+          <Outport blockPath="dpsim_sg_3ph_second/i_c" dataType="double" dimension="[1  1]" portName="i_c" portNumber="3" sampleTime="[0 0]" uniquePortName="i_c" unit=""/>
+          <Outport blockPath="dpsim_sg_3ph_second/speed_pu" dataType="double" dimension="[1  1]" portName="speed_pu" portNumber="4" sampleTime="[0 0]" uniquePortName="speed_pu" unit=""/>
+          <Outport blockPath="dpsim_sg_3ph_second/theta_e_rad" dataType="double" dimension="[1  1]" portName="theta_e_rad" portNumber="5" sampleTime="[0 0]" uniquePortName="theta_e_rad" unit=""/>
+          <Outport blockPath="dpsim_sg_3ph_second/field_current_A" dataType="double" dimension="[1  1]" portName="field_current_A" portNumber="6" sampleTime="[0 0]" uniquePortName="field_current_A" unit=""/>
+          <Outport blockPath="dpsim_sg_3ph_second/p_gap_W" dataType="double" dimension="[1  1]" portName="p_gap_W" portNumber="7" sampleTime="[0 0]" uniquePortName="p_gap_W" unit=""/>
+          <Outport blockPath="dpsim_sg_3ph_second/p_gen_W" dataType="double" dimension="[1  1]" portName="p_gen_W" portNumber="8" sampleTime="[0 0]" uniquePortName="p_gen_W" unit=""/>
+          <Outport blockPath="dpsim_sg_3ph_second/v_measured_pu" dataType="double" dimension="[1  1]" portName="v_measured_pu" portNumber="9" sampleTime="[0 0]" uniquePortName="v_measured_pu" unit=""/>
+          <Outport blockPath="dpsim_sg_3ph_second/avr_raw_pu" dataType="double" dimension="[1  1]" portName="avr_raw_pu" portNumber="10" sampleTime="[0 0]" uniquePortName="avr_raw_pu" unit=""/>
+          <Outport blockPath="dpsim_sg_3ph_second/avr_limited_pu" dataType="double" dimension="[1  1]" portName="avr_limited_pu" portNumber="11" sampleTime="[0 0]" uniquePortName="avr_limited_pu" unit=""/>
+          <Outport blockPath="dpsim_sg_3ph_second/pm_pu" dataType="double" dimension="[1  1]" portName="pm_pu" portNumber="12" sampleTime="[0 0]" uniquePortName="pm_pu" unit=""/>
+          <Outport blockPath="dpsim_sg_3ph_second/governor_raw_pu" dataType="double" dimension="[1  1]" portName="governor_raw_pu" portNumber="13" sampleTime="[0 0]" uniquePortName="governor_raw_pu" unit=""/>
+          <Outport blockPath="dpsim_sg_3ph_second/governor_limited_pu" dataType="double" dimension="[1  1]" portName="governor_limited_pu" portNumber="14" sampleTime="[0 0]" uniquePortName="governor_limited_pu" unit=""/>
+          <Outport blockPath="dpsim_sg_3ph_second/v2_filter_pu" dataType="double" dimension="[1  1]" portName="v2_filter_pu" portNumber="15" sampleTime="[0 0]" uniquePortName="v2_filter_pu" unit=""/>
+          <Outport blockPath="dpsim_sg_3ph_second/avr_integral_pu" dataType="double" dimension="[1  1]" portName="avr_integral_pu" portNumber="16" sampleTime="[0 0]" uniquePortName="avr_integral_pu" unit=""/>
+          <Outport blockPath="dpsim_sg_3ph_second/efd_pu" dataType="double" dimension="[1  1]" portName="efd_pu" portNumber="17" sampleTime="[0 0]" uniquePortName="efd_pu" unit=""/>
+          <Outport blockPath="dpsim_sg_3ph_second/psi_d_Wb" dataType="double" dimension="[1  1]" portName="psi_d_Wb" portNumber="18" sampleTime="[0 0]" uniquePortName="psi_d_Wb" unit=""/>
+          <Outport blockPath="dpsim_sg_3ph_second/psi_q_Wb" dataType="double" dimension="[1  1]" portName="psi_q_Wb" portNumber="19" sampleTime="[0 0]" uniquePortName="psi_q_Wb" unit=""/>
+          <Outport blockPath="dpsim_sg_3ph_second/psi_0_Wb" dataType="double" dimension="[1  1]" portName="psi_0_Wb" portNumber="20" sampleTime="[0 0]" uniquePortName="psi_0_Wb" unit=""/>
+          <Outport blockPath="dpsim_sg_3ph_second/psi_f_Wb" dataType="double" dimension="[1  1]" portName="psi_f_Wb" portNumber="21" sampleTime="[0 0]" uniquePortName="psi_f_Wb" unit=""/>
+          <Outport blockPath="dpsim_sg_3ph_second/theta_state_rad" dataType="double" dimension="[1  1]" portName="theta_state_rad" portNumber="22" sampleTime="[0 0]" uniquePortName="theta_state_rad" unit=""/>
+          <Outport blockPath="dpsim_sg_3ph_second/speed_state_pu" dataType="double" dimension="[1  1]" portName="speed_state_pu" portNumber="23" sampleTime="[0 0]" uniquePortName="speed_state_pu" unit=""/>
+        </SimulinkModelInterface>
+      </Simulink>
+    </Annotation>
+  </Annotations>
+</fmiModelDescription>

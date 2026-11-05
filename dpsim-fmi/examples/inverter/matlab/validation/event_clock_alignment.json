@@ -1,0 +1,10 @@
+{
+  "nominal_event_s": 0.17,
+  "sample_interval_s": 1e-06,
+  "event_sample_index": 170000,
+  "sample_time_s": 0.16999999999999998,
+  "nominal_hex": "0x1.5c28f5c28f5c3p-3",
+  "sample_hex": "0x1.5c28f5c28f5c2p-3",
+  "literal_event_is_after_sample": true,
+  "rule": "Use integer-grid event time in the physical reference. No full-step command advance and no trace shift."
+}

@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<fmiModelDescription fmiVersion="3.0" modelName="ThreePhaseRL" instantiationToken="dpsim-three-phase-rl-v1">
+  <ModelExchange modelIdentifier="ThreePhaseRL" needsCompletedIntegratorStep="true" canGetAndSetFMUState="false" providesDirectionalDerivatives="false" />
+  <CoSimulation modelIdentifier="ThreePhaseRL" canGetAndSetFMUState="false" canHandleVariableCommunicationStepSize="true" fixedInternalStepSize="0.000001" />
+  <ModelVariables>
+    <Float64 name="u_a" valueReference="0" causality="input" variability="continuous" start="0" />
+    <Float64 name="u_b" valueReference="1" causality="input" variability="continuous" start="0" />
+    <Float64 name="u_c" valueReference="2" causality="input" variability="continuous" start="0" />
+    <Float64 name="i_a" valueReference="3" causality="output" variability="continuous" initial="calculated" />
+    <Float64 name="i_b" valueReference="4" causality="output" variability="continuous" initial="calculated" />
+    <Float64 name="i_c" valueReference="5" causality="output" variability="continuous" initial="calculated" />
+    <Float64 name="x_a" valueReference="6" variability="continuous" initial="calculated" />
+    <Float64 name="x_b" valueReference="7" variability="continuous" initial="calculated" />
+    <Float64 name="x_c" valueReference="8" variability="continuous" initial="calculated" />
+    <Float64 name="time" valueReference="9" causality="independent" variability="continuous" />
+    <Float64 name="dx_a" valueReference="10" derivative="6" variability="continuous" initial="calculated" />
+    <Float64 name="dx_b" valueReference="11" derivative="7" variability="continuous" initial="calculated" />
+    <Float64 name="dx_c" valueReference="12" derivative="8" variability="continuous" initial="calculated" />
+  </ModelVariables>
+  <ModelStructure>
+    <Output valueReference="3" />
+    <Output valueReference="4" />
+    <Output valueReference="5" />
+    <ContinuousStateDerivative valueReference="10" />
+    <ContinuousStateDerivative valueReference="11" />
+    <ContinuousStateDerivative valueReference="12" />
+    <InitialUnknown valueReference="3" />
+    <InitialUnknown valueReference="4" />
+    <InitialUnknown valueReference="5" />
+    <InitialUnknown valueReference="6" />
+    <InitialUnknown valueReference="7" />
+    <InitialUnknown valueReference="8" />
+    <InitialUnknown valueReference="10" />
+    <InitialUnknown valueReference="11" />
+    <InitialUnknown valueReference="12" />
+  </ModelStructure>
+</fmiModelDescription>

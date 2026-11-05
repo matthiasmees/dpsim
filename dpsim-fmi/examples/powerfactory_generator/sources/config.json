@@ -1,0 +1,28 @@
+{
+  "model_name": "genInterfacePQ",
+  "model_identifier": "genInterfacePQ",
+  "fmi_version": "2.0",
+  "model_exchange": true,
+  "continuous_states": 10,
+  "inputs": [
+    "vi",
+    "vr"
+  ],
+  "outputs": [
+    "p",
+    "q"
+  ],
+  "binary_platforms": [
+    "win64"
+  ],
+  "rollback": false,
+  "status": "candidate_for_powerflow_operating_point_initialization",
+  "source_repository": "https://github.com/ALSETLab/Modelica-FMI-PowerFactory-ModelImport-Tutorial",
+  "source_fmu": "Sources/FMUs/genInterfacePQ.fmu",
+  "notes": [
+    "The FMU is retained unchanged from the upstream repository.",
+    "It contains a GENROU synchronous generator, SCRX exciter and P/Q interface filters.",
+    "Its interface is a complex-voltage/P-Q boundary rather than a three-phase abc electrical port.",
+    "The upstream archive has a Windows binary only and does not provide FMI state rollback."
+  ]
+}

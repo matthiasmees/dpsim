@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<fmiModelDescription fmiVersion="3.0" modelName="EndpointStateEventFixture" instantiationToken="dpsim-state-event">
+  <ModelExchange modelIdentifier="StateEventModel" needsCompletedIntegratorStep="true" />
+  <ModelVariables>
+    <Float64 name="u_a" valueReference="0" causality="input" variability="continuous" start="0" />
+    <Float64 name="u_b" valueReference="1" causality="input" variability="continuous" start="0" />
+    <Float64 name="u_c" valueReference="2" causality="input" variability="continuous" start="0" />
+    <Float64 name="i_a" valueReference="3" causality="output" variability="continuous" initial="calculated" />
+    <Float64 name="i_b" valueReference="4" causality="output" variability="continuous" initial="calculated" />
+    <Float64 name="i_c" valueReference="5" causality="output" variability="continuous" initial="calculated" />
+    <Float64 name="time" valueReference="9" causality="independent" variability="continuous" />
+    <Float64 name="theta" valueReference="10" variability="continuous" initial="calculated" />
+    <Float64 name="x1" valueReference="11" variability="continuous" initial="calculated" />
+    <Float64 name="x2" valueReference="12" variability="continuous" initial="calculated" />
+    <Float64 name="x3" valueReference="13" variability="continuous" initial="calculated" />
+    <Float64 name="x4" valueReference="14" variability="continuous" initial="calculated" />
+    <Float64 name="x5" valueReference="15" variability="continuous" initial="calculated" />
+    <Float64 name="dtheta" valueReference="16" derivative="10" variability="continuous" initial="calculated" />
+    <Float64 name="dx1" valueReference="17" derivative="11" variability="continuous" initial="calculated" />
+    <Float64 name="dx2" valueReference="18" derivative="12" variability="continuous" initial="calculated" />
+    <Float64 name="dx3" valueReference="19" derivative="13" variability="continuous" initial="calculated" />
+    <Float64 name="dx4" valueReference="20" derivative="14" variability="continuous" initial="calculated" />
+    <Float64 name="dx5" valueReference="21" derivative="15" variability="continuous" initial="calculated" />
+    <Float64 name="zero_crossing" valueReference="30" variability="continuous" initial="calculated" />
+    <Float64 name="event_count" valueReference="31" causality="output" variability="continuous" initial="calculated" />
+  </ModelVariables>
+  <ModelStructure>
+    <Output valueReference="3" />
+    <Output valueReference="4" />
+    <Output valueReference="5" />
+    <Output valueReference="31" />
+    <ContinuousStateDerivative valueReference="16" />
+    <ContinuousStateDerivative valueReference="17" />
+    <ContinuousStateDerivative valueReference="18" />
+    <ContinuousStateDerivative valueReference="19" />
+    <ContinuousStateDerivative valueReference="20" />
+    <ContinuousStateDerivative valueReference="21" />
+    <EventIndicator valueReference="30" />
+  </ModelStructure>
+</fmiModelDescription>

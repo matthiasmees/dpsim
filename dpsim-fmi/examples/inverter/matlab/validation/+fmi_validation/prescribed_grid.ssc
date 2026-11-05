@@ -1,0 +1,26 @@
+component prescribed_grid
+% Grid Voltage Correction
+% Stateless series correction; preserves the original source and its initial state.
+outputs
+    v = {0, 'V'};
+end
+parameters
+    peak = {20412.41452319315, 'V'};
+    frequency = {60, 'Hz'};
+    phase = {0, 'rad'};
+    event_time = {.17, 's'};
+    recovery_time = {.19, 's'};
+    sag_scale = {1, '1'};
+    phase_jump = {0, 'rad'};
+    frequency_change = {0, 'Hz'};
+end
+equations
+    if time < event_time
+        v == {0, 'V'};
+    elseif time < recovery_time
+        v == sag_scale*peak * sin(2*pi*frequency*time + phase + phase_jump + 2*pi*frequency_change*(time-event_time)) - peak*sin(2*pi*frequency*time + phase);
+    else
+        v == peak * sin(2*pi*frequency*time + phase + phase_jump + 2*pi*frequency_change*(time-event_time)) - peak*sin(2*pi*frequency*time + phase);
+    end
+end
+end

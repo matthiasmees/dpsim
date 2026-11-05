@@ -1,0 +1,20 @@
+{
+  "a": {
+    "max_V": 0.4706961826996121,
+    "at_s": 0.189123,
+    "max_after_10us_V": 0.4706961826996121,
+    "samples_above_0p1pct_base": 0
+  },
+  "b": {
+    "max_V": 324.33603320587827,
+    "at_s": 1e-06,
+    "max_after_10us_V": 2.2826113776973216,
+    "samples_above_0p1pct_base": 6
+  },
+  "c": {
+    "max_V": 324.5129718770604,
+    "at_s": 1e-06,
+    "max_after_10us_V": 2.2839218941007857,
+    "samples_above_0p1pct_base": 6
+  }
+}

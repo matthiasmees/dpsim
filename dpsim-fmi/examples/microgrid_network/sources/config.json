@@ -1,0 +1,36 @@
+{
+  "model_name": "grid.network",
+  "model_identifier": "grid_network",
+  "fmi_version": "2.0",
+  "model_exchange": true,
+  "continuous_states": 48,
+  "current_inputs": [
+    "i1p1",
+    "i1p2",
+    "i1p3",
+    "i2p1",
+    "i2p2",
+    "i2p3"
+  ],
+  "candidate_voltage_outputs": [
+    "inverter1.pin1.v",
+    "inverter1.pin2.v",
+    "inverter1.pin3.v",
+    "inverter2.pin1.v",
+    "inverter2.pin2.v",
+    "inverter2.pin3.v"
+  ],
+  "binary_platforms": [
+    "linux64",
+    "win64"
+  ],
+  "status": "interface_candidate_requires_current_driven_adapter",
+  "source_repository": "https://github.com/upb-lea/openmodelica-microgrid-gym",
+  "source_fmu": "omg_grid/grid.network.fmu",
+  "notes": [
+    "The FMU is retained unchanged from the upstream repository.",
+    "The six terminal currents are FMI inputs.",
+    "The candidate terminal voltages are local FMI variables, not causality=output variables.",
+    "The current NonlinearSSN electrical port expects voltage inputs and current outputs, so this candidate is characterized but not silently adapted."
+  ]
+}

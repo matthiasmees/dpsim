@@ -1,0 +1,37 @@
+{
+  "fmi_version": "3.0",
+  "interface": "ModelExchange",
+  "domain": "EMT",
+  "frame": "abc",
+  "voltage_inputs": [
+    "u_a",
+    "u_b",
+    "u_c"
+  ],
+  "current_outputs": [
+    "i_a",
+    "i_b",
+    "i_c"
+  ],
+  "current_sign": "out_of_generator_into_bus",
+  "control_inputs": [
+    "vref_pu",
+    "pmref_pu"
+  ],
+  "initial_voltages_V": [
+    325.2009128998511,
+    -156.8320349303405,
+    -168.36887796951044
+  ],
+  "initial_vref_pu": 1,
+  "initial_pmref_pu": 0.5391763370361963,
+  "generator_states": 10,
+  "network_states": 6,
+  "load_step_time_s": 1,
+  "load_conductance_step_S": 0.03780718336483932,
+  "vref_step_time_s": 2,
+  "vref_step_pu": 0.02,
+  "sample_step_s": 5e-05,
+  "stop_time_s": 4,
+  "requires_nonlinear_importer": true
+}
