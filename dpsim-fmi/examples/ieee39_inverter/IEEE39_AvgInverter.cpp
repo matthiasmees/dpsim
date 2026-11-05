@@ -7,9 +7,11 @@
 #include <dpsim-fmi/NonlinearSSN.h>
 
 #include <cmath>
+#include <fstream>
 #include <iostream>
 #include <string>
 #include <vector>
+#include <dpsim/SequentialScheduler.h>
 
 using namespace CPS;
 using namespace DPsim;
@@ -347,6 +349,10 @@ void runInverter(const SystemTopology &systemPF, const std::string &mode,
                          inverter->attribute("newton_residual"));
     logger->logAttribute("fmi_internal_steps",
                          inverter->attribute("fmi_internal_steps"));
+    logger->logAttribute("fmi_evaluation_requests",
+                         inverter->attribute("fmi_evaluation_requests"));
+    logger->logAttribute("fmi_evaluation_wall_time_s",
+                         inverter->attribute("fmi_evaluation_wall_time_s"));
   } else {
     logger->logAttribute("fmi_do_steps",
                          inverter->attribute("cosim_do_steps"));
@@ -362,13 +368,36 @@ void runInverter(const SystemTopology &systemPF, const std::string &mode,
   sim.doInitFromNodesAndTerminals(true);
   sim.doSystemMatrixRecomputation(true);
   sim.addLogger(logger);
-  const auto start = std::chrono::steady_clock::now();
+  const std::string logDirectory = "logs/" + simName;
+  sim.setScheduler(std::make_shared<SequentialScheduler>(
+      logDirectory + "/" + simName + "_TaskTimes.csv", Logger::Level::off));
+  sim.setLogStepTimes(true);
+
+  const auto initializeStart = std::chrono::steady_clock::now();
+  sim.initialize();
+  const std::chrono::duration<double> initializeElapsed =
+      std::chrono::steady_clock::now() - initializeStart;
+  const auto simulationStart = std::chrono::steady_clock::now();
   sim.run();
-  const std::chrono::duration<double> elapsed =
-      std::chrono::steady_clock::now() - start;
-  std::cout << simName << " runtime_s=" << elapsed.count()
+  const std::chrono::duration<double> simulationElapsed =
+      std::chrono::steady_clock::now() - simulationStart;
+  sim.logLUTimes();
+
+  std::ofstream stepTiming(logDirectory + "/" + simName +
+                           "_SimulationStepTimes.csv");
+  stepTiming << "step,simulation_time_s,step_wall_s\n";
+  const auto &stepTimes = sim.stepTimes();
+  for (std::size_t index = 0; index < stepTimes.size(); ++index)
+    stepTiming << index + 1 << "," << (index + 1) * timeStep << ","
+               << stepTimes[index] << "\n";
+
+  const Real totalRuntime = initializeElapsed.count() + simulationElapsed.count();
+  std::cout << simName << " runtime_s=" << totalRuntime
+            << " initialization_s=" << initializeElapsed.count()
+            << " simulation_s=" << simulationElapsed.count()
             << " steps=" << std::llround(finalTime / timeStep)
-            << " dt_s=" << timeStep << " load_step_s=0.17"
+            << " dt_s=" << timeStep << " stop_s=" << finalTime
+            << " load_step_s=0.17"
             << " load_step_MW=100" << "\n";
 }
 } // namespace

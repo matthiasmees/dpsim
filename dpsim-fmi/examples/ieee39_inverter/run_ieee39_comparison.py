@@ -67,6 +67,23 @@ def metrics(error: np.ndarray, reference: np.ndarray, mask: np.ndarray,
     }
 
 
+def timing_artifacts(mode: str) -> dict[str, Path]:
+    folder = DATA / f"run-{mode}"
+    profile_dir = folder / "logs" / f"IEEE39_Inverter_{mode}"
+    task_csv = profile_dir / f"IEEE39_Inverter_{mode}_TaskTimes.csv"
+    solver_matches = list(profile_dir.glob("*_SolverPhaseTimes.csv"))
+    paths = {
+        "component_task_profile_csv": task_csv,
+        "solver_phase_profile_csv": solver_matches[0] if len(solver_matches) == 1 else None,
+        "scheduler_step_profile_csv": profile_dir / f"IEEE39_Inverter_{mode}_TaskTimes_SchedulerSteps.csv",
+        "simulation_step_profile_csv": profile_dir / f"IEEE39_Inverter_{mode}_SimulationStepTimes.csv",
+    }
+    missing = [str(path) for path in paths.values() if path is None or not path.is_file()]
+    if missing:
+        raise FileNotFoundError("Missing detailed timing artifacts: " + ", ".join(missing))
+    return paths
+
+
 def run_case(mode: str) -> dict:
     folder = DATA / f"run-{mode}"
     folder.mkdir(parents=True, exist_ok=True)
@@ -79,17 +96,24 @@ def run_case(mode: str) -> dict:
     )
     wall = time.perf_counter() - started
     log.write_text(result.stdout)
-    match = re.search(r"runtime_s=([0-9.eE+-]+)", result.stdout)
-    if not match:
+    fields = {
+        name: re.search(rf"{name}=([0-9.eE+-]+)", result.stdout)
+        for name in ("runtime_s", "initialization_s", "simulation_s")
+    }
+    if any(match is None for match in fields.values()):
         raise RuntimeError(f"Could not parse simulation time from {log}")
+    profile = timing_artifacts(mode)
     timing = {
         "mode": mode,
-        "simulation_runtime_s": float(match.group(1)),
+        "total_runtime_s": float(fields["runtime_s"].group(1)),
+        "initialization_runtime_s": float(fields["initialization_s"].group(1)),
+        "simulation_runtime_s": float(fields["simulation_s"].group(1)),
         "process_wall_time_s": wall,
         "communication_step_s": DT,
         "stop_time_s": STOP,
         "network_steps": int(round(STOP / DT)),
         "log": str(log),
+        **{name: str(path) for name, path in profile.items()},
     }
     (folder / "timing.json").write_text(json.dumps(timing, indent=2) + "\n")
     return timing
@@ -104,6 +128,9 @@ def run_all() -> None:
     matlab_dir = CASE / "matlab"
     matlab_expr = (
         f"addpath('{matlab_dir}'); "
+        # First call includes MATLAB/Simulink's compile/cache warm-up; rerun the
+        # same ME input before timing and then time the same model on CS input.
+        f"run_native_replay('{inputs[0]}','{native_out[0]}'); "
         f"run_native_replay('{inputs[0]}','{native_out[0]}'); "
         f"run_native_replay('{inputs[1]}','{native_out[1]}');"
     )
@@ -141,11 +168,60 @@ def run_all() -> None:
     wall = time.perf_counter() - start
     (DATA / "native_batch.log").write_text(output)
     timings["native_replay_batch_wall_time_s"] = wall
+    timings["native_simulink_warmup_runs"] = 1
+    timings["timing_profile_overhead"] = (
+        "Both DPsim modes use the same SequentialScheduler task profiler and "
+        "solver phase profiler; reported runtime includes this instrumentation."
+    )
     timings["native_replay"] = {
         mode: json.loads((DATA / f"run-{mode}" / "native_timing.json").read_text())
         for mode in ("me", "cs")
     }
+    for mode in ("me", "cs"):
+        native = timings["native_replay"][mode]
+        if not np.isclose(native["fixed_step_s"], DT, rtol=0, atol=1e-12):
+            raise ValueError(f"Native {mode} replay timestep does not match DPsim")
+        if not np.isclose(native["stop_time_s"], STOP, rtol=0, atol=DT * 1e-6):
+            raise ValueError(f"Native {mode} replay duration does not match DPsim")
     (DATA / "timings.json").write_text(json.dumps(timings, indent=2) + "\n")
+
+
+def write_timing_tables(timings: dict) -> None:
+    component_rows, solver_rows, step_frames, simulation_step_frames = [], [], [], []
+    for mode in ("me", "cs"):
+        profile = timings[mode]
+        tasks = pd.read_csv(profile["component_task_profile_csv"])
+        tasks["mode"] = mode.upper()
+        tasks["category"] = np.select(
+            [tasks.task.str.endswith(".MnaPreStep"),
+             tasks.task.str.endswith(".MnaPostStep"),
+             tasks.task.str.endswith(".Solve")],
+            ["component_pre_step", "component_post_step", "solver_task"],
+            default="other_task",
+        )
+        tasks["avg_us"] = tasks.avg_ns / 1e3
+        tasks["total_ms"] = tasks.total_ns / 1e6
+        component_rows.append(tasks.rename(columns={"task": "component_task"}))
+
+        phases = pd.read_csv(profile["solver_phase_profile_csv"])
+        phases["mode"] = mode.upper()
+        solver_rows.append(phases)
+
+        per_step = pd.read_csv(profile["scheduler_step_profile_csv"])
+        per_step.insert(0, "mode", mode.upper())
+        step_frames.append(per_step)
+        simulation_steps = pd.read_csv(profile["simulation_step_profile_csv"])
+        simulation_steps.insert(0, "mode", mode.upper())
+        simulation_step_frames.append(simulation_steps)
+
+    pd.concat(component_rows, ignore_index=True).to_csv(
+        DATA / "component_timing_breakdown.csv", index=False)
+    pd.concat(solver_rows, ignore_index=True).to_csv(
+        DATA / "solver_timing_breakdown.csv", index=False)
+    pd.concat(step_frames, ignore_index=True).to_csv(
+        DATA / "scheduler_step_timing.csv", index=False)
+    pd.concat(simulation_step_frames, ignore_index=True).to_csv(
+        DATA / "simulation_step_timing.csv", index=False)
 
 
 def analyze() -> dict:
@@ -165,11 +241,11 @@ def analyze() -> dict:
     current_me = vector(me, "inverter.i_")
     current_cs = vector(cs, "inverter.i_")
     native_me_i = np.column_stack([
-        np.interp(t, native_me.time, native_me[f"i_{phase}"], left=np.nan, right=np.nan)
+        np.interp(t, native_me.time, native_me[f"i_{phase}"])
         for phase in "abc"
     ])
     native_cs_i = np.column_stack([
-        np.interp(t, native_cs.time, native_cs[f"i_{phase}"], left=np.nan, right=np.nan)
+        np.interp(t, native_cs.time, native_cs[f"i_{phase}"])
         for phase in "abc"
     ])
     current_diffs = {
@@ -186,6 +262,7 @@ def analyze() -> dict:
             "network_step_s": DT,
             "stop_time_s": STOP,
             "network_steps": int(round(STOP / DT)),
+            "domain_time_grid": "DPsim ME, DPsim CS, and native Simulink replay all use 50 us over 0.2 s (4,000 communication steps).",
             "disturbance": f"100 MW balanced load step at bus 39 at {LOAD_STEP:.3f} s",
             "device": "average PQ-controlled current source at bus 30; half of original generator-30 P/Q is retained as synchronous generation",
             "device_setpoint": {"P_W": P_SET, "Q_var": Q_SET, "current_response_time_s": 0.005, "current_limit_pu": 1.2},
@@ -197,6 +274,8 @@ def analyze() -> dict:
         "bus_voltage_me_vs_cs": {},
         "coupling_diagnostics": {},
     }
+    if metrics_out["timings"].get("me", {}).get("component_task_profile_csv"):
+        write_timing_tables(metrics_out["timings"])
     for name, err in current_diffs.items():
         metrics_out["current_error"][name] = {
             window: metrics(err, current_me if name != "cs_vs_native_replay" else native_cs_i,
@@ -217,6 +296,10 @@ def analyze() -> dict:
         "me_mean_newton_iterations": float(me.newton_iterations[t >= 0.02].mean()),
         "me_max_reported_residual": float(me.newton_residual.max()),
         "me_max_internal_steps_per_macro_step": int(me.fmi_internal_steps.max()),
+            "me_fmi_evaluation_requests_total": int(me.fmi_evaluation_requests.iloc[-1]),
+            "me_fmi_evaluation_time_total_s": float(me.fmi_evaluation_wall_time_s.iloc[-1]),
+            "me_fmi_evaluations_per_network_step": float(me.fmi_evaluation_requests.iloc[-1] / round(STOP / DT)),
+            "me_fmi_evaluation_time_per_network_step_us": float(1e6 * me.fmi_evaluation_wall_time_s.iloc[-1] / round(STOP / DT)),
         "cs_do_step_calls": int(cs.fmi_do_steps.max()),
         "interpretation": "ME uses SinglePassExplicit as the network coupling policy; its residual is the one-pass mismatch, not a converged Newton residual. CS performs one fmi3DoStep per 50 us network step.",
     }
