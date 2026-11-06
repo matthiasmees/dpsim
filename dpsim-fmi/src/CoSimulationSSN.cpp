@@ -132,6 +132,21 @@ void CoSimulationSSN::initializeFromNodesAndTerminals(Real) {
     for (Eigen::Index phase = 0; phase < channels; ++phase)
       (**mInputs)(mVoltageIndices[phase], 0) = terminalVoltage(phase, 0);
   }
+  if (mModel->initializeFromPowerflow()) {
+    if (terminalVoltage.cwiseAbs().maxCoeff() <= 1.0)
+      throw std::invalid_argument(
+          "FMI powerflow initialization requires a nonzero network terminal "
+          "voltage; initialize the topology from a powerflow first");
+    for (std::size_t index = 0; index < mControls.size(); ++index)
+      if (mControls[index].getPtr()) {
+        double value = **mControls[index];
+        if (mInputFunctions[index])
+          value = mInputFunctions[index](0);
+        (**mInputs)(index, 0) = value;
+      }
+    mModel->reinitializeFromInputs(**mInputs);
+    **mOutputs = mModel->outputs();
+  }
   for (std::size_t phase = 0; phase < mCurrentIndices.size(); ++phase)
     (**mIntfCurrent)(phase, 0) =
         mSign * (**mOutputs)(mCurrentIndices[phase], 0);

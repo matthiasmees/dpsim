@@ -36,6 +36,12 @@ fmi2Status fmi2ExitInitializationMode(fmi2Component c) {
     s->x[p] += .01 * s->u[p];
   return fmi2OK;
 }
+fmi2Status fmi2Reset(fmi2Component c) {
+  if (!c)
+    return fmi2Error;
+  *state(c) = State{};
+  return fmi2OK;
+}
 fmi2Status fmi2Terminate(fmi2Component) { return fmi2OK; }
 fmi2Status fmi2EnterContinuousTimeMode(fmi2Component) { return fmi2OK; }
 fmi2Status fmi2SetTime(fmi2Component c, fmi2Real t) {

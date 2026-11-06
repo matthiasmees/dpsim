@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<fmiModelDescription fmiVersion="3.0" modelName="IEEE39AvgInverter" instantiationToken="dpsim-ieee39-average-inverter-v1">
+  <ModelExchange modelIdentifier="IEEE39AvgInverter" needsCompletedIntegratorStep="true" canGetAndSetFMUState="false" providesDirectionalDerivatives="false"/>
+  <CoSimulation modelIdentifier="IEEE39AvgInverter" canGetAndSetFMUState="false" canHandleVariableCommunicationStepSize="true" fixedInternalStepSize="0.000001"/>
+  <UnitDefinitions>
+    <Unit name="V"><BaseUnit kg="1" m="2" s="-3" A="-1"/></Unit>
+    <Unit name="A"><BaseUnit A="1"/></Unit>
+  </UnitDefinitions>
+  <ModelVariables>
+    <Float64 name="v_a" valueReference="0" causality="input" variability="continuous" start="288466.352188" unit="V"/>
+    <Float64 name="v_b" valueReference="1" causality="input" variability="continuous" start="-200716.863664" unit="V"/>
+    <Float64 name="v_c" valueReference="2" causality="input" variability="continuous" start="-87749.488524" unit="V"/>
+    <Float64 name="i_a" valueReference="3" causality="output" variability="continuous" initial="calculated" unit="A"/>
+    <Float64 name="i_b" valueReference="4" causality="output" variability="continuous" initial="calculated" unit="A"/>
+    <Float64 name="i_c" valueReference="5" causality="output" variability="continuous" initial="calculated" unit="A"/>
+    <Float64 name="x_a" valueReference="6" variability="continuous" initial="exact" start="47.815536367" unit="A"/>
+    <Float64 name="x_b" valueReference="7" variability="continuous" initial="exact" start="105.857896294" unit="A"/>
+    <Float64 name="x_c" valueReference="8" variability="continuous" initial="exact" start="-153.673432661" unit="A"/>
+    <Float64 name="time" valueReference="9" causality="independent" variability="continuous" unit="s"/>
+    <Float64 name="dx_a" valueReference="10" derivative="6" variability="continuous" initial="calculated" unit="A/s"/>
+    <Float64 name="dx_b" valueReference="11" derivative="7" variability="continuous" initial="calculated" unit="A/s"/>
+    <Float64 name="dx_c" valueReference="12" derivative="8" variability="continuous" initial="calculated" unit="A/s"/>
+  </ModelVariables>
+  <ModelStructure>
+    <Output valueReference="3"/><Output valueReference="4"/><Output valueReference="5"/>
+    <ContinuousStateDerivative valueReference="10"/><ContinuousStateDerivative valueReference="11"/><ContinuousStateDerivative valueReference="12"/>
+    <InitialUnknown valueReference="3"/><InitialUnknown valueReference="4"/><InitialUnknown valueReference="5"/>
+    <InitialUnknown valueReference="6"/><InitialUnknown valueReference="7"/><InitialUnknown valueReference="8"/>
+    <InitialUnknown valueReference="10"/><InitialUnknown valueReference="11"/><InitialUnknown valueReference="12"/>
+  </ModelStructure>
+</fmiModelDescription>

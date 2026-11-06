@@ -74,6 +74,16 @@ int main(int argc, char **argv) {
     const bool failure = argc == 3 && !reuse && !tight;
     std::vector<FMI::ScalarInput> inputs{{"u_c", 13}, {"u_a", 7}, {"u_b", -11}};
     auto model = std::make_shared<FMI::ModelExchange>(argv[1], inputs);
+    const auto reinitializable =
+        std::make_shared<FMI::ModelExchange>(argv[1], inputs);
+    Matrix resetInputs = reinitializable->description().initialInputs;
+    resetInputs(0, 0) = 23;
+    reinitializable->reinitializeFromInputs(resetInputs);
+    requireClose(reinitializable->description().initialInputs, resetInputs,
+                 1e-12,
+                 "FMU did not retain inputs after reset/reinitialization");
+    require(reinitializable->acceptedState().allFinite(),
+            "FMU returned non-finite state after reinitialization");
     auto autoBranch = FMI::importFMU(argv[1]);
     require(autoBranch->modelDescription().inputNames.size() == 3,
             "automatic abc input mapping failed");

@@ -1,25 +1,51 @@
-function run_native_replay(inputCsv, outputCsv)
+function run_native_replay(inputCsv, outputCsv, simulateToTime, writeArtifacts)
 % Run the average inverter equations natively in Simulink against a recorded
 % IEEE39 PCC voltage trace. This is an open-loop boundary replay reference;
 % the voltage record is identical to the DPsim case named in inputCsv.
 arguments
     inputCsv (1,:) char
     outputCsv (1,:) char
+    simulateToTime (1,1) double = Inf
+    writeArtifacts (1,1) logical = true
 end
 
 here = fileparts(mfilename('fullpath'));
 caseDir = fileparts(here);
 modelFile = fullfile(here, 'IEEE39_AvgInverter_Native_MatchedInit.slx');
 T = readtable(inputCsv, 'VariableNamingRule', 'preserve');
-time = T.time;
+loggedTime = T.time;
 vabc = [T.('inverter.v_0'), T.('inverter.v_1'), T.('inverter.v_2')];
-if numel(time) < 2 || any(diff(time) <= 0)
+if numel(loggedTime) < 2 || any(diff(loggedTime) <= 0)
     error('Input voltage trace needs at least two increasing time samples.');
 end
-sampleSteps = diff(time);
+sampleSteps = diff(loggedTime);
 fixedStep = median(sampleSteps);
-if any(abs(sampleSteps-fixedStep) > 1e-9*max(1,fixedStep))
+% DPsim CSV timestamps are printed to six decimal places. Rebuild the exact
+% fixed grid from the median interval instead of treating print rounding as
+% real variable communication steps (notably for 625 us input traces).
+timeTolerance = max(5.1e-6, 1e-9*max(1,fixedStep));
+if any(abs(sampleSteps-fixedStep) > timeTolerance)
     error('Native replay requires a uniform DPsim communication grid.');
+end
+time = (0:numel(loggedTime)-1)' * fixedStep;
+if any(abs(loggedTime-time) > timeTolerance)
+    error('Logged timestamps do not match a rounded uniform communication grid.');
+end
+stopTime = min(time(end), simulateToTime);
+if isfinite(simulateToTime) && simulateToTime > time(end) + timeTolerance
+    missingEnd = simulateToTime - time(end);
+    if abs(missingEnd-fixedStep) > timeTolerance || ...
+            abs(simulateToTime/fixedStep - round(simulateToTime/fixedStep)) > 1e-6
+        error('Requested Simulink stop time extends beyond the input grid by more than one step.');
+    end
+    % Some DPsim logs omit the final endpoint row. Extrapolate just that
+    % final voltage sample so Simulink still runs the full requested horizon.
+    vabc(end+1,:) = 2*vabc(end,:) - vabc(end-1,:);
+    time(end+1,1) = time(end) + fixedStep;
+    stopTime = simulateToTime;
+end
+if stopTime <= 0 || abs(stopTime/fixedStep - round(stopTime/fixedStep)) > 1e-6
+    error('Requested Simulink stop time must be positive and aligned with the fixed step.');
 end
 initialCurrent = localPassiveCurrent(vabc(1,:));
 
@@ -83,20 +109,22 @@ else
     end
     add_line(mdl, 'JoinCurrent/1', 'i_abc/1');
     set_param(mdl, 'Solver', 'ode4', 'FixedStep', num2str(fixedStep, '%.17g'), ...
-        'StopTime', num2str(time(end), '%.17g'), 'SaveOutput', 'on', ...
+        'StopTime', num2str(stopTime, '%.17g'), 'SaveOutput', 'on', ...
         'OutputSaveName', 'yout', 'SaveFormat', 'Dataset', ...
         'LoadExternalInput', 'on', 'ExternalInput', 'vabc');
     save_system(mdl, modelFile);
 end
 
-set_param(mdl, 'Solver', 'ode4', 'FixedStep', num2str(fixedStep, '%.17g'), ...
-    'StopTime', num2str(time(end), '%.17g'), 'SaveOutput', 'on', ...
+set_param(mdl, 'SimulationMode', 'accelerator', 'Solver', 'ode4', ...
+    'FixedStep', num2str(fixedStep, '%.17g'), ...
+    'StopTime', num2str(stopTime, '%.17g'), 'SaveOutput', 'on', ...
     'OutputSaveName', 'yout', 'SaveFormat', 'Dataset', ...
     'LoadExternalInput', 'on', 'ExternalInput', 'vabc');
 input = timeseries(vabc, time);
 simInput = Simulink.SimulationInput(mdl);
 simInput = simInput.setVariable('vabc', input);
-simInput = simInput.setModelParameter('StopTime', num2str(time(end), '%.17g'));
+simInput = simInput.setModelParameter('StopTime', num2str(stopTime, '%.17g'), ...
+    'SimulationMode', 'accelerator');
 tic;
 simOutput = sim(simInput);
 runtimeS = toc;
@@ -106,20 +134,27 @@ iNative = squeeze(currentSeries.Data);
 if size(iNative, 2) ~= 3 && size(iNative, 1) == 3
     iNative = iNative.';
 end
-out = table(tNative, iNative(:,1), iNative(:,2), iNative(:,3), ...
-    'VariableNames', {'time','i_a','i_b','i_c'});
-writetable(out, outputCsv);
-manifest = struct('mode','native_simulink_replay', ...
-    'runtime_s',runtimeS,'solver','ode4','fixed_step_s',fixedStep, ...
-    'stop_time_s',time(end),'input_csv',inputCsv, ...
+vNative = interp1(time, vabc, tNative, 'linear', 'extrap');
+out = table(tNative, vNative(:,1), vNative(:,2), vNative(:,3), ...
+    iNative(:,1), iNative(:,2), iNative(:,3), ...
+    'VariableNames', {'time','v_a','v_b','v_c','i_a','i_b','i_c'});
+if writeArtifacts
+    writetable(out, outputCsv);
+end
+manifest = struct('mode','native_simulink_reference', ...
+    'runtime_s',runtimeS,'simulation_mode','accelerator','solver','ode4', ...
+    'fixed_step_s',fixedStep, ...
+    'stop_time_s',stopTime,'input_csv',inputCsv, ...
     'output_csv',outputCsv,'sample_count',height(out), ...
     'reference_type','open_loop_voltage_replay');
 [folder,~,~] = fileparts(outputCsv);
 if isempty(folder), folder = pwd; end
-fid = fopen(fullfile(folder,'native_timing.json'),'w');
-cleanup = onCleanup(@() fclose(fid));
-fwrite(fid, jsonencode(manifest, 'PrettyPrint', true));
-fwrite(fid, newline);
+if writeArtifacts
+    fid = fopen(fullfile(folder,'native_timing.json'),'w');
+    cleanup = onCleanup(@() fclose(fid));
+    fwrite(fid, jsonencode(manifest, 'PrettyPrint', true));
+    fwrite(fid, newline);
+end
 fprintf('Native Simulink replay runtime_s=%.6f, samples=%d\n', ...
     runtimeS, height(out));
 end

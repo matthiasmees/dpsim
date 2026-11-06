@@ -29,9 +29,10 @@ BUILD = ROOT / "build-fmi/fmi-validation/gate6-weak-grid"
 EXE = ROOT / "build-fmi/dpsim-fmi/FMI_EMT_Ph3_Mixed"
 FMU = CASE / "sources/GridTiedInverterPortedV3.x86_64-linux.fmu"
 BASE_CONFIG = CASE / "sources/weak_grid_sag_50us.json"
+MATLAB_REFERENCE_DIR = ROOT / "build-fmi/fmi-validation/matlab-reference-attempt"
+MATLAB_REFERENCE_SUFFIX = "trap_1us"
 MATLAB_REFERENCE = (
-    ROOT
-    / "build-fmi/fmi-validation/matlab-reference-attempt/voltage_sag_reference_trap_1us.csv"
+    MATLAB_REFERENCE_DIR / f"voltage_sag_reference_{MATLAB_REFERENCE_SUFFIX}.csv"
 )
 NONLINEAR_TEST = ROOT / "build-fmi/dpsim-fmi/tests/FMI_NonlinearTest"
 NONLINEAR_FMU = ROOT / "build-fmi/dpsim-fmi/tests/nonlinear_threephase.fmu"
@@ -593,7 +594,9 @@ def compare_matlab_load_steps(out: pathlib.Path) -> None:
         ("balanced_load", (25000.0, 25000.0, 25000.0)),
         ("unbalanced_load", (25000.0, 12500.0, 50000.0)),
     ):
-        reference_path = reference_dir / f"{scenario}_reference_trap_1us.csv"
+        reference_path = (
+            reference_dir / f"{scenario}_reference_{MATLAB_REFERENCE_SUFFIX}.csv"
+        )
         if not reference_path.is_file():
             print(f"No regenerated MATLAB {scenario} CSV; skipping this comparison.")
             continue
@@ -773,11 +776,37 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--reuse", action="store_true", help="reuse completed CSV runs")
     parser.add_argument(
+        "--matlab-reference-settings",
+        choices=("original", "steady_2iter"),
+        default="original",
+        help="choose the original reference or the regenerated steady-state/two-iteration Simscape reference",
+    )
+    parser.add_argument(
         "--rerun-consistent-start-cases",
         action="store_true",
         help="rerun loaded-start and two short sag cases before producing metrics",
     )
     args = parser.parse_args()
+    global MATLAB_REFERENCE_SUFFIX, MATLAB_REFERENCE
+    MATLAB_REFERENCE_SUFFIX = (
+        "steady_2iter_1us"
+        if args.matlab_reference_settings == "steady_2iter"
+        else "trap_1us"
+    )
+    MATLAB_REFERENCE = (
+        MATLAB_REFERENCE_DIR / f"voltage_sag_reference_{MATLAB_REFERENCE_SUFFIX}.csv"
+    )
+    if args.matlab_reference_settings == "steady_2iter":
+        required = [
+            MATLAB_REFERENCE,
+            *(
+                MATLAB_REFERENCE_DIR / f"{case}_reference_steady_2iter_1us.csv"
+                for case in ("balanced_load", "unbalanced_load")
+            ),
+        ]
+        missing = [str(path) for path in required if not path.is_file()]
+        if missing:
+            raise SystemExit(f"Missing regenerated MATLAB references: {missing}")
     if not EXE.is_file() or not FMU.is_file():
         raise SystemExit(
             "Build FMI_EMT_Ph3_Mixed and confirm the Linux FMU is present."
@@ -860,8 +889,25 @@ def main() -> None:
             }
         )
 
-    out = BUILD / "paper"
+    out = BUILD / (
+        "paper_steady_2iter"
+        if args.matlab_reference_settings == "steady_2iter"
+        else "paper"
+    )
     out.mkdir(parents=True, exist_ok=True)
+    solver_info = {
+        "reference_variant": args.matlab_reference_settings,
+        "matlab_reference_suffix": MATLAB_REFERENCE_SUFFIX,
+        "steady_2iter_solver_settings": (
+            str(MATLAB_REFERENCE_DIR / "solver_settings_steady_2iter.json")
+            if args.matlab_reference_settings == "steady_2iter"
+            else None
+        ),
+        "dp_sim_initialization": "reused existing DPsim runs; startup initialization must be checked separately",
+    }
+    (out / "matlab_solver_reference_info.json").write_text(
+        json.dumps(solver_info, indent=2) + "\n"
+    )
     run_fixture_studies(out)
     run_finite_impedance_study(out)
     compare_matlab_voltage_sag(out)

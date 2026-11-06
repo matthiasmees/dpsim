@@ -31,6 +31,12 @@ fmi3Instance fmi3InstantiateModelExchange(fmi3String, fmi3String, fmi3String,
   return new (std::nothrow) State;
 }
 void fmi3FreeInstance(fmi3Instance instance) { delete state(instance); }
+fmi3Status fmi3Reset(fmi3Instance instance) {
+  if (!instance)
+    return fmi3Error;
+  *state(instance) = State{};
+  return fmi3OK;
+}
 fmi3Status fmi3Terminate(fmi3Instance instance) {
   state(instance)->mode = 4;
   return fmi3OK;

@@ -115,6 +115,27 @@ closure, phase-A voltage/current errors stay below 2.1 µV/0.53 µA; from 150 to
 160 ms they stay below 0.49 V/0.0103 A. Thus the zero-valued initial samples
 are the unenergized network state, not evidence of an FMI coupling failure.
 
+The source Simscape models originally did not match the steady-state solver
+configuration shown in the follow-up settings image: steady-state initialization
+was off, index reduction used derivative replacement, and fixed-cost runtime
+iterations were off with three nonlinear iterations. The regenerated references
+now use time equations, no index reduction, steady-state initialization,
+1e-9 consistency tolerance, a 1 µs trapezoidal local solver, runtime resolution
+of indeterminate equations, fixed-cost consistency iterations set to two, no
+impulse calculation, automatic linear algebra, and a 1024 kB delay budget.
+Regeneration applies these settings to saved copies under
+`build-fmi/fmi-validation/matlab-reference-attempt/steady_2iter/`; the previous
+reference CSVs remain available. The new CSVs and exact settings record are
+named `*_reference_steady_2iter_1us.csv` and `solver_settings_steady_2iter.json`.
+
+Run `python3 dpsim-fmi/examples/inverter/run_paper_validation.py --reuse
+--matlab-reference-settings steady_2iter` to refresh the separate
+`build-fmi/fmi-validation/gate6-weak-grid/paper_steady_2iter/` comparison.
+Those metrics reuse the earlier DPsim runs, which start from an unenergized
+network, while the new MATLAB references start from a steady-state operating
+point. Treat startup and any resulting differences as an initialization
+mismatch until matching DPsim steady-state initialization is established.
+
 ### Consistent loaded-start initialization
 
 `sources/consistent_loaded_start_50us.json` exercises the loaded initialization

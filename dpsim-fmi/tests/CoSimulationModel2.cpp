@@ -28,6 +28,12 @@ fmi2Status fmi2SetupExperiment(fmi2Component, fmi2Boolean, fmi2Real, fmi2Real,
 fmi2Status fmi2EnterInitializationMode(fmi2Component) { return fmi2OK; }
 fmi2Status fmi2ExitInitializationMode(fmi2Component) { return fmi2OK; }
 fmi2Status fmi2Terminate(fmi2Component) { return fmi2OK; }
+fmi2Status fmi2Reset(fmi2Component component) {
+  if (!component)
+    return fmi2Error;
+  *static_cast<Instance *>(component) = Instance{};
+  return fmi2OK;
+}
 fmi2Status fmi2SetReal(fmi2Component component,
                        const fmi2ValueReference references[], size_t count,
                        const fmi2Real values[]) {

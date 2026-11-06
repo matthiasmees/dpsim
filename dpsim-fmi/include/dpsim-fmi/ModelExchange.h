@@ -22,6 +22,13 @@ struct ModelExchangeOptions {
   /// this for exporters whose repeated GetFMUState/FreeFMUState calls retain
   /// memory; continuous-time evaluations still set time, states, and inputs.
   bool snapshotTrialEvaluations = true;
+  /// Reinitialize the FMU with terminal voltages transferred from the
+  /// connected network's initialized nodes (for example after
+  /// SystemTopology::initWithPowerflow). The FMU's own initialization
+  /// equations determine its internal state; additional operating-point
+  /// inputs must be supplied through the normal FMU input configuration.
+  /// Requires the FMU to export Reset.
+  bool initializeFromPowerflow = false;
 };
 struct ModelDescription {
   std::string modelName;
@@ -47,6 +54,7 @@ private:
   std::unique_ptr<Backend> mImpl;
   std::uint64_t mEvaluationRequests = 0;
   double mEvaluationWallTime = 0;
+  bool mInitializeFromPowerflow = false;
 
 public:
   using Ptr = std::shared_ptr<ModelExchange>;
@@ -59,6 +67,11 @@ public:
   ModelExchange(const ModelExchange &) = delete;
   ModelExchange &operator=(const ModelExchange &) = delete;
   const ModelDescription &description() const;
+  bool initializeFromPowerflow() const { return mInitializeFromPowerflow; }
+  /// Reset and re-enter FMI initialization mode with a new vector of inputs.
+  /// This is intended for network-derived initial conditions before time
+  /// integration starts.
+  void reinitializeFromInputs(const CPS::Matrix &inputs);
   std::pair<CPS::Matrix, CPS::Matrix> evaluate(const CPS::Matrix &state,
                                                const CPS::Matrix &inputs,
                                                double time = 0);

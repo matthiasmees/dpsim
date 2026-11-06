@@ -13,9 +13,12 @@ struct Instance {
   std::array<double, 3> current{};
   double time = 0.0;
   bool initialized = false;
+  bool currentSetByHost = false;
 };
 
-Instance *instance(fmi3Instance value) { return static_cast<Instance *>(value); }
+Instance *instance(fmi3Instance value) {
+  return static_cast<Instance *>(value);
+}
 
 bool validReferences(const fmi3ValueReference references[], size_t count,
                      fmi3ValueReference maximum) {
@@ -28,11 +31,11 @@ bool validReferences(const fmi3ValueReference references[], size_t count,
 std::array<double, 3> passiveCurrentReference(const Instance *model) {
   // Clarke transform with amplitude-invariant phase conventions.
   constexpr double root3over2 = 0.86602540378443864676;
-  const double alpha = (2.0 / 3.0) *
-                       (model->voltage[0] - 0.5 * model->voltage[1] -
-                        0.5 * model->voltage[2]);
-  const double beta = (2.0 / 3.0) * root3over2 *
-                      (model->voltage[1] - model->voltage[2]);
+  const double alpha =
+      (2.0 / 3.0) *
+      (model->voltage[0] - 0.5 * model->voltage[1] - 0.5 * model->voltage[2]);
+  const double beta =
+      (2.0 / 3.0) * root3over2 * (model->voltage[1] - model->voltage[2]);
   const double voltageSquared = alpha * alpha + beta * beta;
   if (!std::isfinite(voltageSquared) || voltageSquared < 1.0)
     return {0.0, 0.0, 0.0};
@@ -46,10 +49,10 @@ std::array<double, 3> passiveCurrentReference(const Instance *model) {
   constexpr double responseTimeS = 5e-3;
   (void)responseTimeS;
   const double factor = 2.0 / (3.0 * voltageSquared);
-  double injectionAlpha = factor * (activePowerW * alpha +
-                                    reactivePowerVar * beta);
-  double injectionBeta = factor * (activePowerW * beta -
-                                   reactivePowerVar * alpha);
+  double injectionAlpha =
+      factor * (activePowerW * alpha + reactivePowerVar * beta);
+  double injectionBeta =
+      factor * (activePowerW * beta - reactivePowerVar * alpha);
   const double ratedPeak = std::sqrt(2.0) *
                            std::hypot(activePowerW, reactivePowerVar) /
                            (std::sqrt(3.0) * nominalLineVoltageV);
@@ -79,17 +82,36 @@ std::array<double, 3> derivatives(const Instance *model) {
 extern "C" {
 const char *fmi3GetVersion(void) { return "3.0"; }
 
-fmi3Instance fmi3InstantiateModelExchange(
-    fmi3String, fmi3String, fmi3String, fmi3Boolean, fmi3Boolean,
-    fmi3InstanceEnvironment, fmi3LogMessageCallback) {
+fmi3Status fmi3SetDebugLogging(fmi3Instance value, fmi3Boolean,
+                               size_t categoryCount,
+                               const fmi3String categories[]) {
+  if (!value || (categoryCount > 0 && !categories))
+    return fmi3Error;
+  // This FMU intentionally emits no log categories; accept the standard
+  // logging configuration call from hosts such as the Simulink FMU block.
+  return fmi3OK;
+}
+
+fmi3Status fmi3Reset(fmi3Instance value) {
+  if (!value)
+    return fmi3Error;
+  auto *model = instance(value);
+  *model = Instance{};
+  model->voltage = {288466.352188, -200716.863664, -87749.488524};
+  return fmi3OK;
+}
+
+fmi3Instance fmi3InstantiateModelExchange(fmi3String, fmi3String, fmi3String,
+                                          fmi3Boolean, fmi3Boolean,
+                                          fmi3InstanceEnvironment,
+                                          fmi3LogMessageCallback) {
   return new (std::nothrow) Instance;
 }
 
 fmi3Instance fmi3InstantiateCoSimulation(
     fmi3String, fmi3String, fmi3String, fmi3Boolean, fmi3Boolean, fmi3Boolean,
-    fmi3Boolean, const fmi3ValueReference[], size_t,
-    fmi3InstanceEnvironment, fmi3LogMessageCallback,
-    fmi3IntermediateUpdateCallback) {
+    fmi3Boolean, const fmi3ValueReference[], size_t, fmi3InstanceEnvironment,
+    fmi3LogMessageCallback, fmi3IntermediateUpdateCallback) {
   return new (std::nothrow) Instance;
 }
 
@@ -103,6 +125,7 @@ fmi3Status fmi3EnterInitializationMode(fmi3Instance value, fmi3Boolean,
   auto *model = instance(value);
   model->time = startTime;
   model->current.fill(0.0);
+  model->currentSetByHost = false;
   model->initialized = false;
   return fmi3OK;
 }
@@ -111,7 +134,10 @@ fmi3Status fmi3ExitInitializationMode(fmi3Instance value) {
   if (!value)
     return fmi3Error;
   auto *model = instance(value);
-  model->current = passiveCurrentReference(model);
+  // Derive the state from the initialization voltage unless the host supplied
+  // an explicit current-state start value.
+  if (!model->currentSetByHost)
+    model->current = passiveCurrentReference(model);
   model->initialized = true;
   return fmi3OK;
 }
@@ -144,14 +170,24 @@ fmi3Status fmi3Terminate(fmi3Instance value) {
 fmi3Status fmi3SetFloat64(fmi3Instance value,
                           const fmi3ValueReference references[], size_t count,
                           const fmi3Float64 values[], size_t valueCount) {
-  if (!value || !references || !values || count != valueCount ||
-      !validReferences(references, count, 2))
+  if (!value)
+    return fmi3Error;
+  if (count == 0 && valueCount == 0)
+    return fmi3OK;
+  if (!references || !values || count != valueCount)
     return fmi3Error;
   auto *model = instance(value);
   for (size_t i = 0; i < count; ++i) {
     if (!std::isfinite(values[i]))
       return fmi3Error;
-    model->voltage[references[i]] = values[i];
+    if (references[i] < 3) {
+      model->voltage[references[i]] = values[i];
+    } else if (references[i] >= 6 && references[i] < 9) {
+      model->current[references[i] - 6] = values[i];
+      model->currentSetByHost = true;
+    } else {
+      return fmi3Error;
+    }
   }
   return fmi3OK;
 }
@@ -159,7 +195,11 @@ fmi3Status fmi3SetFloat64(fmi3Instance value,
 fmi3Status fmi3GetFloat64(fmi3Instance value,
                           const fmi3ValueReference references[], size_t count,
                           fmi3Float64 values[], size_t valueCount) {
-  if (!value || !instance(value)->initialized || !references || !values ||
+  if (!value)
+    return fmi3Error;
+  if (count == 0 && valueCount == 0)
+    return fmi3OK;
+  if (!instance(value)->initialized || !references || !values ||
       count != valueCount || !validReferences(references, count, 12))
     return fmi3Error;
   const auto *model = instance(value);
@@ -178,6 +218,105 @@ fmi3Status fmi3GetFloat64(fmi3Instance value,
       values[i] = rates[reference - 10];
   }
   return fmi3OK;
+}
+
+// Required FMI 3 typed accessors are exported for host compatibility. This
+// FMU declares only Float64 variables, so unsupported types accept empty
+// requests and reject any non-empty request.
+#define FMI3_EMPTY_GETTER(typeName, valueType)                                 \
+  fmi3Status fmi3Get##typeName(fmi3Instance, const fmi3ValueReference[],       \
+                               size_t count, valueType[], size_t valueCount) { \
+    return count == 0 && valueCount == 0 ? fmi3OK : fmi3Error;                 \
+  }
+#define FMI3_EMPTY_SETTER(typeName, valueType)                                 \
+  fmi3Status fmi3Set##typeName(fmi3Instance, const fmi3ValueReference[],       \
+                               size_t count, const valueType[],                \
+                               size_t valueCount) {                            \
+    return count == 0 && valueCount == 0 ? fmi3OK : fmi3Error;                 \
+  }
+FMI3_EMPTY_GETTER(Float32, fmi3Float32)
+FMI3_EMPTY_GETTER(Int8, fmi3Int8)
+FMI3_EMPTY_GETTER(UInt8, fmi3UInt8)
+FMI3_EMPTY_GETTER(Int16, fmi3Int16)
+FMI3_EMPTY_GETTER(UInt16, fmi3UInt16)
+FMI3_EMPTY_GETTER(Int32, fmi3Int32)
+FMI3_EMPTY_GETTER(UInt32, fmi3UInt32)
+FMI3_EMPTY_GETTER(Int64, fmi3Int64)
+FMI3_EMPTY_GETTER(UInt64, fmi3UInt64)
+FMI3_EMPTY_GETTER(Boolean, fmi3Boolean)
+FMI3_EMPTY_GETTER(String, fmi3String)
+FMI3_EMPTY_SETTER(Float32, fmi3Float32)
+FMI3_EMPTY_SETTER(Int8, fmi3Int8)
+FMI3_EMPTY_SETTER(UInt8, fmi3UInt8)
+FMI3_EMPTY_SETTER(Int16, fmi3Int16)
+FMI3_EMPTY_SETTER(UInt16, fmi3UInt16)
+FMI3_EMPTY_SETTER(Int32, fmi3Int32)
+FMI3_EMPTY_SETTER(UInt32, fmi3UInt32)
+FMI3_EMPTY_SETTER(Int64, fmi3Int64)
+FMI3_EMPTY_SETTER(UInt64, fmi3UInt64)
+FMI3_EMPTY_SETTER(Boolean, fmi3Boolean)
+FMI3_EMPTY_SETTER(String, fmi3String)
+#undef FMI3_EMPTY_GETTER
+#undef FMI3_EMPTY_SETTER
+
+fmi3Status fmi3GetBinary(fmi3Instance, const fmi3ValueReference[], size_t count,
+                         size_t[], fmi3Binary[], size_t valueCount) {
+  return count == 0 && valueCount == 0 ? fmi3OK : fmi3Error;
+}
+fmi3Status fmi3SetBinary(fmi3Instance, const fmi3ValueReference[], size_t count,
+                         const size_t[], const fmi3Binary[],
+                         size_t valueCount) {
+  return count == 0 && valueCount == 0 ? fmi3OK : fmi3Error;
+}
+fmi3Status fmi3GetClock(fmi3Instance, const fmi3ValueReference[], size_t count,
+                        fmi3Clock[]) {
+  return count == 0 ? fmi3OK : fmi3Error;
+}
+fmi3Status fmi3SetClock(fmi3Instance, const fmi3ValueReference[], size_t count,
+                        const fmi3Clock[]) {
+  return count == 0 ? fmi3OK : fmi3Error;
+}
+fmi3Status fmi3GetIntervalDecimal(fmi3Instance, const fmi3ValueReference[],
+                                  size_t count, fmi3Float64[],
+                                  fmi3IntervalQualifier[]) {
+  return count == 0 ? fmi3OK : fmi3Error;
+}
+fmi3Status fmi3GetIntervalFraction(fmi3Instance, const fmi3ValueReference[],
+                                   size_t count, fmi3UInt64[], fmi3UInt64[],
+                                   fmi3IntervalQualifier[]) {
+  return count == 0 ? fmi3OK : fmi3Error;
+}
+fmi3Status fmi3GetShiftDecimal(fmi3Instance, const fmi3ValueReference[],
+                               size_t count, fmi3Float64[]) {
+  return count == 0 ? fmi3OK : fmi3Error;
+}
+fmi3Status fmi3GetShiftFraction(fmi3Instance, const fmi3ValueReference[],
+                                size_t count, fmi3UInt64[], fmi3UInt64[]) {
+  return count == 0 ? fmi3OK : fmi3Error;
+}
+fmi3Status fmi3SetIntervalDecimal(fmi3Instance, const fmi3ValueReference[],
+                                  size_t count, const fmi3Float64[]) {
+  return count == 0 ? fmi3OK : fmi3Error;
+}
+fmi3Status fmi3SetIntervalFraction(fmi3Instance, const fmi3ValueReference[],
+                                   size_t count, const fmi3UInt64[],
+                                   const fmi3UInt64[]) {
+  return count == 0 ? fmi3OK : fmi3Error;
+}
+fmi3Status fmi3SetShiftDecimal(fmi3Instance, const fmi3ValueReference[],
+                               size_t count, const fmi3Float64[]) {
+  return count == 0 ? fmi3OK : fmi3Error;
+}
+fmi3Status fmi3SetShiftFraction(fmi3Instance, const fmi3ValueReference[],
+                                size_t count, const fmi3UInt64[],
+                                const fmi3UInt64[]) {
+  return count == 0 ? fmi3OK : fmi3Error;
+}
+fmi3Status fmi3EnterConfigurationMode(fmi3Instance value) {
+  return value ? fmi3OK : fmi3Error;
+}
+fmi3Status fmi3ExitConfigurationMode(fmi3Instance value) {
+  return value ? fmi3OK : fmi3Error;
 }
 
 fmi3Status fmi3SetTime(fmi3Instance value, fmi3Float64 time) {
@@ -260,8 +399,8 @@ fmi3Status fmi3DoStep(fmi3Instance value, fmi3Float64 currentTime,
   const auto target = passiveCurrentReference(model);
   const double decay = std::exp(-stepSize / responseTimeS);
   for (size_t phase = 0; phase < 3; ++phase)
-    model->current[phase] = target[phase] +
-                            (model->current[phase] - target[phase]) * decay;
+    model->current[phase] =
+        target[phase] + (model->current[phase] - target[phase]) * decay;
   model->time += stepSize;
   *eventHandlingNeeded = *terminateSimulation = *earlyReturn = fmi3False;
   *lastSuccessfulTime = model->time;

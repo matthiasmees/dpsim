@@ -215,6 +215,13 @@ void NonlinearSSN::initializeFromNodesAndTerminals(Real) {
     // convert them to phase peak values before presenting them to the FMU.
     mInitialVoltage = (RMS3PH_TO_PEAK1PH * terminalVoltage).real();
   }
+  if (mModel->initializeFromPowerflow()) {
+    if (mInitialVoltage.cwiseAbs().maxCoeff() <= 1.0)
+      throw std::invalid_argument(
+          "FMI powerflow initialization requires a nonzero network terminal "
+          "voltage; initialize the topology from a powerflow first");
+    mModel->reinitializeFromInputs(inputsAt(mInitialVoltage, 0, false));
+  }
   initializeValues();
 }
 SimPowerComp<Real>::Ptr NonlinearSSN::clone(String) {

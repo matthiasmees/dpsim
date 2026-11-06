@@ -7,11 +7,11 @@
 #include <dpsim-fmi/NonlinearSSN.h>
 
 #include <cmath>
+#include <dpsim/SequentialScheduler.h>
 #include <fstream>
 #include <iostream>
 #include <string>
 #include <vector>
-#include <dpsim/SequentialScheduler.h>
 
 using namespace CPS;
 using namespace DPsim;
@@ -168,8 +168,8 @@ SystemTopology makePowerflowSystem() {
     const Real pg = gen.bus == 30 ? 0.5 * gen.pg : gen.pg;
     const Real qg = gen.bus == 30 ? 0.5 * gen.qg : gen.qg;
     machine->setParameters(gen.baseS * 1e6, baseVoltage, pg * 1e6,
-                           gen.vg * baseVoltage, pfBusType(bus.type),
-                           qg * 1e6, 2000e6, -2000e6);
+                           gen.vg * baseVoltage, pfBusType(bus.type), qg * 1e6,
+                           2000e6, -2000e6);
     machine->setBaseVoltage(baseVoltage);
     machine->connect({nodes.at(gen.bus - 1)});
     components.push_back(machine);
@@ -216,13 +216,15 @@ SystemTopology makePowerflowSystem() {
 }
 
 void runInverter(const SystemTopology &systemPF, const std::string &mode,
-                 const std::string &fmuPath, Real timeStep, Real finalTime) {
+                 const std::string &fmuPath, Real timeStep, Real finalTime,
+                 Real loadStepTime) {
   const String simName = "IEEE39_Inverter_" + mode;
   Logger::setLogDir("logs/" + simName);
   std::vector<EMT::SimNode::Ptr> nodes;
   SystemNodeList systemNodes;
   for (const auto &bus : buses) {
-    auto node = EMT::SimNode::make("N" + std::to_string(bus.id), PhaseType::ABC);
+    auto node =
+        EMT::SimNode::make("N" + std::to_string(bus.id), PhaseType::ABC);
     nodes.push_back(node);
     systemNodes.push_back(node);
   }
@@ -294,22 +296,25 @@ void runInverter(const SystemTopology &systemPF, const std::string &mode,
   }
 
   FMI::NewtonSettings newtonSettings;
+  // Keep the ME network coupling to a maximum of two Newton iterations.
+  // NonlinearSSN uses the implicit trapezoidal state residual.
+  newtonSettings.maxIterations = 2;
   newtonSettings.multirateMode = FMI::MultirateMode::SinglePassExplicit;
-  FMI::CoSimulationElectricalPort port{{"v_a", "v_b", "v_c"},
-                                       {"i_a", "i_b", "i_c"}, 1.0};
+  FMI::CoSimulationElectricalPort port{
+      {"v_a", "v_b", "v_c"}, {"i_a", "i_b", "i_c"}, 1.0};
   std::shared_ptr<SimPowerComp<Real>> inverter;
   if (mode == "me") {
     FMI::ModelExchangeOptions options;
     auto model = std::make_shared<FMI::ModelExchange>(fmuPath, options);
     inverter = FMI::NonlinearSSN::make(
         "Gen30_AveragedInverter", model,
-        FMI::ElectricalPort3Ph{{"v_a", "v_b", "v_c"},
-                               {"i_a", "i_b", "i_c"}, 1.0},
+        FMI::ElectricalPort3Ph{
+            {"v_a", "v_b", "v_c"}, {"i_a", "i_b", "i_c"}, 1.0},
         newtonSettings);
   } else if (mode == "cs") {
     auto model = std::make_shared<FMI::CoSimulation>(fmuPath);
-    inverter = FMI::CoSimulationSSN::make("Gen30_AveragedInverter", model,
-                                          port);
+    inverter =
+        FMI::CoSimulationSSN::make("Gen30_AveragedInverter", model, port);
   } else {
     throw std::invalid_argument("mode must be me or cs");
   }
@@ -354,12 +359,11 @@ void runInverter(const SystemTopology &systemPF, const std::string &mode,
     logger->logAttribute("fmi_evaluation_wall_time_s",
                          inverter->attribute("fmi_evaluation_wall_time_s"));
   } else {
-    logger->logAttribute("fmi_do_steps",
-                         inverter->attribute("cosim_do_steps"));
+    logger->logAttribute("fmi_do_steps", inverter->attribute("cosim_do_steps"));
   }
 
   Simulation sim(simName, Logger::Level::off);
-  sim.addEvent(SwitchEvent3Ph::make(0.17, loadSwitch, true));
+  sim.addEvent(SwitchEvent3Ph::make(loadStepTime, loadSwitch, true));
   sim.setSystem(system);
   sim.setDomain(Domain::EMT);
   sim.setSolverType(Solver::Type::MNA);
@@ -391,28 +395,35 @@ void runInverter(const SystemTopology &systemPF, const std::string &mode,
     stepTiming << index + 1 << "," << (index + 1) * timeStep << ","
                << stepTimes[index] << "\n";
 
-  const Real totalRuntime = initializeElapsed.count() + simulationElapsed.count();
+  const Real totalRuntime =
+      initializeElapsed.count() + simulationElapsed.count();
   std::cout << simName << " runtime_s=" << totalRuntime
             << " initialization_s=" << initializeElapsed.count()
             << " simulation_s=" << simulationElapsed.count()
             << " steps=" << std::llround(finalTime / timeStep)
             << " dt_s=" << timeStep << " stop_s=" << finalTime
-            << " load_step_s=0.17"
-            << " load_step_MW=100" << "\n";
+            << " load_step_s=" << loadStepTime << " load_step_MW=100"
+            << "\n";
 }
 } // namespace
 
 int main(int argc, char **argv) {
-  if (argc != 5) {
-    std::cerr << "Usage: IEEE39_AvgInverter me|cs inverter.fmu stop_s step_s\n";
+  if (argc != 6) {
+    std::cerr << "Usage: IEEE39_AvgInverter me|cs inverter.fmu stop_s step_s "
+                 "load_step_s\n";
     return 2;
   }
   try {
     const std::string mode = argv[1];
     const Real finalTime = std::stod(argv[3]);
     const Real timeStep = std::stod(argv[4]);
-    if (finalTime <= 0 || timeStep <= 0 ||
-        std::abs(finalTime / timeStep - std::round(finalTime / timeStep)) > 1e-8)
+    const Real loadStepTime = std::stod(argv[5]);
+    if (finalTime <= 0 || timeStep <= 0 || loadStepTime <= 0 ||
+        loadStepTime >= finalTime ||
+        std::abs(finalTime / timeStep - std::round(finalTime / timeStep)) >
+            1e-8 ||
+        std::abs(loadStepTime / timeStep -
+                 std::round(loadStepTime / timeStep)) > 1e-8)
       throw std::invalid_argument("invalid time grid");
 
     auto systemPF = makePowerflowSystem();
@@ -425,7 +436,7 @@ int main(int argc, char **argv) {
     pf.setFinalTime(.01);
     pf.doInitFromNodesAndTerminals(false);
     pf.run();
-    runInverter(systemPF, mode, argv[2], timeStep, finalTime);
+    runInverter(systemPF, mode, argv[2], timeStep, finalTime, loadStepTime);
   } catch (const std::exception &error) {
     std::cerr << error.what() << '\n';
     return 1;

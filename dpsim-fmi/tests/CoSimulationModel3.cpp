@@ -29,6 +29,12 @@ fmi3Status fmi3EnterInitializationMode(fmi3Instance, fmi3Boolean, fmi3Float64,
 }
 fmi3Status fmi3ExitInitializationMode(fmi3Instance) { return fmi3OK; }
 fmi3Status fmi3Terminate(fmi3Instance) { return fmi3OK; }
+fmi3Status fmi3Reset(fmi3Instance instance) {
+  if (!instance)
+    return fmi3Error;
+  *static_cast<Instance *>(instance) = Instance{};
+  return fmi3OK;
+}
 fmi3Status fmi3SetFloat64(fmi3Instance instance,
                           const fmi3ValueReference references[], size_t count,
                           const fmi3Float64 values[], size_t valueCount) {

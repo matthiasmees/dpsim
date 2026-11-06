@@ -51,6 +51,12 @@ fmi3Status fmi3Terminate(fmi3Instance instance) {
   state(instance)->mode = 4;
   return fmi3OK;
 }
+fmi3Status fmi3Reset(fmi3Instance instance) {
+  if (!instance)
+    return fmi3Error;
+  *state(instance) = State{};
+  return fmi3OK;
+}
 fmi3Status fmi3EnterInitializationMode(fmi3Instance instance, fmi3Boolean,
                                        fmi3Float64, fmi3Float64, fmi3Boolean,
                                        fmi3Float64) {

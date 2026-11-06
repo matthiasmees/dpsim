@@ -39,8 +39,19 @@ int main(int argc, char **argv) {
       rejected = true;
     }
     require(rejected, "nonsequential communication point was accepted");
+    Matrix reinitInputs(1, 1);
+    reinitInputs(0, 0) = 3.0;
+    model.reinitializeFromInputs(reinitInputs);
+    require(std::abs(model.time()) < 1e-12,
+            "FMU reset did not restore the initial communication time");
+    require(std::abs(model.outputs()(0, 0)) < 1e-12,
+            "FMU reset did not restore its initialized output");
+    const auto &reinitialized = model.doStep(0.0, 0.1);
+    require(std::abs(reinitialized(0, 0) - 0.3) < 1e-12,
+            "FMU was not reinitialized with the requested input");
     std::cout << "PASS: FMI Co-Simulation initialization, input mapping, "
-                 "doStep sequence, and output retrieval\n";
+                 "doStep sequence, reset/reinitialization, and output "
+                 "retrieval\n";
   } catch (const std::exception &error) {
     std::cerr << error.what() << '\n';
     return 1;

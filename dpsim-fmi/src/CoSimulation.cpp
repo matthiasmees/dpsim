@@ -196,6 +196,7 @@ public:
   std::vector<std::uint32_t> inputReferences, outputReferences;
   virtual ~Backend() = default;
   virtual void setInputs(const Matrix &) = 0;
+  virtual void reinitializeFromInputs(const Matrix &) = 0;
   virtual void doStep(double, double) = 0;
   virtual double time() const = 0;
 };
@@ -221,6 +222,7 @@ class Fmi3CoSimulation final : public CoSimulation::Backend {
   FMI3_FUNCTION(GetVersion);
   FMI3_FUNCTION(FreeInstance);
   FMI3_FUNCTION(Terminate);
+  FMI3_FUNCTION(Reset);
   FMI3_FUNCTION(EnterInitializationMode);
   FMI3_FUNCTION(ExitInitializationMode);
   FMI3_FUNCTION(SetFloat64);
@@ -449,6 +451,7 @@ public:
     LOAD3(GetFloat64);
     LOAD3(DoStep);
 #undef LOAD3
+    Reset = symbol<decltype(Reset)>("fmi3Reset", false);
     EnterStepMode = symbol<decltype(EnterStepMode)>("fmi3EnterStepMode", false);
     EnterEventMode =
         symbol<decltype(EnterEventMode)>("fmi3EnterEventMode", false);
@@ -469,6 +472,15 @@ public:
         nullptr);
     if (!mInstance)
       fail("instantiation failed: " + mLastMessage);
+    initializeInstance(model.initialInputs);
+  }
+
+  void initializeInstance(const Matrix &initialInputs) {
+    if (initialInputs.rows() !=
+            static_cast<Eigen::Index>(inputReferences.size()) ||
+        initialInputs.cols() != 1 || !initialInputs.allFinite())
+      fail("network initial inputs have invalid dimensions or values");
+    model.initialInputs = initialInputs;
     check(EnterInitializationMode(mInstance, fmi3False, 0, 0, fmi3False, 0),
           "enter initialization mode");
     setInputs(model.initialInputs);
@@ -523,6 +535,15 @@ public:
     if (!outputs.allFinite())
       fail("output vector contains non-finite values");
   }
+  void reinitializeFromInputs(const Matrix &initialInputs) override {
+    if (!Reset)
+      fail("powerflow initialization requires FMI 3.0 fmi3Reset");
+    check(Reset(mInstance), "reset before powerflow initialization");
+    mValid = true;
+    mTerminated = false;
+    mTime = 0;
+    initializeInstance(initialInputs);
+  }
   double time() const override { return mTime; }
 };
 
@@ -544,6 +565,7 @@ class Fmi2CoSimulation final : public CoSimulation::Backend {
   FMI2_FUNCTION(GetVersion);
   FMI2_FUNCTION(FreeInstance);
   FMI2_FUNCTION(Terminate);
+  FMI2_FUNCTION(Reset);
   FMI2_FUNCTION(SetupExperiment);
   FMI2_FUNCTION(EnterInitializationMode);
   FMI2_FUNCTION(ExitInitializationMode);
@@ -747,6 +769,7 @@ public:
     LOAD2(GetReal);
     LOAD2(DoStep);
 #undef LOAD2
+    Reset = symbol<decltype(Reset)>("fmi2Reset", false);
     CancelStep = symbol<decltype(CancelStep)>("fmi2CancelStep", false);
     if (!GetVersion() || std::string(GetVersion()) != "2.0")
       fail("binary does not implement FMI 2.0");
@@ -759,6 +782,15 @@ public:
                             options.loggingOn ? fmi2True : fmi2False);
     if (!mInstance)
       fail("instantiation failed: " + mLastMessage);
+    initializeInstance(model.initialInputs);
+  }
+
+  void initializeInstance(const Matrix &initialInputs) {
+    if (initialInputs.rows() !=
+            static_cast<Eigen::Index>(inputReferences.size()) ||
+        initialInputs.cols() != 1 || !initialInputs.allFinite())
+      fail("network initial inputs have invalid dimensions or values");
+    model.initialInputs = initialInputs;
     check(SetupExperiment(mInstance, fmi2False, 0, 0, fmi2False, 0),
           "setup experiment");
     check(EnterInitializationMode(mInstance), "enter initialization mode");
@@ -771,6 +803,15 @@ public:
           "read initial outputs");
     if (!outputs.allFinite())
       fail("initial outputs contain non-finite values");
+  }
+  void reinitializeFromInputs(const Matrix &initialInputs) override {
+    if (!Reset)
+      fail("powerflow initialization requires FMI 2.0 fmi2Reset");
+    check(Reset(mInstance), "reset before powerflow initialization");
+    mValid = true;
+    mTerminated = false;
+    mTime = 0;
+    initializeInstance(initialInputs);
   }
   void setInputs(const Matrix &values) override {
     if (values.rows() != static_cast<Eigen::Index>(inputReferences.size()) ||
@@ -816,7 +857,8 @@ CoSimulation::CoSimulation(const std::string &path, CoSimulationOptions options)
     : CoSimulation(path, std::vector<ScalarInput>{}, options) {}
 CoSimulation::CoSimulation(const std::string &path,
                            const std::vector<ScalarInput> &inputs,
-                           CoSimulationOptions options) {
+                           CoSimulationOptions options)
+    : mInitializeFromPowerflow(options.initializeFromPowerflow) {
   Archive archive;
   archive.extract(path);
   const auto xmlPath = archive.directory / "modelDescription.xml";
@@ -844,6 +886,9 @@ const Matrix &CoSimulation::inputs() const { return mImpl->inputs; }
 const Matrix &CoSimulation::outputs() const { return mImpl->outputs; }
 double CoSimulation::time() const { return mImpl->time(); }
 void CoSimulation::setInputs(const Matrix &inputs) { mImpl->setInputs(inputs); }
+void CoSimulation::reinitializeFromInputs(const Matrix &inputs) {
+  mImpl->reinitializeFromInputs(inputs);
+}
 void CoSimulation::setInput(const std::string &name, double value) {
   if (!std::isfinite(value))
     fail("input value must be finite");

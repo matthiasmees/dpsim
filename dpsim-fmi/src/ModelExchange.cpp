@@ -151,6 +151,7 @@ public:
   virtual ~Backend() = default;
   virtual std::pair<Matrix, Matrix> evaluate(const Matrix &, const Matrix &,
                                              double) = 0;
+  virtual void reinitializeFromInputs(const Matrix &) = 0;
   virtual double nextTimeEvent() const = 0;
   virtual const std::pair<Matrix, Matrix> &acceptedValues() const = 0;
   virtual const Matrix &acceptedState() const = 0;
@@ -203,6 +204,7 @@ class Fmi3Backend final : public ModelExchange::Backend {
   FMI_FUNCTION(GetVersion);
   FMI_FUNCTION(FreeInstance);
   FMI_FUNCTION(Terminate);
+  FMI_FUNCTION(Reset);
   FMI_FUNCTION(EnterInitializationMode);
   FMI_FUNCTION(ExitInitializationMode);
   FMI_FUNCTION(UpdateDiscreteStates);
@@ -496,6 +498,7 @@ public:
     LOAD(GetNumberOfContinuousStates);
     LOAD(GetNumberOfEventIndicators);
 #undef LOAD
+    Reset = symbol<decltype(Reset)>("fmi3Reset", false);
     GetEventIndicators =
         symbol<decltype(GetEventIndicators)>("fmi3GetEventIndicators", false);
     CompletedIntegratorStep = symbol<decltype(CompletedIntegratorStep)>(
@@ -532,6 +535,14 @@ public:
         fmi3False, this, log);
     if (!mInstance)
       fail("instantiation failed: " + mLastMessage);
+    initializeInstance(model.initialInputs);
+  }
+
+  void initializeInstance(const Matrix &initialInputs) {
+    if (initialInputs.rows() != static_cast<Eigen::Index>(mInputs.size()) ||
+        initialInputs.cols() != 1 || !initialInputs.allFinite())
+      fail("network initial inputs have invalid dimensions or values");
+    model.initialInputs = initialInputs;
     check(EnterInitializationMode(mInstance, fmi3False, 0, 0, fmi3False, 0),
           "enter initialization mode");
     check(SetFloat64(mInstance, mInputs.data(), mInputs.size(),
@@ -593,6 +604,20 @@ public:
     mUseTrialSnapshots = mOptions.snapshotTrialEvaluations && GetFMUState &&
                          (model.hasDiscreteVariables ||
                           std::isfinite(mNextTimeEvent) || indicators != 0);
+  }
+
+  void reinitializeFromInputs(const Matrix &initialInputs) override {
+    if (!Reset)
+      fail("powerflow initialization requires FMI 3.0 fmi3Reset");
+    if (mCheckpoint && mCheckpoint->runtime && FreeFMUState)
+      FreeFMUState(mInstance, &mCheckpoint->runtime);
+    mCheckpoint.reset();
+    check(Reset(mInstance), "reset before powerflow initialization");
+    mValid = true;
+    mContinuous = false;
+    mTime = mAcceptedTime = 0;
+    mNextTimeEvent = std::numeric_limits<double>::infinity();
+    initializeInstance(initialInputs);
   }
 
   Matrix readEventIndicators() {
@@ -890,6 +915,7 @@ class Fmi2Backend final : public ModelExchange::Backend {
   FMI2_FUNCTION(GetVersion);
   FMI2_FUNCTION(FreeInstance);
   FMI2_FUNCTION(Terminate);
+  FMI2_FUNCTION(Reset);
   FMI2_FUNCTION(SetupExperiment);
   FMI2_FUNCTION(EnterInitializationMode);
   FMI2_FUNCTION(ExitInitializationMode);
@@ -1258,6 +1284,7 @@ public:
     SetFMUstate = symbol<decltype(SetFMUstate)>("fmi2SetFMUstate", false);
     FreeFMUstate = symbol<decltype(FreeFMUstate)>("fmi2FreeFMUstate", false);
 #undef LOAD2
+    Reset = symbol<decltype(Reset)>("fmi2Reset", false);
     if (!GetVersion() || std::string(GetVersion()) != "2.0")
       fail("binary does not implement FMI 2.0");
     if (model.canBeInstantiatedOnlyOncePerProcess) {
@@ -1273,6 +1300,14 @@ public:
                             &callbacks, fmi2False, fmi2False);
     if (!mInstance)
       fail("FMI 2.0 instantiation failed: " + mLastMessage);
+    initializeInstance(model.initialInputs);
+  }
+
+  void initializeInstance(const Matrix &initialInputs) {
+    if (initialInputs.rows() != static_cast<Eigen::Index>(mInputs.size()) ||
+        initialInputs.cols() != 1 || !initialInputs.allFinite())
+      fail("network initial inputs have invalid dimensions or values");
+    model.initialInputs = initialInputs;
     check(SetupExperiment(mInstance, fmi2False, 0, 0, fmi2False, 0),
           "setup FMI 2.0 experiment");
     check(EnterInitializationMode(mInstance), "enter FMI 2.0 initialization");
@@ -1315,6 +1350,17 @@ public:
                          mCanGetAndSetFMUState && GetFMUstate && SetFMUstate &&
                          FreeFMUstate &&
                          (model.hasDiscreteVariables || indicators != 0);
+  }
+
+  void reinitializeFromInputs(const Matrix &initialInputs) override {
+    if (!Reset)
+      fail("powerflow initialization requires FMI 2.0 fmi2Reset");
+    check(Reset(mInstance), "reset before powerflow initialization");
+    mValid = true;
+    mContinuous = false;
+    mTime = mAcceptedTime = 0;
+    mNextTimeEvent = std::numeric_limits<double>::infinity();
+    initializeInstance(initialInputs);
   }
   std::pair<Matrix, Matrix> evaluate(const Matrix &state, const Matrix &inputs,
                                      double time) override {
@@ -1435,13 +1481,17 @@ ModelExchange::ModelExchange(const std::string &path,
                 ? std::unique_ptr<Backend>(
                       std::make_unique<Fmi2Backend>(path, inputs, options))
                 : std::unique_ptr<Backend>(
-                      std::make_unique<Fmi3Backend>(path, inputs, options))) {}
+                      std::make_unique<Fmi3Backend>(path, inputs, options))),
+      mInitializeFromPowerflow(options.initializeFromPowerflow) {}
 ModelExchange::ModelExchange(const std::string &path,
                              ModelExchangeOptions options)
     : ModelExchange(path, std::vector<ScalarInput>{}, options) {}
 ModelExchange::~ModelExchange() = default;
 const ModelDescription &ModelExchange::description() const {
   return mImpl->model;
+}
+void ModelExchange::reinitializeFromInputs(const Matrix &inputs) {
+  mImpl->reinitializeFromInputs(inputs);
 }
 std::pair<Matrix, Matrix> ModelExchange::evaluate(const Matrix &state,
                                                   const Matrix &inputs,
