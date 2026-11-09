@@ -3,6 +3,11 @@ set -euo pipefail
 case_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo="$(cd "$case_dir/../../../../" && pwd)"
 build_dir="${1:-$repo/build-fmi-cosim/ieee39-inverter-fmu}"
+if [[ "$build_dir" != /* ]]; then
+  build_dir="$repo/$build_dir"
+fi
+mkdir -p "$build_dir"
+build_dir="$(cd "$build_dir" && pwd)"
 staging="$build_dir/IEEE39AvgInverter.fmutmp"
 mkdir -p "$staging/binaries/x86_64-linux"
 cp "$case_dir/modelDescription.xml" "$staging/modelDescription.xml"

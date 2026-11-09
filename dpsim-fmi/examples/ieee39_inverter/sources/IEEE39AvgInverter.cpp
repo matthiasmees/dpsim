@@ -101,6 +101,35 @@ fmi3Status fmi3Reset(fmi3Instance value) {
   return fmi3OK;
 }
 
+// The Co-Simulation model is a compact value type (terminal voltages, filter
+// currents, and communication time), so it supports exact FMI checkpoint and
+// replay for implicit electrical coupling.
+fmi3Status fmi3GetFMUState(fmi3Instance value, fmi3FMUState *state) {
+  if (!value || !state)
+    return fmi3Error;
+  try {
+    *state = new Instance(*instance(value));
+  } catch (...) {
+    return fmi3Error;
+  }
+  return fmi3OK;
+}
+
+fmi3Status fmi3SetFMUState(fmi3Instance value, fmi3FMUState state) {
+  if (!value || !state)
+    return fmi3Error;
+  *instance(value) = *static_cast<Instance *>(state);
+  return fmi3OK;
+}
+
+fmi3Status fmi3FreeFMUState(fmi3Instance, fmi3FMUState *state) {
+  if (!state || !*state)
+    return fmi3Error;
+  delete static_cast<Instance *>(*state);
+  *state = nullptr;
+  return fmi3OK;
+}
+
 fmi3Instance fmi3InstantiateModelExchange(fmi3String, fmi3String, fmi3String,
                                           fmi3Boolean, fmi3Boolean,
                                           fmi3InstanceEnvironment,

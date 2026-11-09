@@ -28,6 +28,29 @@ The generated `ieee39_metrics.json` and `ieee39_metrics.csv` contain current and
 
 ## Reproduce
 
+For a same-network comparison of **native DPsim, FMI Model Exchange, and FMI
+Co-Simulation**, run:
+
+```sh
+python3 -u dpsim-fmi/examples/ieee39_inverter/run_ieee39_dpsim_native_me_cs_sweep.py
+```
+
+This executes fresh, powerflow-initialized 10 s closed-loop cases with the 100
+MW bus-39 load step at 5 s. The default sweep is 10, 25, 50, 100, 500, 1000,
+and 5000 µs; the 5000 µs case is a coarse-step stress run. Native DPsim uses
+the same averaged inverter equations and starts its current state from the
+FMU's P/Q current reference at the solved bus-30 voltage. The full-resolution
+logs are reduced to compact traces and RMS metrics before being discarded.
+The notebook `IEEE39_DPsim_Comparison_10s_Powerflow.ipynb` reports matched-step
+ME/CS errors relative to native DPsim, runtime, initialization checks, rolling
+error traces, and a load-step voltage/current zoom. Outputs are written under
+`build-fmi/ieee39-inverter/dpsim-native-me-cs-10s-powerflow/`.
+The standard 10–1000 µs data completed under the previous two-iteration ME
+ceiling; the 5 ms ME stress case required residual-based Newton with the
+default 20-iteration ceiling after the two-iteration run failed its residual
+check. The reproduction runner now uses residual-based Newton with that
+default ceiling for all regenerated cases.
+
 From the repository root:
 
 ```sh
@@ -117,3 +140,66 @@ The notebook's analysis cell reads these saved runs, creates native-behavior com
 In the corrected sweep, ME is farther from native Simulink at coarse steps (at 1000 µs, post-startup current RMS error is 28.33% of native RMS for ME and 7.37% for DPsim CS). Against the 25 µs DPsim ME refinement trajectory, however, the 1000 µs errors are 2.83% for ME and 24.66% for CS on inverter current; bus-30 voltage errors are 2.31% and 6.45%. At 625 µs, the corresponding current errors are 1.10% and 14.80%. ME therefore converges much more closely to the fine-step ME trajectory; the native-relative plot reflects the ODE4/held-sample method difference. All ME runs used two Newton iterations per logged nonzero step; the maximum normalized residual was 0.238639 at 1000 µs, below the acceptance limit of 1.
 
 The timing difference is also expected from the coupling method. At 25 µs, DPsim ME took 729.4 s and DPsim CS took 602.0 s. The ME component `Solve` task accounted for 274.1 s versus 199.0 s in CS, while the inverter `MnaPreStep` task took 32.2 s versus 1.9 s. ME requested about 28 FMI evaluations per network step to form and iterate the nonlinear tangent; CS made one `fmi3DoStep` call per step. The Newton residuals passed throughout, so there is no evidence that the ME result degradation came from nonconvergence.
+
+## IEEE39 DPsim comparison with subcomponents disabled
+
+The native/ME/CS 10 s comparison is in `IEEE39_DPsim_Comparison_10s_Powerflow.ipynb`. The sweep runs 10, 25, 50, 100, 500, 1000, and 5000 µs, initializes from the solved IEEE39 powerflow, and applies the 100 MW bus-39 load step at 5 s. The EMT PiLine, RXLoad, and transformer components use their existing models with child subcomponents disabled; this reduces scheduler overhead without changing the model equations. The VBR generators and all inverter modes are unchanged. Data are saved under `build-fmi/ieee39-inverter/dpsim-native-me-cs-10s-nosubcomponents/`.
+
+Regenerate the runs and notebook figures from the repository root with:
+
+```sh
+python3 dpsim-fmi/examples/ieee39_inverter/run_ieee39_dpsim_native_me_cs_sweep.py
+```
+
+In the rerun, 10 µs solver times were 708.85 s native, 782.37 s ME, and 654.05 s CS, about 10–11% faster than the prior runs. At 25 µs they were 281.17 s, 313.27 s, and 261.96 s, about 11–12% faster. ME tracks native to numerical precision through 1 ms; CS errors grow with timestep and are 5.11% voltage / 134.51% current RMS at 5 ms. A trial with SSN passive-network components made the 10 µs CS result diverge (72.19% voltage and 71.63% current RMS error), so those results are excluded from the notebook.
+
+## Corrected IEEE39 FMI Co-Simulation coupling
+
+The preceding IEEE39 CS sweeps used single-pass explicit coupling. Their current
+error rose with timestep because the FMU advanced using the previous accepted
+bus voltage: 0.20% at 10 µs, 1.96% at 100 µs, 19.94% at 1 ms, and 134.5% at
+5 ms. The bus/branch mapping was not the cause. The powerflow and EMT builder
+share the same MATPOWER bus and branch tables, and the Simulink S-function
+reuses this same IEEE39 builder. All three methods also recorded identical
+initial bus-30 voltage and inverter current.
+
+The IEEE39 CS FMU now implements FMI get/set/free-state functions. The `cs`
+case opts into RollbackNewton and replays each network interval with four
+midpoint voltage samples; `cs-explicit` remains available in the executable
+to reproduce single-pass coupling. The FMU keeps its exact exponential
+current-state update, while native DPsim and ME use trapezoidal integration.
+This removes the previous one-step lag without forcing the CS FMU onto the ME
+integrator.
+
+A fresh 10 s, 100 µs run with a 100 MW load step at 5 s completed 100,001
+samples for native, ME, and CS. ME-to-native full-run RMS errors were
+1.18e-10% for voltage and 4.02e-9% for current. CS-to-native errors were
+0.000143% for voltage and 0.0223% for current. CS converged in two iterations
+per step, with maximum scaled current residual 0. The errors were 0.0000365%
+voltage / 0.0223% current before the load step and 0.000199% / 0.0223% after
+it. Solver times were 70.7 s native, 78.8 s ME, and 72.2 s CS.
+
+A five-second sweep at 100, 500, and 1000 µs gives CS voltage/current RMS
+errors of 0.0000365% / 0.0223%, 0.00091% / 0.558%, and 0.00361% / 2.26%,
+respectively. Each CS run converged in two Newton iterations. The 5 ms stress
+case still has 64.2% current RMS error with rollback enabled; it is too coarse
+for this 60 Hz network and should be excluded from normal-step conclusions.
+The fresh plots and metrics are in
+`IEEE39_RollbackNewton_Validation.ipynb` and
+`build-fmi/ieee39-inverter/ieee39-rollback-5s-sweep/metrics.json`. The 10 s
+result is in `build-fmi/ieee39-inverter/ieee39-rollback-10s-100us/metrics.json`.
+The previous `IEEE39_DPsim_Comparison_10s_Powerflow.ipynb` is marked as
+historical for CS because its saved curves use single-pass explicit coupling.
+
+Rebuild and rerun the corrected checks from the repository root:
+
+```sh
+bash dpsim-fmi/examples/ieee39_inverter/sources/build_fmu.sh build-fmi/ieee39-inverter-fmu
+cmake --build build-fmi --target FMI_IEEE39_AvgInverter -j4
+python3 -u dpsim-fmi/examples/ieee39_inverter/run_ieee39_dpsim_native_me_cs_sweep.py \
+  --steps-us 100 500 1000 --duration-s 5 --load-step-s 2.5 \
+  --output-name ieee39-rollback-5s-sweep
+python3 -u dpsim-fmi/examples/ieee39_inverter/run_ieee39_dpsim_native_me_cs_sweep.py \
+  --steps-us 100 --duration-s 10 --load-step-s 5 \
+  --output-name ieee39-rollback-10s-100us
+```

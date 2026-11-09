@@ -35,6 +35,25 @@ fmi3Status fmi3Reset(fmi3Instance instance) {
   *static_cast<Instance *>(instance) = Instance{};
   return fmi3OK;
 }
+fmi3Status fmi3GetFMUState(fmi3Instance instance, fmi3FMUState *state) {
+  if (!instance || !state)
+    return fmi3Error;
+  *state = new Instance(*static_cast<Instance *>(instance));
+  return fmi3OK;
+}
+fmi3Status fmi3SetFMUState(fmi3Instance instance, fmi3FMUState state) {
+  if (!instance || !state)
+    return fmi3Error;
+  *static_cast<Instance *>(instance) = *static_cast<Instance *>(state);
+  return fmi3OK;
+}
+fmi3Status fmi3FreeFMUState(fmi3Instance, fmi3FMUState *state) {
+  if (!state || !*state)
+    return fmi3Error;
+  delete static_cast<Instance *>(*state);
+  *state = nullptr;
+  return fmi3OK;
+}
 fmi3Status fmi3SetFloat64(fmi3Instance instance,
                           const fmi3ValueReference references[], size_t count,
                           const fmi3Float64 values[], size_t valueCount) {

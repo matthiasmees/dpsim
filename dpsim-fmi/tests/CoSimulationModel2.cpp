@@ -34,6 +34,25 @@ fmi2Status fmi2Reset(fmi2Component component) {
   *static_cast<Instance *>(component) = Instance{};
   return fmi2OK;
 }
+fmi2Status fmi2GetFMUstate(fmi2Component component, fmi2FMUstate *state) {
+  if (!component || !state)
+    return fmi2Error;
+  *state = new Instance(*static_cast<Instance *>(component));
+  return fmi2OK;
+}
+fmi2Status fmi2SetFMUstate(fmi2Component component, fmi2FMUstate state) {
+  if (!component || !state)
+    return fmi2Error;
+  *static_cast<Instance *>(component) = *static_cast<Instance *>(state);
+  return fmi2OK;
+}
+fmi2Status fmi2FreeFMUstate(fmi2Component, fmi2FMUstate *state) {
+  if (!state || !*state)
+    return fmi2Error;
+  delete static_cast<Instance *>(*state);
+  *state = nullptr;
+  return fmi2OK;
+}
 fmi2Status fmi2SetReal(fmi2Component component,
                        const fmi2ValueReference references[], size_t count,
                        const fmi2Real values[]) {

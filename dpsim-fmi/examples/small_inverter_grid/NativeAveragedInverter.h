@@ -25,13 +25,20 @@ class NativeAveragedInverter final
   CPS::Attribute<CPS::Real>::Ptr mIterationAttribute, mResidualAttribute;
   int mIterations = 0;
   double mResidual = 0;
-  static constexpr double kTauSeconds = 5e-3;
+  bool mUsePeriodicFilterStart = true;
+  double mActivePowerW = 125e6;
+  double mReactivePowerVar = 80.881e6;
+  double mNominalLineVoltageV = 345e3;
+  double mCurrentLimitPu = 1.20;
+  double mTauSeconds = 5e-3;
+  double mFrequencyHz = 60.0;
   static constexpr int kMaximumNewtonIterations = 20;
   static constexpr double kAbsoluteCurrentTolerance = 1e-9;
   static constexpr double kRelativeCurrentTolerance = 1e-10;
   static constexpr double kJacobianPerturbation = 6e-6;
 
-  static CPS::Matrix passiveCurrentReference(const CPS::Matrix &voltage);
+  CPS::Matrix passiveCurrentReference(const CPS::Matrix &voltage) const;
+  CPS::Matrix periodicSteadyCurrent(const CPS::Matrix &voltage) const;
   CPS::Matrix endpointCurrent(const CPS::Matrix &voltage) const;
   CPS::Matrix voltageFromSolution(const CPS::Matrix &solution);
   void validateTerminals();
@@ -40,6 +47,14 @@ class NativeAveragedInverter final
 public:
   using CPS::SimPowerComp<CPS::Real>::connect;
   explicit NativeAveragedInverter(CPS::String name);
+  void setUsePeriodicFilterStart(bool enabled) {
+    mUsePeriodicFilterStart = enabled;
+  }
+  void setOperatingPoint(double activePowerW, double reactivePowerVar,
+                         double nominalLineVoltageV,
+                         double currentLimitPu = 1.20,
+                         double responseTimeS = 5e-3,
+                         double frequencyHz = 60.0);
   CPS::SimPowerComp<CPS::Real>::Ptr clone(CPS::String) override;
   void connect(CPS::SimNode<CPS::Real>::Ptr node);
   void initialize(CPS::Matrix frequencies) override;

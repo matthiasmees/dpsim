@@ -3,7 +3,7 @@
                      guid="dpsim-cosim-2" variableNamingConvention="flat">
   <CoSimulation modelIdentifier="CoSimulationModel2"
                 canHandleVariableCommunicationStepSize="true"
-                canRunAsynchronuously="false" canGetAndSetFMUstate="false"
+                canRunAsynchronuously="false" canGetAndSetFMUstate="true"
                 canSerializeFMUstate="false"/>
   <ModelVariables>
     <ScalarVariable name="u" valueReference="0" causality="input" variability="continuous">

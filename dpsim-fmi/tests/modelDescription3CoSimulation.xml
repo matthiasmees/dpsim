@@ -2,7 +2,7 @@
 <fmiModelDescription fmiVersion="3.0" modelName="CoSimulationLinearFixture"
                      instantiationToken="dpsim-cosim-3" variableNamingConvention="flat">
   <CoSimulation modelIdentifier="CoSimulationModel3" eventModeUsed="false"
-                canGetAndSetFMUState="false" canSerializeFMUState="false"
+                canGetAndSetFMUState="true" canSerializeFMUState="false"
                 canHandleVariableCommunicationStepSize="true"/>
   <ModelVariables>
     <Float64 name="u" valueReference="0" causality="input" variability="continuous" start="1"/>

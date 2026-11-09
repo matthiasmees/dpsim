@@ -18,13 +18,16 @@ struct CoSimulationOptions {
   /// inputs must be supplied through the normal FMU input configuration.
   /// Requires the FMU to export Reset.
   bool initializeFromPowerflow = false;
+  /// Permit checkpoint/replay of CS communication steps. The FMU must export
+  /// get/set/free FMU-state functions and advertise canGetAndSetFMUState.
+  bool enableRollback = false;
 };
 
 /// Persistent FMI Co-Simulation instance. Inputs are set at a communication
 /// point and `doStep` advances the FMU exactly once over the requested
-/// interval. The class intentionally exposes communication-step semantics;
-/// it does not pretend that an FMU's internal continuous states are available
-/// to DPsim's MNA Newton solver.
+/// interval. Optional FMU-state checkpoints let an electrical component
+/// replay trial steps during implicit network coupling; they do not expose the
+/// FMU's internal continuous states to DPsim.
 class CoSimulation final {
 public:
   class Backend;
@@ -48,6 +51,12 @@ public:
   const CPS::Matrix &inputs() const;
   const CPS::Matrix &outputs() const;
   double time() const;
+  bool supportsRollback() const;
+  /// Save, restore repeatedly, and discard one accepted CS communication
+  /// point. These calls are opt-in; ordinary doStep behavior is unchanged.
+  void saveCheckpoint();
+  void restoreCheckpoint();
+  void discardCheckpoint();
   void setInputs(const CPS::Matrix &inputs);
   void setInput(const std::string &name, double value);
   /// Reset and re-enter FMI initialization mode with a new vector of inputs.

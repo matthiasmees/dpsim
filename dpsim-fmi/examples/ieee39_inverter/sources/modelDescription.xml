@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <fmiModelDescription fmiVersion="3.0" modelName="IEEE39AvgInverter" instantiationToken="dpsim-ieee39-average-inverter-v1">
   <ModelExchange modelIdentifier="IEEE39AvgInverter" needsCompletedIntegratorStep="true" canGetAndSetFMUState="false" providesDirectionalDerivatives="false"/>
-  <CoSimulation modelIdentifier="IEEE39AvgInverter" canGetAndSetFMUState="false" canHandleVariableCommunicationStepSize="true" fixedInternalStepSize="0.000001"/>
+  <CoSimulation modelIdentifier="IEEE39AvgInverter" canGetAndSetFMUState="true" canSerializeFMUState="false" canHandleVariableCommunicationStepSize="true" fixedInternalStepSize="0.000001"/>
   <UnitDefinitions>
     <Unit name="V"><BaseUnit kg="1" m="2" s="-3" A="-1"/></Unit>
     <Unit name="A"><BaseUnit A="1"/></Unit>

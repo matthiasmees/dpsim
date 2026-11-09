@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // Hardcoded IEEE39 counterpart to examples/Notebooks/Grids/IEEE39_DP3Ph_EMT3Ph_MATPOWER.ipynb.
 // Run with `IEEE39_Ph3 dp` or `IEEE39_Ph3 emt`.
+#include "../small_inverter_grid/NativeAveragedInverter.h"
 #include <DPsim.h>
 #include <dpsim-fmi/CoSimulationSSN.h>
 #include <dpsim-fmi/NonlinearSSN.h>
@@ -245,26 +246,19 @@ void runInverter(const SystemTopology &systemPF, const std::string &mode,
 
   int loadIndex = 0;
   for (const auto &bus : buses) {
-    if (bus.pd == 0.0 && bus.qd == 0.0)
-      continue;
-    auto load = EMT::Ph3::RXLoad::make("load" + std::to_string(++loadIndex));
-    load->setParameters(parameter3(bus.pd * 1e6 / 3.0),
-                        parameter3(bus.qd * 1e6 / 3.0), bus.vm * baseVoltage);
-    load->connect({nodes.at(bus.id - 1)});
-    components.push_back(load);
     const Real g = bus.gs * 1e6 / (baseVoltage * baseVoltage);
     const Real b = bus.bs * 1e6 / (baseVoltage * baseVoltage);
-    if (g != 0.0 || b != 0.0) {
-      auto shunt = EMT::Ph3::Shunt::make("Shunt_N" + std::to_string(bus.id));
-      shunt->setParameters(g, b);
-      shunt->connect({nodes.at(bus.id - 1)});
-      components.push_back(shunt);
+    if (bus.pd != 0.0 || bus.qd != 0.0) {
+      // Disable child subcomponents to reduce scheduler overhead while
+      // keeping the same RX-load equations and operating-point parameters.
+      auto load =
+          EMT::Ph3::RXLoad::make("load" + std::to_string(++loadIndex), false);
+      load->setParameters(parameter3(bus.pd * 1e6 / 3.0),
+                          parameter3(bus.qd * 1e6 / 3.0), bus.vm * baseVoltage);
+      load->connect({nodes.at(bus.id - 1)});
+      components.push_back(load);
     }
-  }
-  for (const auto &bus : buses) {
-    const Real g = bus.gs * 1e6 / (baseVoltage * baseVoltage);
-    const Real b = bus.bs * 1e6 / (baseVoltage * baseVoltage);
-    if ((g != 0.0 || b != 0.0) && bus.pd == 0.0 && bus.qd == 0.0) {
+    if (g != 0.0 || b != 0.0) {
       auto shunt = EMT::Ph3::Shunt::make("Shunt_N" + std::to_string(bus.id));
       shunt->setParameters(g, b);
       shunt->connect({nodes.at(bus.id - 1)});
@@ -280,14 +274,17 @@ void runInverter(const SystemTopology &systemPF, const std::string &mode,
     const Real l = branch.x * zBase * tap * tap / omega;
     if (branch.tap == 0.0) {
       const Real c = branch.b / zBase / omega;
-      auto line = EMT::Ph3::PiLine::make("line" + std::to_string(++lineIndex));
+      // These flags keep the same line/transformer models without scheduling
+      // their internal subcomponents as separate tasks.
+      auto line =
+          EMT::Ph3::PiLine::make("line" + std::to_string(++lineIndex), false);
       line->setParameters(parameter3(r), parameter3(l), parameter3(c),
                           parameter3(0.0));
       line->connect({nodes.at(branch.from - 1), nodes.at(branch.to - 1)});
       components.push_back(line);
     } else {
       auto trafo = EMT::Ph3::Transformer::make(
-          "transformer" + std::to_string(++transformerIndex));
+          "transformer" + std::to_string(++transformerIndex), false);
       trafo->setParameters(baseVoltage, baseVoltage, baseMVA * 1e6, tap, 0.0,
                            parameter3(r), parameter3(l));
       trafo->connect({nodes.at(branch.from - 1), nodes.at(branch.to - 1)});
@@ -296,14 +293,18 @@ void runInverter(const SystemTopology &systemPF, const std::string &mode,
   }
 
   FMI::NewtonSettings newtonSettings;
-  // Keep the ME network coupling to a maximum of two Newton iterations.
-  // NonlinearSSN uses the implicit trapezoidal state residual.
-  newtonSettings.maxIterations = 2;
+  // Use residual-based stopping (NewtonSettings' default iteration ceiling is
+  // 20), with the implicit trapezoidal state update in NonlinearSSN.
   newtonSettings.multirateMode = FMI::MultirateMode::SinglePassExplicit;
   FMI::CoSimulationElectricalPort port{
       {"v_a", "v_b", "v_c"}, {"i_a", "i_b", "i_c"}, 1.0};
   std::shared_ptr<SimPowerComp<Real>> inverter;
-  if (mode == "me") {
+  if (mode == "native") {
+    auto native =
+        SmallGrid::NativeAveragedInverter::make("Gen30_NativeAveragedInverter");
+    native->setUsePeriodicFilterStart(false);
+    inverter = native;
+  } else if (mode == "me") {
     FMI::ModelExchangeOptions options;
     auto model = std::make_shared<FMI::ModelExchange>(fmuPath, options);
     inverter = FMI::NonlinearSSN::make(
@@ -311,12 +312,18 @@ void runInverter(const SystemTopology &systemPF, const std::string &mode,
         FMI::ElectricalPort3Ph{
             {"v_a", "v_b", "v_c"}, {"i_a", "i_b", "i_c"}, 1.0},
         newtonSettings);
-  } else if (mode == "cs") {
-    auto model = std::make_shared<FMI::CoSimulation>(fmuPath);
-    inverter =
-        FMI::CoSimulationSSN::make("Gen30_AveragedInverter", model, port);
+  } else if (mode == "cs" || mode == "cs-explicit") {
+    const bool rollbackNewton = mode == "cs";
+    FMI::CoSimulationOptions options;
+    options.enableRollback = rollbackNewton;
+    auto model = std::make_shared<FMI::CoSimulation>(fmuPath, options);
+    const auto coupling =
+        rollbackNewton ? FMI::CoSimulationCouplingMode::RollbackNewton
+                       : FMI::CoSimulationCouplingMode::SinglePassExplicit;
+    inverter = FMI::CoSimulationSSN::make("Gen30_AveragedInverter", model, port,
+                                          coupling);
   } else {
-    throw std::invalid_argument("mode must be me or cs");
+    throw std::invalid_argument("mode must be native, me, cs, or cs-explicit");
   }
   inverter->connect({EMT::SimNode::GND, inverterNode});
   components.push_back(inverter);
@@ -347,7 +354,12 @@ void runInverter(const SystemTopology &systemPF, const std::string &mode,
   logger->logAttribute("inverter.v", inverter->attribute("v_intf"));
   logger->logAttribute("inverter.i", inverter->attribute("i_intf"));
   logger->logAttribute("step_load.i", stepLoad->attribute("i_intf"));
-  if (mode == "me") {
+  if (mode == "native") {
+    logger->logAttribute("newton_iterations",
+                         inverter->attribute("newton_iterations"));
+    logger->logAttribute("newton_residual",
+                         inverter->attribute("newton_residual"));
+  } else if (mode == "me") {
     logger->logAttribute("newton_iterations",
                          inverter->attribute("newton_iterations"));
     logger->logAttribute("newton_residual",
@@ -359,6 +371,10 @@ void runInverter(const SystemTopology &systemPF, const std::string &mode,
     logger->logAttribute("fmi_evaluation_wall_time_s",
                          inverter->attribute("fmi_evaluation_wall_time_s"));
   } else {
+    logger->logAttribute("newton_iterations",
+                         inverter->attribute("newton_iterations"));
+    logger->logAttribute("newton_residual",
+                         inverter->attribute("newton_residual"));
     logger->logAttribute("fmi_do_steps", inverter->attribute("cosim_do_steps"));
   }
 
@@ -409,12 +425,17 @@ void runInverter(const SystemTopology &systemPF, const std::string &mode,
 
 int main(int argc, char **argv) {
   if (argc != 6) {
-    std::cerr << "Usage: IEEE39_AvgInverter me|cs inverter.fmu stop_s step_s "
+    std::cerr << "Usage: IEEE39_AvgInverter native|me|cs|cs-explicit "
+                 "inverter.fmu stop_s step_s "
                  "load_step_s\n";
     return 2;
   }
   try {
     const std::string mode = argv[1];
+    if (mode != "native" && mode != "me" && mode != "cs" &&
+        mode != "cs-explicit")
+      throw std::invalid_argument(
+          "mode must be native, me, cs, or cs-explicit");
     const Real finalTime = std::stod(argv[3]);
     const Real timeStep = std::stod(argv[4]);
     const Real loadStepTime = std::stod(argv[5]);

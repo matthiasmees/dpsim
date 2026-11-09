@@ -18,7 +18,14 @@ int main(int argc, char **argv) {
   if (argc != 2)
     return 2;
   try {
-    CoSimulation model(argv[1]);
+    CoSimulation defaultModel(argv[1]);
+    require(!defaultModel.supportsRollback(),
+            "rollback must stay opt-in when loading an FMU");
+    CoSimulationOptions options;
+    options.enableRollback = true;
+    CoSimulation model(argv[1], options);
+    require(model.supportsRollback(),
+            "expected Co-Simulation state rollback support");
     require(model.description().inputNames.size() == 1,
             "expected one Co-Simulation input");
     require(model.description().outputNames.size() == 1,
@@ -32,6 +39,21 @@ int main(int argc, char **argv) {
             "second communication step output mismatch");
     require(std::abs(model.time() - 0.2) < 1e-12,
             "FMU communication time mismatch");
+    model.saveCheckpoint();
+    const auto &tentative = model.doStep(0.2, 0.1);
+    require(std::abs(tentative(0, 0) - 0.6) < 1e-12,
+            "tentative rollback step output mismatch");
+    model.restoreCheckpoint();
+    require(std::abs(model.time() - 0.2) < 1e-12 &&
+                std::abs(model.outputs()(0, 0) - 0.4) < 1e-12,
+            "FMU state restore did not restore time and outputs");
+    const auto &repeated = model.doStep(0.2, 0.1);
+    require(std::abs(repeated(0, 0) - 0.6) < 1e-12,
+            "replayed Co-Simulation step was not deterministic");
+    model.restoreCheckpoint();
+    model.discardCheckpoint();
+    require(std::abs(model.time() - 0.2) < 1e-12,
+            "discarding checkpoint changed the accepted state");
     bool rejected = false;
     try {
       model.doStep(0.15, 0.1);

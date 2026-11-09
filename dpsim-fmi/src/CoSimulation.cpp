@@ -195,6 +195,10 @@ public:
   std::vector<std::string> inputNames;
   std::vector<std::uint32_t> inputReferences, outputReferences;
   virtual ~Backend() = default;
+  virtual bool supportsRollback() const = 0;
+  virtual void saveCheckpoint() = 0;
+  virtual void restoreCheckpoint() = 0;
+  virtual void discardCheckpoint() = 0;
   virtual void setInputs(const Matrix &) = 0;
   virtual void reinitializeFromInputs(const Matrix &) = 0;
   virtual void doStep(double, double) = 0;
@@ -231,7 +235,14 @@ class Fmi3CoSimulation final : public CoSimulation::Backend {
   FMI3_FUNCTION(EnterStepMode);
   FMI3_FUNCTION(EnterEventMode);
   FMI3_FUNCTION(UpdateDiscreteStates);
+  FMI3_FUNCTION(GetFMUState);
+  FMI3_FUNCTION(SetFMUState);
+  FMI3_FUNCTION(FreeFMUState);
 #undef FMI3_FUNCTION
+  fmi3FMUState mCheckpoint = nullptr;
+  Matrix mCheckpointInputs, mCheckpointOutputs;
+  double mCheckpointTime = 0;
+  bool mRollbackEnabled = false;
 
   template <class T> T symbol(const char *name, bool required = true) {
 #ifdef _WIN32
@@ -260,6 +271,8 @@ class Fmi3CoSimulation final : public CoSimulation::Backend {
   }
   void close() noexcept {
     if (mInstance) {
+      if (mCheckpoint && FreeFMUState)
+        FreeFMUState(mInstance, &mCheckpoint);
       if (!mTerminated && mValid && Terminate)
         Terminate(mInstance);
       if (FreeInstance)
@@ -309,6 +322,7 @@ public:
                    const std::vector<ScalarInput> &configuration,
                    CoSimulationOptions options) {
     mLoggingOn = options.loggingOn;
+    mRollbackEnabled = options.enableRollback;
     try {
       initialize(path, configuration);
     } catch (...) {
@@ -333,6 +347,8 @@ public:
       fail("requires an FMI 3.0 model description");
     auto cs = child(root, "CoSimulation");
     mEventModeUsed = flag(cs, "eventModeUsed");
+    model.canGetAndSetFMUState = flag(cs, "canGetAndSetFMUState");
+    model.canSerializeFMUState = flag(cs, "canSerializeFMUState");
     model.canBeInstantiatedOnlyOncePerProcess =
         flag(cs, "canBeInstantiatedOnlyOncePerProcess");
     if (flag(cs, "needsExecutionTool"))
@@ -451,6 +467,14 @@ public:
     LOAD3(GetFloat64);
     LOAD3(DoStep);
 #undef LOAD3
+    if (model.canGetAndSetFMUState) {
+      GetFMUState = symbol<decltype(GetFMUState)>("fmi3GetFMUState");
+      SetFMUState = symbol<decltype(SetFMUState)>("fmi3SetFMUState");
+      FreeFMUState = symbol<decltype(FreeFMUState)>("fmi3FreeFMUState");
+    }
+    if (mRollbackEnabled && !model.canGetAndSetFMUState)
+      fail("rollback requested but FMU does not advertise "
+           "canGetAndSetFMUState");
     Reset = symbol<decltype(Reset)>("fmi3Reset", false);
     EnterStepMode = symbol<decltype(EnterStepMode)>("fmi3EnterStepMode", false);
     EnterEventMode =
@@ -506,6 +530,36 @@ public:
             "set Co-Simulation inputs");
     inputs = values;
   }
+  bool supportsRollback() const override {
+    return mRollbackEnabled && GetFMUState && SetFMUState && FreeFMUState;
+  }
+  void saveCheckpoint() override {
+    if (!mRollbackEnabled || !supportsRollback())
+      fail("checkpoint requested without opt-in FMI state support");
+    if (mCheckpoint)
+      fail("a Co-Simulation checkpoint is already active");
+    check(GetFMUState(mInstance, &mCheckpoint), "save FMI 3 state");
+    if (!mCheckpoint)
+      fail("FMU returned a null state checkpoint");
+    mCheckpointInputs = inputs;
+    mCheckpointOutputs = outputs;
+    mCheckpointTime = mTime;
+  }
+  void restoreCheckpoint() override {
+    if (!mRollbackEnabled || !mCheckpoint)
+      fail("restore requested without an active opt-in checkpoint");
+    check(SetFMUState(mInstance, mCheckpoint), "restore FMI 3 state");
+    mTime = mCheckpointTime;
+    inputs = mCheckpointInputs;
+    outputs = mCheckpointOutputs;
+  }
+  void discardCheckpoint() override {
+    if (!mCheckpoint)
+      fail("discard requested without an active checkpoint");
+    check(FreeFMUState(mInstance, &mCheckpoint), "free FMI 3 state");
+    mCheckpointInputs.resize(0, 1);
+    mCheckpointOutputs.resize(0, 1);
+  }
   void doStep(double currentTime, double stepSize) override {
     if (!std::isfinite(currentTime) || !std::isfinite(stepSize) ||
         stepSize <= 0 ||
@@ -516,9 +570,13 @@ public:
     fmi3Boolean terminateSimulation = fmi3False;
     fmi3Boolean earlyReturn = fmi3False;
     fmi3Float64 lastSuccessfulTime = currentTime;
-    check(DoStep(mInstance, currentTime, stepSize, fmi3True,
-                 &eventHandlingNeeded, &terminateSimulation, &earlyReturn,
-                 &lastSuccessfulTime),
+    // A rollback/Newton trial must not let the FMU discard a state saved at
+    // this communication point: later tangent evaluations restore and replay
+    // from that state.  Keep the FMI 3 optimization enabled only for the
+    // default single-pass path.
+    check(DoStep(mInstance, currentTime, stepSize,
+                 mRollbackEnabled ? fmi3False : fmi3True, &eventHandlingNeeded,
+                 &terminateSimulation, &earlyReturn, &lastSuccessfulTime),
           "doStep");
     if (terminateSimulation)
       fail("FMU requested termination during doStep");
@@ -573,7 +631,14 @@ class Fmi2CoSimulation final : public CoSimulation::Backend {
   FMI2_FUNCTION(GetReal);
   FMI2_FUNCTION(DoStep);
   FMI2_FUNCTION(CancelStep);
+  FMI2_FUNCTION(GetFMUstate);
+  FMI2_FUNCTION(SetFMUstate);
+  FMI2_FUNCTION(FreeFMUstate);
 #undef FMI2_FUNCTION
+  fmi2FMUstate mCheckpoint = nullptr;
+  Matrix mCheckpointInputs, mCheckpointOutputs;
+  double mCheckpointTime = 0;
+  bool mRollbackEnabled = false;
 
   template <class T> T symbol(const char *name, bool required = true) {
 #ifdef _WIN32
@@ -604,6 +669,8 @@ class Fmi2CoSimulation final : public CoSimulation::Backend {
   static void release(void *pointer) { std::free(pointer); }
   void close() noexcept {
     if (mInstance) {
+      if (mCheckpoint && FreeFMUstate)
+        FreeFMUstate(mInstance, &mCheckpoint);
       if (!mTerminated && mValid && Terminate)
         Terminate(mInstance);
       if (FreeInstance)
@@ -624,6 +691,7 @@ public:
   Fmi2CoSimulation(const std::string &path,
                    const std::vector<ScalarInput> &configuration,
                    CoSimulationOptions options) {
+    mRollbackEnabled = options.enableRollback;
     try {
       initialize(path, configuration, options);
     } catch (...) {
@@ -769,6 +837,14 @@ public:
     LOAD2(GetReal);
     LOAD2(DoStep);
 #undef LOAD2
+    if (model.canGetAndSetFMUState) {
+      GetFMUstate = symbol<decltype(GetFMUstate)>("fmi2GetFMUstate");
+      SetFMUstate = symbol<decltype(SetFMUstate)>("fmi2SetFMUstate");
+      FreeFMUstate = symbol<decltype(FreeFMUstate)>("fmi2FreeFMUstate");
+    }
+    if (mRollbackEnabled && !model.canGetAndSetFMUState)
+      fail("rollback requested but FMU does not advertise "
+           "canGetAndSetFMUstate");
     Reset = symbol<decltype(Reset)>("fmi2Reset", false);
     CancelStep = symbol<decltype(CancelStep)>("fmi2CancelStep", false);
     if (!GetVersion() || std::string(GetVersion()) != "2.0")
@@ -822,6 +898,36 @@ public:
                     values.data()),
             "set Co-Simulation inputs");
     inputs = values;
+  }
+  bool supportsRollback() const override {
+    return mRollbackEnabled && GetFMUstate && SetFMUstate && FreeFMUstate;
+  }
+  void saveCheckpoint() override {
+    if (!mRollbackEnabled || !supportsRollback())
+      fail("checkpoint requested without opt-in FMI state support");
+    if (mCheckpoint)
+      fail("a Co-Simulation checkpoint is already active");
+    check(GetFMUstate(mInstance, &mCheckpoint), "save FMI 2 state");
+    if (!mCheckpoint)
+      fail("FMU returned a null state checkpoint");
+    mCheckpointInputs = inputs;
+    mCheckpointOutputs = outputs;
+    mCheckpointTime = mTime;
+  }
+  void restoreCheckpoint() override {
+    if (!mRollbackEnabled || !mCheckpoint)
+      fail("restore requested without an active opt-in checkpoint");
+    check(SetFMUstate(mInstance, mCheckpoint), "restore FMI 2 state");
+    mTime = mCheckpointTime;
+    inputs = mCheckpointInputs;
+    outputs = mCheckpointOutputs;
+  }
+  void discardCheckpoint() override {
+    if (!mCheckpoint)
+      fail("discard requested without an active checkpoint");
+    check(FreeFMUstate(mInstance, &mCheckpoint), "free FMI 2 state");
+    mCheckpointInputs.resize(0, 1);
+    mCheckpointOutputs.resize(0, 1);
   }
   void doStep(double currentTime, double stepSize) override {
     if (!std::isfinite(currentTime) || !std::isfinite(stepSize) ||
@@ -885,6 +991,12 @@ const ModelDescription &CoSimulation::description() const {
 const Matrix &CoSimulation::inputs() const { return mImpl->inputs; }
 const Matrix &CoSimulation::outputs() const { return mImpl->outputs; }
 double CoSimulation::time() const { return mImpl->time(); }
+bool CoSimulation::supportsRollback() const {
+  return mImpl->supportsRollback();
+}
+void CoSimulation::saveCheckpoint() { mImpl->saveCheckpoint(); }
+void CoSimulation::restoreCheckpoint() { mImpl->restoreCheckpoint(); }
+void CoSimulation::discardCheckpoint() { mImpl->discardCheckpoint(); }
 void CoSimulation::setInputs(const Matrix &inputs) { mImpl->setInputs(inputs); }
 void CoSimulation::reinitializeFromInputs(const Matrix &inputs) {
   mImpl->reinitializeFromInputs(inputs);
