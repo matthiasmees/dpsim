@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import time
 from pathlib import Path
@@ -142,7 +143,7 @@ def run_matlab(entry_list: list[dict], mode: str, run_tag: str = "") -> None:
         f"'{manifest}','{out}','{FMU}','unused','{model}');"
     )
     proc = subprocess.Popen(
-        ["matlab", "-batch", expression],
+        [os.environ.get("MATLAB_BIN", "matlab"), "-batch", expression],
         cwd=ROOT,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,

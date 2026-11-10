@@ -28,7 +28,15 @@ LOAD_STEP = 2.5
 def rebuild_fmu() -> None:
     """Compile the example FMU from its checked-in C++ and XML sources."""
     package = BUILD / "small-inverter-grid" / "fmu-stage"
-    binary = package / "binaries" / "x86_64-linux" / "IEEE39AvgInverter.so"
+    if __import__("platform").system() == "Darwin":
+        platform_dir = "aarch64-darwin"
+        binary_name = "IEEE39AvgInverter.dylib"
+        linker_flags = ["-dynamiclib"]
+    else:
+        platform_dir = "x86_64-linux"
+        binary_name = "IEEE39AvgInverter.so"
+        linker_flags = ["-fPIC", "-shared"]
+    binary = package / "binaries" / platform_dir / binary_name
     package.mkdir(parents=True, exist_ok=True)
     binary.parent.mkdir(parents=True, exist_ok=True)
     subprocess.run(
@@ -36,8 +44,7 @@ def rebuild_fmu() -> None:
             "c++",
             "-std=c++17",
             "-O3",
-            "-fPIC",
-            "-shared",
+            *linker_flags,
             "-I",
             str(ROOT / "dpsim-fmi" / "third_party" / "fmi3"),
             str(CASE / "sources" / "IEEE39AvgInverter.cpp"),
@@ -51,7 +58,7 @@ def rebuild_fmu() -> None:
         temporary_fmu, "w", compression=zipfile.ZIP_DEFLATED
     ) as archive:
         archive.write(CASE / "sources" / "modelDescription.xml", "modelDescription.xml")
-        archive.write(binary, "binaries/x86_64-linux/IEEE39AvgInverter.so")
+        archive.write(binary, f"binaries/{platform_dir}/{binary_name}")
     temporary_fmu.replace(FMU)
     print(f"Rebuilt {FMU} from the example C++ source", flush=True)
 
