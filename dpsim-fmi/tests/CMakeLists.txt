@@ -70,6 +70,13 @@ endforeach()
 
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
+add_test(NAME fmi_linear_rl_stability_analysis
+	COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_linear_rl_stability.py
+)
+set_tests_properties(fmi_linear_rl_stability_analysis PROPERTIES
+	ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1"
+)
+
 add_test(NAME fmi_archive_validation COMMAND ${Python3_EXECUTABLE}
 	${CMAKE_CURRENT_SOURCE_DIR}/ArchiveTest.py
 	$<TARGET_FILE:FMI_ImportTest>

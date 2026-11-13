@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<fmiModelDescription fmiVersion="2.0" modelName="LinearRL" guid="{4bcbac9e-591f-4d26-9c74-4a65b8a3c001}" generationTool="DPsim Linear RL FMI exporter" variableNamingConvention="flat" numberOfEventIndicators="0">
+  <ModelExchange modelIdentifier="LinearRL_ME" needsExecutionTool="false" completedIntegratorStepNotNeeded="false" canBeInstantiatedOnlyOncePerProcess="false" canGetAndSetFMUstate="false" canSerializeFMUstate="false"/>
+  <UnitDefinitions>
+    <Unit name="V"><BaseUnit kg="1" m="2" s="-3" A="-1"/></Unit>
+    <Unit name="A"><BaseUnit A="1"/></Unit>
+    <Unit name="A_per_s"><BaseUnit A="1" s="-1"/></Unit>
+  </UnitDefinitions>
+  <DefaultExperiment startTime="0" stopTime="0.005" tolerance="1e-10"/>
+  <ModelVariables>
+    <ScalarVariable name="u" valueReference="0" causality="input" variability="continuous"><Real start="0" unit="V"/></ScalarVariable>
+    <ScalarVariable name="i" valueReference="1" causality="output" variability="continuous"><Real start="0" unit="A" derivative="3"/></ScalarVariable>
+    <ScalarVariable name="der_i" valueReference="2" causality="local" variability="continuous"><Real unit="A_per_s"/></ScalarVariable>
+  </ModelVariables>
+  <ModelStructure>
+    <Outputs><Unknown index="2"/></Outputs>
+    <Derivatives><Unknown index="3"/></Derivatives>
+  </ModelStructure>
+</fmiModelDescription>

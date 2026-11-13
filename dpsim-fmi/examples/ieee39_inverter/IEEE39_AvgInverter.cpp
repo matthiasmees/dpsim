@@ -218,7 +218,8 @@ SystemTopology makePowerflowSystem() {
 
 void runInverter(const SystemTopology &systemPF, const std::string &mode,
                  const std::string &fmuPath, Real timeStep, Real finalTime,
-                 Real loadStepTime) {
+                 Real eventTime, int eventBus, const std::string &eventKind,
+                 Real eventValue, Real eventDuration) {
   const String simName = "IEEE39_Inverter_" + mode;
   Logger::setLogDir("logs/" + simName);
   std::vector<EMT::SimNode::Ptr> nodes;
@@ -303,15 +304,28 @@ void runInverter(const SystemTopology &systemPF, const std::string &mode,
     auto native =
         SmallGrid::NativeAveragedInverter::make("Gen30_NativeAveragedInverter");
     native->setUsePeriodicFilterStart(false);
+    if (eventKind == "power-step")
+      native->setPowerReferenceStep(eventTime, eventValue * 1e6, 80.881e6);
     inverter = native;
   } else if (mode == "me") {
     FMI::ModelExchangeOptions options;
     auto model = std::make_shared<FMI::ModelExchange>(fmuPath, options);
-    inverter = FMI::NonlinearSSN::make(
+    auto meInverter = FMI::NonlinearSSN::make(
         "Gen30_AveragedInverter", model,
         FMI::ElectricalPort3Ph{
             {"v_a", "v_b", "v_c"}, {"i_a", "i_b", "i_c"}, 1.0},
         newtonSettings);
+    if (eventKind == "power-step") {
+      meInverter->setInputFunction("p_ref_W",
+                                   [eventTime, eventValue](double time) {
+                                     return time < eventTime ? 125e6
+                                                             : eventValue * 1e6;
+                                   },
+                                   {eventTime});
+      meInverter->setInputFunction("q_ref_var",
+                                   [](double) { return 80.881e6; });
+    }
+    inverter = meInverter;
   } else if (mode == "cs" || mode == "cs-explicit") {
     const bool rollbackNewton = mode == "cs";
     FMI::CoSimulationOptions options;
@@ -320,30 +334,51 @@ void runInverter(const SystemTopology &systemPF, const std::string &mode,
     const auto coupling =
         rollbackNewton ? FMI::CoSimulationCouplingMode::RollbackNewton
                        : FMI::CoSimulationCouplingMode::SinglePassExplicit;
-    inverter = FMI::CoSimulationSSN::make("Gen30_AveragedInverter", model, port,
-                                          coupling);
+    auto csInverter = FMI::CoSimulationSSN::make("Gen30_AveragedInverter",
+                                                 model, port, coupling);
+    if (eventKind == "power-step") {
+      csInverter->setInputFunction("p_ref_W",
+                                   [eventTime, eventValue](double time) {
+                                     return time < eventTime ? 125e6
+                                                             : eventValue * 1e6;
+                                   },
+                                   {eventTime});
+      csInverter->setInputFunction("q_ref_var",
+                                   [](double) { return 80.881e6; });
+    }
+    inverter = csInverter;
   } else {
     throw std::invalid_argument("mode must be native, me, cs, or cs-explicit");
   }
   inverter->connect({EMT::SimNode::GND, inverterNode});
   components.push_back(inverter);
 
-  // A 100 MW balanced load step at bus 39 is applied to all FMI modes at the
-  // same absolute time. Its per-phase resistance is calculated from the
-  // initialized bus voltage and three-phase P = 3*Vphase,rms^2/R.
-  const Real stepPower = 100e6;
-  const Real bus39Peak = buses[38].vm * baseVoltage * dpEnvelopeScale;
-  const Real stepResistance = 1.5 * bus39Peak * bus39Peak / stepPower;
-  auto stepNode = EMT::SimNode::make("N39_LoadStep", PhaseType::ABC);
-  auto stepLoad = EMT::Ph3::Resistor::make("N39_LoadStep_R");
-  stepLoad->setParameters(parameter3(stepResistance));
-  stepLoad->connect({EMT::SimNode::GND, stepNode});
-  auto loadSwitch = EMT::Ph3::Switch::make("N39_LoadStep_Switch");
-  loadSwitch->setParameters(parameter3(1e12), parameter3(1e-3), false);
-  loadSwitch->connect({stepNode, nodes.at(38)});
-  systemNodes.push_back(stepNode);
-  components.push_back(stepLoad);
-  components.push_back(loadSwitch);
+  // Apply a balanced switched shunt event. The default 100 MW load at bus 39
+  // preserves the historical setup; a resistive three-phase fault at bus 30
+  // creates a local PCC voltage sag for a specified clearing duration.
+  std::shared_ptr<EMT::Ph3::Resistor> eventShunt;
+  std::shared_ptr<EMT::Ph3::Switch> eventSwitch;
+  if (eventKind != "power-step") {
+    const Real eventBusPeak =
+        buses[eventBus - 1].vm * baseVoltage * dpEnvelopeScale;
+    const Real eventResistance =
+        eventKind == "fault"
+            ? eventValue
+            : 1.5 * eventBusPeak * eventBusPeak / (eventValue * 1e6);
+    auto eventNode = EMT::SimNode::make(
+        "N" + std::to_string(eventBus) + "_SwitchedShunt", PhaseType::ABC);
+    eventShunt = EMT::Ph3::Resistor::make("N" + std::to_string(eventBus) +
+                                          "_SwitchedShunt_R");
+    eventShunt->setParameters(parameter3(eventResistance));
+    eventShunt->connect({EMT::SimNode::GND, eventNode});
+    eventSwitch = EMT::Ph3::Switch::make("N" + std::to_string(eventBus) +
+                                         "_Event_Switch");
+    eventSwitch->setParameters(parameter3(1e12), parameter3(1e-3), false);
+    eventSwitch->connect({eventNode, nodes.at(eventBus - 1)});
+    systemNodes.push_back(eventNode);
+    components.push_back(eventShunt);
+    components.push_back(eventSwitch);
+  }
 
   auto system = SystemTopology(frequency, systemNodes, components);
   system.initWithPowerflow(systemPF, Domain::EMT);
@@ -353,7 +388,8 @@ void runInverter(const SystemTopology &systemPF, const std::string &mode,
                          nodes.at(id - 1)->attribute("v"));
   logger->logAttribute("inverter.v", inverter->attribute("v_intf"));
   logger->logAttribute("inverter.i", inverter->attribute("i_intf"));
-  logger->logAttribute("step_load.i", stepLoad->attribute("i_intf"));
+  if (eventShunt)
+    logger->logAttribute("event_shunt.i", eventShunt->attribute("i_intf"));
   if (mode == "native") {
     logger->logAttribute("newton_iterations",
                          inverter->attribute("newton_iterations"));
@@ -379,7 +415,12 @@ void runInverter(const SystemTopology &systemPF, const std::string &mode,
   }
 
   Simulation sim(simName, Logger::Level::off);
-  sim.addEvent(SwitchEvent3Ph::make(loadStepTime, loadSwitch, true));
+  if (eventSwitch) {
+    sim.addEvent(SwitchEvent3Ph::make(eventTime, eventSwitch, true));
+    if (eventKind == "fault")
+      sim.addEvent(
+          SwitchEvent3Ph::make(eventTime + eventDuration, eventSwitch, false));
+  }
   sim.setSystem(system);
   sim.setDomain(Domain::EMT);
   sim.setSolverType(Solver::Type::MNA);
@@ -418,16 +459,18 @@ void runInverter(const SystemTopology &systemPF, const std::string &mode,
             << " simulation_s=" << simulationElapsed.count()
             << " steps=" << std::llround(finalTime / timeStep)
             << " dt_s=" << timeStep << " stop_s=" << finalTime
-            << " load_step_s=" << loadStepTime << " load_step_MW=100"
-            << "\n";
+            << " event_s=" << eventTime << " event_bus=" << eventBus
+            << " event_kind=" << eventKind << " event_value=" << eventValue
+            << " event_duration_s=" << eventDuration << "\n";
 }
 } // namespace
 
 int main(int argc, char **argv) {
-  if (argc != 6) {
+  if (argc < 6 || argc > 10) {
     std::cerr << "Usage: IEEE39_AvgInverter native|me|cs|cs-explicit "
                  "inverter.fmu stop_s step_s "
-                 "load_step_s\n";
+                 "event_s [event_bus [load|fault|power-step [MW|ohm "
+                 "[fault_duration_s]]]]\n";
     return 2;
   }
   try {
@@ -438,13 +481,25 @@ int main(int argc, char **argv) {
           "mode must be native, me, cs, or cs-explicit");
     const Real finalTime = std::stod(argv[3]);
     const Real timeStep = std::stod(argv[4]);
-    const Real loadStepTime = std::stod(argv[5]);
-    if (finalTime <= 0 || timeStep <= 0 || loadStepTime <= 0 ||
-        loadStepTime >= finalTime ||
+    const Real eventTime = std::stod(argv[5]);
+    const int eventBus = argc >= 7 ? std::stoi(argv[6]) : 39;
+    const std::string eventKind = argc >= 8 ? argv[7] : "load";
+    const Real eventValue = argc >= 9 ? std::stod(argv[8]) : 100.0;
+    const Real eventDuration = argc >= 10 ? std::stod(argv[9]) : 0.0;
+    if (finalTime <= 0 || timeStep <= 0 || eventTime <= 0 ||
+        eventTime >= finalTime || eventBus < 1 || eventBus > 39 ||
+        (eventKind != "load" && eventKind != "fault" &&
+         eventKind != "power-step") ||
+        eventValue <= 0 || eventDuration < 0 ||
+        (eventKind == "fault" &&
+         (eventDuration <= 0 || eventTime + eventDuration >= finalTime)) ||
         std::abs(finalTime / timeStep - std::round(finalTime / timeStep)) >
             1e-8 ||
-        std::abs(loadStepTime / timeStep -
-                 std::round(loadStepTime / timeStep)) > 1e-8)
+        std::abs(eventTime / timeStep - std::round(eventTime / timeStep)) >
+            1e-8 ||
+        (eventKind == "fault" &&
+         std::abs((eventTime + eventDuration) / timeStep -
+                  std::round((eventTime + eventDuration) / timeStep)) > 1e-8))
       throw std::invalid_argument("invalid time grid");
 
     auto systemPF = makePowerflowSystem();
@@ -457,7 +512,8 @@ int main(int argc, char **argv) {
     pf.setFinalTime(.01);
     pf.doInitFromNodesAndTerminals(false);
     pf.run();
-    runInverter(systemPF, mode, argv[2], timeStep, finalTime, loadStepTime);
+    runInverter(systemPF, mode, argv[2], timeStep, finalTime, eventTime,
+                eventBus, eventKind, eventValue, eventDuration);
   } catch (const std::exception &error) {
     std::cerr << error.what() << '\n';
     return 1;

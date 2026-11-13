@@ -11,6 +11,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
+#include <limits>
 #include <map>
 #include <memory>
 #include <sstream>
@@ -68,10 +69,12 @@ private:
 /// post-step work can be distinguished without timing an external surrogate.
 class PerStepTimingScheduler final : public Scheduler {
 public:
-  explicit PerStepTimingScheduler(String filename)
+  explicit PerStepTimingScheduler(
+      String filename, std::shared_ptr<EMT::Ph3::SSN_GFM> newtonGfm = nullptr)
       : Scheduler(Logger::Level::off), mFilename(std::move(filename)),
         mComponentFilename(mFilename.substr(0, mFilename.rfind('/')) +
-                           "/per_step_component_timing.csv") {}
+                           "/per_step_component_timing.csv"),
+        mNewtonGfm(std::move(newtonGfm)) {}
 
   void createSchedule(const Task::List &tasks, const Edges &inEdges,
                       const Edges &outEdges) override {
@@ -86,16 +89,80 @@ public:
       std::replace(name.begin(), name.end(), ',', '_');
       mColumns.push_back(std::move(name));
     }
+    if (mNewtonGfm) {
+      for (std::size_t i = 0; i < mColumns.size(); ++i) {
+        const String &name = mColumns[i];
+        if (name.find(".MnaPreStep") != String::npos) {
+          (name.find("GFM.MnaPreStep") != String::npos ? mGfmPreTasks
+                                                       : mOtherPreTasks)
+              .push_back(i);
+        } else if (name.find(".Solve") != String::npos) {
+          mSolveTasks.push_back(i);
+        } else if (name.find(".MnaPostStep") != String::npos) {
+          (name.find("GFM.MnaPostStep") != String::npos ? mGfmPostTasks
+                                                        : mOtherPostTasks)
+              .push_back(i);
+        } else if (name.find(".Write") != String::npos) {
+          mLoggerTasks.push_back(i);
+        } else {
+          mOtherTasks.push_back(i);
+        }
+      }
+      if (mGfmPreTasks.size() != 1 || mGfmPostTasks.size() != 1 ||
+          mSolveTasks.size() != 1)
+        throw std::runtime_error("Newton scheduler expected one GFM pre/post "
+                                 "task and one MNA solve.");
+    }
   }
 
   void step(Real time, Int timeStepCount) override {
-    std::vector<Real> elapsed;
-    elapsed.reserve(mSchedule.size());
-    for (const auto &task : mSchedule) {
-      const auto start = std::chrono::steady_clock::now();
-      task->execute(time, timeStepCount);
-      const auto end = std::chrono::steady_clock::now();
-      elapsed.push_back(std::chrono::duration<Real>(end - start).count());
+    std::vector<Real> elapsed(mSchedule.size(), 0.0);
+    if (!mNewtonGfm) {
+      for (std::size_t i = 0; i < mSchedule.size(); ++i)
+        executeMeasured(i, time, timeStepCount, elapsed);
+    } else {
+      // Fixed network components prepare their histories once. The GFM tangent
+      // and MNA system are rebuilt and solved on each Newton correction.
+      for (std::size_t i : mOtherTasks)
+        executeMeasured(i, time, timeStepCount, elapsed);
+      for (std::size_t i : mOtherPreTasks)
+        executeMeasured(i, time, timeStepCount, elapsed);
+
+      mNewtonGfm->beginImplicitNewtonStep();
+      Matrix guessState = mNewtonGfm->getState();
+      Matrix guessVoltage = mNewtonGfm->getInterfaceVoltage();
+      Real residual = std::numeric_limits<Real>::infinity();
+      Bool converged = false;
+      UInt iterations = 0;
+      for (; iterations < mNewtonMaxIterations; ++iterations) {
+        mNewtonGfm->setImplicitNewtonGuess(guessState, guessVoltage);
+        mNewtonGfm->restoreImplicitNewtonBase();
+        executeMeasured(mGfmPreTasks.front(), time, timeStepCount, elapsed);
+        executeMeasured(mSolveTasks.front(), time, timeStepCount, elapsed);
+        executeMeasured(mGfmPostTasks.front(), time, timeStepCount, elapsed);
+
+        residual = mNewtonGfm->implicitNewtonResidual();
+        if (residual <= mNewtonTolerance) {
+          converged = true;
+          ++iterations;
+          break;
+        }
+        guessState = mNewtonGfm->getState();
+        guessVoltage = mNewtonGfm->getInterfaceVoltage();
+      }
+      mNewtonGfm->endImplicitNewtonStep();
+      if (!converged)
+        throw std::runtime_error(
+            "GFM/network Newton iteration did not converge at t=" +
+            std::to_string(time) +
+            " s; scaled residual=" + std::to_string(residual));
+
+      for (std::size_t i : mOtherPostTasks)
+        executeMeasured(i, time, timeStepCount, elapsed);
+      for (std::size_t i : mLoggerTasks)
+        executeMeasured(i, time, timeStepCount, elapsed);
+      mStepIterations.push_back(iterations);
+      mStepResiduals.push_back(residual);
     }
     mTimes.push_back(time);
     mSamples.push_back(std::move(elapsed));
@@ -112,6 +179,18 @@ public:
       for (Real value : mSamples[row])
         out << ',' << value;
       out << '\n';
+    }
+
+    if (mNewtonGfm) {
+      const String iterationFilename =
+          mFilename.substr(0, mFilename.rfind('/')) +
+          "/newton_iteration_timing.csv";
+      std::ofstream iterationOut(iterationFilename);
+      iterationOut << "simulation_time_s,newton_iterations,scaled_residual\n"
+                   << std::setprecision(12);
+      for (std::size_t row = 0; row < mTimes.size(); ++row)
+        iterationOut << mTimes[row] << ',' << mStepIterations[row] << ','
+                     << mStepResiduals[row] << '\n';
     }
 
     std::ofstream componentOut(mComponentFilename);
@@ -167,16 +246,50 @@ public:
   }
 
   std::size_t sampleCount() const { return mTimes.size(); }
+  UInt maximumNewtonIterations() const {
+    return mStepIterations.empty() ? 0
+                                   : *std::max_element(mStepIterations.begin(),
+                                                       mStepIterations.end());
+  }
+  Real meanNewtonIterations() const {
+    if (mStepIterations.empty())
+      return 0.0;
+    Real total = 0.0;
+    for (UInt value : mStepIterations)
+      total += value;
+    return total / static_cast<Real>(mStepIterations.size());
+  }
+  Real maximumNewtonResidual() const {
+    return mStepResiduals.empty() ? 0.0
+                                  : *std::max_element(mStepResiduals.begin(),
+                                                      mStepResiduals.end());
+  }
 
 private:
+  void executeMeasured(std::size_t index, Real time, Int timeStepCount,
+                       std::vector<Real> &elapsed) {
+    const auto start = std::chrono::steady_clock::now();
+    mSchedule[index]->execute(time, timeStepCount);
+    elapsed[index] +=
+        std::chrono::duration<Real>(std::chrono::steady_clock::now() - start)
+            .count();
+  }
+
+  static constexpr UInt mNewtonMaxIterations = 12;
+  static constexpr Real mNewtonTolerance = 1.0;
   String mFilename;
   String mComponentFilename;
+  std::shared_ptr<EMT::Ph3::SSN_GFM> mNewtonGfm;
   Task::List mTasks;
   Edges mInEdges, mOutEdges;
   Task::List mSchedule;
   std::vector<String> mColumns;
   std::vector<Real> mTimes;
   std::vector<std::vector<Real>> mSamples;
+  std::vector<std::size_t> mGfmPreTasks, mGfmPostTasks, mOtherPreTasks,
+      mOtherPostTasks, mSolveTasks, mLoggerTasks, mOtherTasks;
+  std::vector<UInt> mStepIterations;
+  std::vector<Real> mStepResiduals;
 };
 
 static String trimCsvField(String value) {
@@ -249,7 +362,17 @@ static void reorderGfmCsvColumns(const String &path) {
 }
 
 int main(int argc, char *argv[]) {
-  const Bool useCsvLogger = argc > 1 && String(argv[1]) == "--csv-logger";
+  Bool useCsvLogger = false;
+  Bool useNewtonIterations = false;
+  for (int arg = 1; arg < argc; ++arg) {
+    const String option(argv[arg]);
+    if (option == "--csv-logger")
+      useCsvLogger = true;
+    else if (option == "--newton")
+      useNewtonIterations = true;
+    else
+      throw std::invalid_argument("Unknown option: " + option);
+  }
   const Bool useRealtimeLogger = !useCsvLogger;
   // -------------------------------------------------------------------------
   // Simulation configuration
@@ -401,8 +524,9 @@ int main(int argc, char *argv[]) {
   // =========================================================================
   // Dynamic EMT simulation
   // =========================================================================
-  const String simNameEMT =
-      simName + (useCsvLogger ? "_EMT_CSVLogger" : "_EMT");
+  const String simNameEMT = simName +
+                            (useCsvLogger ? "_EMT_CSVLogger" : "_EMT") +
+                            (useNewtonIterations ? "_Newton" : "");
   Logger::setLogDir("logs/" + simNameEMT);
   std::filesystem::create_directories("logs/" + simNameEMT);
 
@@ -588,7 +712,8 @@ int main(int argc, char *argv[]) {
   // -------------------------------------------------------------------------
   Simulation sim(simNameEMT, Logger::Level::debug);
   auto timingScheduler = std::make_shared<PerStepTimingScheduler>(
-      "logs/" + simNameEMT + "/per_step_task_timing.csv");
+      "logs/" + simNameEMT + "/per_step_task_timing.csv",
+      useNewtonIterations ? gfm : nullptr);
   sim.setScheduler(timingScheduler);
 
   sim.addEvent(SwitchEvent3Ph::make(loadStepStartTime, loadSwitch, true));
@@ -629,6 +754,20 @@ int main(int argc, char *argv[]) {
               << "data_logger," << (useRealtimeLogger ? "realtime" : "csv")
               << ",type\n"
               << "data_logger_stop_flush," << loggerStopSeconds << ",s\n";
+  if (useNewtonIterations) {
+    performance << "integration_method,fully_implicit_newton,type\n"
+                << "newton_scaled_tolerance,1,scaled_residual\n"
+                << "newton_max_iterations,12,iterations\n"
+                << "newton_mean_iterations_per_step,"
+                << timingScheduler->meanNewtonIterations() << ",iterations\n"
+                << "newton_max_iterations_observed,"
+                << timingScheduler->maximumNewtonIterations() << ",iterations\n"
+                << "newton_max_final_scaled_residual,"
+                << timingScheduler->maximumNewtonResidual()
+                << ",scaled_residual\n";
+  } else {
+    performance << "integration_method,one_local_linearization,type\n";
+  }
 
   return 0;
 }

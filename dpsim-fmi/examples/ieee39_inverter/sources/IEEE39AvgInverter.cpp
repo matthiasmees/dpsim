@@ -11,6 +11,8 @@ namespace {
 struct Instance {
   std::array<double, 3> voltage{};
   std::array<double, 3> current{};
+  double activePowerW = 125e6;
+  double reactivePowerVar = 80.881e6;
   double time = 0.0;
   bool initialized = false;
   bool currentSetByHost = false;
@@ -42,20 +44,19 @@ std::array<double, 3> passiveCurrentReference(const Instance *model) {
 
   // IEEE39 generator 30 operating point, interpreted as positive power
   // injection. The FMU reports the opposite sign (current into the device).
-  constexpr double activePowerW = 125e6;
-  constexpr double reactivePowerVar = 80.881e6;
   constexpr double nominalLineVoltageV = 345e3;
   constexpr double currentLimitPu = 1.20;
   constexpr double responseTimeS = 5e-3;
   (void)responseTimeS;
   const double factor = 2.0 / (3.0 * voltageSquared);
   double injectionAlpha =
-      factor * (activePowerW * alpha + reactivePowerVar * beta);
+      factor * (model->activePowerW * alpha + model->reactivePowerVar * beta);
   double injectionBeta =
-      factor * (activePowerW * beta - reactivePowerVar * alpha);
-  const double ratedPeak = std::sqrt(2.0) *
-                           std::hypot(activePowerW, reactivePowerVar) /
-                           (std::sqrt(3.0) * nominalLineVoltageV);
+      factor * (model->activePowerW * beta - model->reactivePowerVar * alpha);
+  const double ratedPeak =
+      std::sqrt(2.0) *
+      std::hypot(model->activePowerW, model->reactivePowerVar) /
+      (std::sqrt(3.0) * nominalLineVoltageV);
   const double magnitude = std::hypot(injectionAlpha, injectionBeta);
   const double maximum = currentLimitPu * ratedPeak;
   if (magnitude > maximum) {
@@ -214,6 +215,10 @@ fmi3Status fmi3SetFloat64(fmi3Instance value,
     } else if (references[i] >= 6 && references[i] < 9) {
       model->current[references[i] - 6] = values[i];
       model->currentSetByHost = true;
+    } else if (references[i] == 13) {
+      model->activePowerW = values[i];
+    } else if (references[i] == 14) {
+      model->reactivePowerVar = values[i];
     } else {
       return fmi3Error;
     }
@@ -229,7 +234,7 @@ fmi3Status fmi3GetFloat64(fmi3Instance value,
   if (count == 0 && valueCount == 0)
     return fmi3OK;
   if (!instance(value)->initialized || !references || !values ||
-      count != valueCount || !validReferences(references, count, 12))
+      count != valueCount || !validReferences(references, count, 14))
     return fmi3Error;
   const auto *model = instance(value);
   const auto rates = derivatives(model);
@@ -243,6 +248,10 @@ fmi3Status fmi3GetFloat64(fmi3Instance value,
       values[i] = model->current[reference - 6];
     else if (reference == 9)
       values[i] = model->time;
+    else if (reference == 13)
+      values[i] = model->activePowerW;
+    else if (reference == 14)
+      values[i] = model->reactivePowerVar;
     else
       values[i] = rates[reference - 10];
   }

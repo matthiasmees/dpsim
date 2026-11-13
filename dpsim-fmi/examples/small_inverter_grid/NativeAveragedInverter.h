@@ -6,6 +6,7 @@
 #include <dpsim-models/PtrFactory.h>
 #include <dpsim-models/Solver/MNANonlinearCompInterface.h>
 #include <dpsim-models/Solver/MNAVariableCompInterface.h>
+#include <limits>
 
 namespace SmallGrid {
 /// Native DPsim implementation of the averaged inverter used by the small-grid
@@ -32,12 +33,17 @@ class NativeAveragedInverter final
   double mCurrentLimitPu = 1.20;
   double mTauSeconds = 5e-3;
   double mFrequencyHz = 60.0;
+  double mCurrentTime = 0.0;
+  double mReferenceStepTime = std::numeric_limits<double>::infinity();
+  double mActivePowerAfterStepW = 125e6;
+  double mReactivePowerAfterStepVar = 80.881e6;
   static constexpr int kMaximumNewtonIterations = 20;
   static constexpr double kAbsoluteCurrentTolerance = 1e-9;
   static constexpr double kRelativeCurrentTolerance = 1e-10;
   static constexpr double kJacobianPerturbation = 6e-6;
 
-  CPS::Matrix passiveCurrentReference(const CPS::Matrix &voltage) const;
+  CPS::Matrix passiveCurrentReference(const CPS::Matrix &voltage,
+                                      double time) const;
   CPS::Matrix periodicSteadyCurrent(const CPS::Matrix &voltage) const;
   CPS::Matrix endpointCurrent(const CPS::Matrix &voltage) const;
   CPS::Matrix voltageFromSolution(const CPS::Matrix &solution);
@@ -55,6 +61,8 @@ public:
                          double currentLimitPu = 1.20,
                          double responseTimeS = 5e-3,
                          double frequencyHz = 60.0);
+  void setPowerReferenceStep(double time, double activePowerAfterW,
+                             double reactivePowerAfterVar);
   CPS::SimPowerComp<CPS::Real>::Ptr clone(CPS::String) override;
   void connect(CPS::SimNode<CPS::Real>::Ptr node);
   void initialize(CPS::Matrix frequencies) override;

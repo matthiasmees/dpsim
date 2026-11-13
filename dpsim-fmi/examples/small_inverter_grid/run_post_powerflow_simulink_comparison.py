@@ -259,17 +259,21 @@ def analyze_step(step_us: int, output_dir: Path) -> dict:
     queues = {method: {s: deque() for s in ("v", "i")} for method in METHODS}
     rolling_sums = {method: {s: [0.0, 0.0] for s in ("v", "i")} for method in METHODS}
     accum = {method: {s: [0.0, 0.0, 0.0] for s in ("v", "i")} for method in METHODS}
+    magnitude_queues = {method: deque() for method in METHODS}
+    magnitude_rolling_sums = {method: [0.0, 0.0] for method in METHODS}
+    magnitude_accum = {method: [0.0, 0.0, 0.0] for method in METHODS}
     count = 0
     compact_stride = max(1, math.ceil((round(STOP_S / dt) + 1) / VISUAL_LIMIT))
     compact_path = output_dir / f"comparison_{step_us}us.csv"
-    fields = ["time_s", "native_vmag_kV", "native_i_a_A"]
+    fields = ["time_s", "native_vmag_kV", "native_imag_A"]
     for method in METHODS:
         key = method.lower().replace(" ", "_")
         fields += [
             f"{key}_vmag_kV",
-            f"{key}_i_a_A",
+            f"{key}_imag_A",
             f"{key}_v_error_100ms_percent",
             f"{key}_i_error_100ms_percent",
+            f"{key}_imag_error_100ms_percent",
         ]
     initial = {}
     with compact_path.open("w", newline="") as compact_stream:
@@ -305,6 +309,9 @@ def analyze_step(step_us: int, output_dir: Path) -> dict:
             if index == 0:
                 initial = {method: signals[method] for method in paths}
             native = signals["Native Simulink"]
+            native_current_magnitude = math.sqrt(
+                2 / 3 * sum(x * x for x in native["i"])
+            )
             error_percent_now = {}
             for method in METHODS:
                 error_percent_now[method] = {}
@@ -334,12 +341,37 @@ def analyze_step(step_us: int, output_dir: Path) -> dict:
                     accum[method][signal][2] = max(
                         accum[method][signal][2], math.sqrt(err2 / 3)
                     )
+                current_magnitude = math.sqrt(
+                    2 / 3 * sum(x * x for x in signals[method]["i"])
+                )
+                magnitude_error = current_magnitude - native_current_magnitude
+                magnitude_ref2 = native_current_magnitude**2
+                magnitude_error2 = magnitude_error**2
+                magnitude_queue = magnitude_queues[method]
+                magnitude_sums = magnitude_rolling_sums[method]
+                magnitude_queue.append((magnitude_ref2, magnitude_error2))
+                magnitude_sums[0] += magnitude_ref2
+                magnitude_sums[1] += magnitude_error2
+                if len(magnitude_queue) > window_n:
+                    old = magnitude_queue.popleft()
+                    magnitude_sums[0] -= old[0]
+                    magnitude_sums[1] -= old[1]
+                error_percent_now[method]["current_magnitude"] = (
+                    100 * math.sqrt(magnitude_sums[1] / magnitude_sums[0])
+                    if len(magnitude_queue) == window_n and magnitude_sums[0] > 0
+                    else math.nan
+                )
+                magnitude_accum[method][0] += magnitude_error2
+                magnitude_accum[method][1] += magnitude_ref2
+                magnitude_accum[method][2] = max(
+                    magnitude_accum[method][2], abs(magnitude_error)
+                )
             if index % compact_stride == 0 or index == round(STOP_S / dt):
                 row = {
                     "time_s": t,
                     "native_vmag_kV": math.sqrt(2 / 3 * sum(x * x for x in native["v"]))
                     / 1000,
-                    "native_i_a_A": native["i"][0],
+                    "native_imag_A": math.sqrt(2 / 3 * sum(x * x for x in native["i"])),
                 }
                 for method in METHODS:
                     key = method.lower().replace(" ", "_")
@@ -347,9 +379,14 @@ def analyze_step(step_us: int, output_dir: Path) -> dict:
                         math.sqrt(2 / 3 * sum(x * x for x in signals[method]["v"]))
                         / 1000
                     )
-                    row[f"{key}_i_a_A"] = signals[method]["i"][0]
+                    row[f"{key}_imag_A"] = math.sqrt(
+                        2 / 3 * sum(x * x for x in signals[method]["i"])
+                    )
                     row[f"{key}_v_error_100ms_percent"] = error_percent_now[method]["v"]
                     row[f"{key}_i_error_100ms_percent"] = error_percent_now[method]["i"]
+                    row[f"{key}_imag_error_100ms_percent"] = error_percent_now[method][
+                        "current_magnitude"
+                    ]
                 writer.writerow(row)
             count += 1
     for stream in streams.values():
@@ -373,6 +410,16 @@ def analyze_step(step_us: int, output_dir: Path) -> dict:
                 "max_instantaneous_phase_error": max_error,
             }
         metrics[method] = method_metrics
+        magnitude_error2, magnitude_ref2, max_magnitude_error = magnitude_accum[method]
+        method_metrics["current_magnitude"] = {
+            "rms_error": math.sqrt(magnitude_error2 / count),
+            "rms_error_percent_native_rms": (
+                100 * math.sqrt(magnitude_error2 / magnitude_ref2)
+                if magnitude_ref2
+                else None
+            ),
+            "max_magnitude_error": max_magnitude_error,
+        }
     metrics["Native Simulink"] = {
         s: {
             "rms_error": 0,
@@ -429,9 +476,11 @@ def create_figures(summary: dict) -> list[Path]:
         t = np.array([float(r["time_s"]) for r in rows])
         fig, axes = plt.subplots(2, 2, figsize=(13, 8), sharex="col")
         axes[0, 0].set_title("PCC three-phase voltage magnitude")
-        axes[0, 1].set_title("Inverter phase-a current")
+        axes[0, 1].set_title("Inverter three-phase current magnitude")
         axes[1, 0].set_title("100 ms rolling voltage RMS error vs native Simulink")
-        axes[1, 1].set_title("100 ms rolling current RMS error vs native Simulink")
+        axes[1, 1].set_title(
+            "100 ms rolling current magnitude RMS error vs native Simulink"
+        )
         axes[0, 0].plot(
             t,
             [float(r["native_vmag_kV"]) for r in rows],
@@ -441,7 +490,7 @@ def create_figures(summary: dict) -> list[Path]:
         )
         axes[0, 1].plot(
             t,
-            [float(r["native_i_a_A"]) for r in rows],
+            [float(r["native_imag_A"]) for r in rows],
             color=COLORS["Native Simulink"],
             label="Native Simulink",
             lw=1.5,
@@ -457,7 +506,7 @@ def create_figures(summary: dict) -> list[Path]:
             )
             axes[0, 1].plot(
                 t,
-                [float(r[f"{key}_i_a_A"]) for r in rows],
+                [float(r[f"{key}_imag_A"]) for r in rows],
                 color=COLORS[method],
                 label=method,
                 lw=1,
@@ -471,7 +520,7 @@ def create_figures(summary: dict) -> list[Path]:
             )
             axes[1, 1].plot(
                 t,
-                [float(r[f"{key}_i_error_100ms_percent"]) for r in rows],
+                [float(r[f"{key}_imag_error_100ms_percent"]) for r in rows],
                 color=COLORS[method],
                 label=method,
                 lw=1,
@@ -482,7 +531,7 @@ def create_figures(summary: dict) -> list[Path]:
             )
             ax.grid(True, alpha=0.3)
         axes[0, 0].set_ylabel("Voltage [kV]")
-        axes[0, 1].set_ylabel("Current [A]")
+        axes[0, 1].set_ylabel("Current magnitude [A]")
         axes[1, 0].set_ylabel("RMS error [%]")
         axes[1, 1].set_ylabel("RMS error [%]")
         axes[1, 0].set_xlabel("Time [s]")
@@ -503,7 +552,10 @@ def create_figures(summary: dict) -> list[Path]:
     fig, axes = plt.subplots(1, 2, figsize=(13, 5))
     for j, method in enumerate(METHODS):
         color = COLORS[method]
-        for axis, signal, offset in ((axes[0], "voltage", j), (axes[1], "current", j)):
+        for axis, signal, offset in (
+            (axes[0], "voltage", j),
+            (axes[1], "current_magnitude", j),
+        ):
             vals = [
                 s["rms_error_vs_native_simulink"][method][signal][
                     "rms_error_percent_native_rms"
@@ -512,11 +564,12 @@ def create_figures(summary: dict) -> list[Path]:
             ]
             axis.bar(x + (offset - 1) * width, vals, width, label=method, color=color)
     axes[0].set_title("Three-phase PCC voltage RMS error")
-    axes[1].set_title("Three-phase inverter current RMS error")
+    axes[1].set_title("Three-phase inverter current magnitude RMS error")
     for ax in axes:
         ax.set_xticks(x, [f"{s['step_us']} µs" for s in summary["steps"]])
-        ax.set_ylabel("Error vs native Simulink [%]")
         ax.grid(axis="y", alpha=0.3)
+    axes[0].set_ylabel("Voltage waveform RMS error vs native Simulink [%]")
+    axes[1].set_ylabel("Current magnitude RMS error vs native Simulink [%]")
     axes[1].legend(fontsize=8)
     fig.tight_layout()
     path = figure_dir / "rms_error_by_timestep.png"
@@ -553,7 +606,7 @@ def create_figures(summary: dict) -> list[Path]:
 
 def markdown_table(summary: dict) -> str:
     lines = [
-        "| Step | Samples | DPsim ME V / I [%] | DPsim CS V / I [%] | Simulink CS V / I [%] |",
+        "| Step | Samples | DPsim ME voltage / current waveform [%] | DPsim CS voltage / current waveform [%] | Simulink CS voltage / current waveform [%] |",
         "|---:|---:|---:|---:|---:|",
     ]
     for step in summary["steps"]:
@@ -643,7 +696,7 @@ def create_notebook(summary: dict, figures: list[Path]) -> Path:
         + "\n"
     )
     md(
-        "## RMS errors against native Simulink\n\nEach error uses all three phases over the complete 5 s trace and is normalized by the corresponding native-Simulink RMS. `Simulink CS` is included as a method alongside DPsim ME and CS.\n\n"
+        "## RMS errors against native Simulink\n\nThe numeric table reports full-run three-phase waveform RMS errors over the complete 5 s trace, normalized by the corresponding native-Simulink waveform RMS. The right panel of the timestep summary and the lower-right panel of each case plot instead report RMS error of the three-phase current magnitude, matching the magnitude trace shown above. This magnitude metric reflects current-amplitude differences and does not include phase-angle error. `Simulink CS` is included alongside DPsim ME and CS.\n\n"
         + markdown_table(summary)
         + "\n"
     )

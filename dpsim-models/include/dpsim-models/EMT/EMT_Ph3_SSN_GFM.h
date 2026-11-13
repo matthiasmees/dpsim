@@ -143,6 +143,15 @@ private:
   Matrix mStateOffsetWorkspace = Matrix::Zero(mStateSize, 1);
   Matrix mOutputOffsetWorkspace = Matrix::Zero(mOutputSize, 1);
 
+  // Optional fully implicit Newton correction context used by the benchmark.
+  // The normal EMT path leaves this disabled and retains one linearization.
+  Bool mImplicitNewtonActive = false;
+  Matrix mNewtonBaseState;
+  Matrix mNewtonBaseVoltage;
+  Matrix mNewtonBaseDerivative;
+  Matrix mNewtonGuessState;
+  Matrix mNewtonGuessVoltage;
+
   MatrixFixedSize<2, 3> getParkTransformMatrix(Real theta) const;
 
   MatrixFixedSize<3, 2> getInverseParkTransformMatrix(Real theta) const;
@@ -180,6 +189,11 @@ public:
   Matrix getStateDerivative() const;
   Matrix getInterfaceVoltage() const;
   Matrix getInterfaceCurrent() const;
+  void beginImplicitNewtonStep();
+  void setImplicitNewtonGuess(const Matrix &state, const Matrix &voltage);
+  void restoreImplicitNewtonBase();
+  Real implicitNewtonResidual() const;
+  void endImplicitNewtonStep();
   std::vector<SSNComp::LocalAbcStateBlock>
   getLocalAbcStateBlocks() const override final;
 

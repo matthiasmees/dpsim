@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<fmiModelDescription fmiVersion="2.0" modelName="LinearRL3PhME" guid="{f4e4b28a-84ec-49a9-8148-471d56463b01}" variableNamingConvention="structured" numberOfEventIndicators="0">
+  <ModelExchange modelIdentifier="LinearRL3PhME" needsCompletedIntegratorStep="true" canGetAndSetFMUstate="false" canSerializeFMUstate="false" providesDirectionalDerivatives="false"/>
+  <UnitDefinitions><Unit name="V"><BaseUnit kg="1" m="2" s="-3" A="-1"/></Unit><Unit name="A"><BaseUnit A="1"/></Unit><Unit name="A_per_s"><BaseUnit A="1" s="-1"/></Unit></UnitDefinitions>
+  <ModelVariables>
+    <ScalarVariable name="u_a" valueReference="0" causality="input" variability="continuous"><Real unit="V" start="0"/></ScalarVariable>
+    <ScalarVariable name="u_b" valueReference="1" causality="input" variability="continuous"><Real unit="V" start="0"/></ScalarVariable>
+    <ScalarVariable name="u_c" valueReference="2" causality="input" variability="continuous"><Real unit="V" start="0"/></ScalarVariable>
+    <ScalarVariable name="i_a" valueReference="3" causality="output" variability="continuous"><Real unit="A" start="0" derivative="6"/></ScalarVariable>
+    <ScalarVariable name="i_b" valueReference="4" causality="output" variability="continuous"><Real unit="A" start="0" derivative="7"/></ScalarVariable>
+    <ScalarVariable name="i_c" valueReference="5" causality="output" variability="continuous"><Real unit="A" start="0" derivative="8"/></ScalarVariable>
+    <ScalarVariable name="der_i_a" valueReference="6" causality="local" variability="continuous"><Real unit="A_per_s"/></ScalarVariable>
+    <ScalarVariable name="der_i_b" valueReference="7" causality="local" variability="continuous"><Real unit="A_per_s"/></ScalarVariable>
+    <ScalarVariable name="der_i_c" valueReference="8" causality="local" variability="continuous"><Real unit="A_per_s"/></ScalarVariable>
+  </ModelVariables>
+  <ModelStructure><Outputs><Unknown index="4"/><Unknown index="5"/><Unknown index="6"/></Outputs><Derivatives><Unknown index="7"/><Unknown index="8"/><Unknown index="9"/></Derivatives></ModelStructure>
+</fmiModelDescription>

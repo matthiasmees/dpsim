@@ -45,10 +45,23 @@ void NativeAveragedInverter::setOperatingPoint(
     throw std::invalid_argument("Invalid native inverter operating point");
   mActivePowerW = activePowerW;
   mReactivePowerVar = reactivePowerVar;
+  mActivePowerAfterStepW = activePowerW;
+  mReactivePowerAfterStepVar = reactivePowerVar;
+  mReferenceStepTime = std::numeric_limits<double>::infinity();
   mNominalLineVoltageV = nominalLineVoltageV;
   mCurrentLimitPu = currentLimitPu;
   mTauSeconds = responseTimeS;
   mFrequencyHz = frequencyHz;
+}
+
+void NativeAveragedInverter::setPowerReferenceStep(
+    double time, double activePowerAfterW, double reactivePowerAfterVar) {
+  if (!std::isfinite(time) || time <= 0 || !std::isfinite(activePowerAfterW) ||
+      !std::isfinite(reactivePowerAfterVar))
+    throw std::invalid_argument("Invalid native inverter power-reference step");
+  mReferenceStepTime = time;
+  mActivePowerAfterStepW = activePowerAfterW;
+  mReactivePowerAfterStepVar = reactivePowerAfterVar;
 }
 
 void NativeAveragedInverter::connect(SimNode<Real>::Ptr node) {
@@ -67,11 +80,16 @@ void NativeAveragedInverter::validateTerminals() {
   }
 }
 
-Matrix
-NativeAveragedInverter::passiveCurrentReference(const Matrix &voltage) const {
+Matrix NativeAveragedInverter::passiveCurrentReference(const Matrix &voltage,
+                                                       double time) const {
   if (voltage.rows() != 3 || voltage.cols() != 1 || !voltage.allFinite())
     throw std::invalid_argument("Native inverter voltage must be finite abc");
   constexpr double root3over2 = 0.86602540378443864676;
+  const double activePowerW =
+      time >= mReferenceStepTime ? mActivePowerAfterStepW : mActivePowerW;
+  const double reactivePowerVar = time >= mReferenceStepTime
+                                      ? mReactivePowerAfterStepVar
+                                      : mReactivePowerVar;
   const double alpha =
       (2.0 / 3.0) * (voltage(0, 0) - 0.5 * voltage(1, 0) - 0.5 * voltage(2, 0));
   const double beta =
@@ -83,11 +101,11 @@ NativeAveragedInverter::passiveCurrentReference(const Matrix &voltage) const {
 
   const double factor = 2.0 / (3.0 * voltageSquared);
   double injectionAlpha =
-      factor * (mActivePowerW * alpha + mReactivePowerVar * beta);
+      factor * (activePowerW * alpha + reactivePowerVar * beta);
   double injectionBeta =
-      factor * (mActivePowerW * beta - mReactivePowerVar * alpha);
+      factor * (activePowerW * beta - reactivePowerVar * alpha);
   const double ratedPeak = std::sqrt(2.0) *
-                           std::hypot(mActivePowerW, mReactivePowerVar) /
+                           std::hypot(activePowerW, reactivePowerVar) /
                            (std::sqrt(3.0) * mNominalLineVoltageV);
   const double maximum = mCurrentLimitPu * ratedPeak;
   const double magnitude = std::hypot(injectionAlpha, injectionBeta);
@@ -110,7 +128,7 @@ NativeAveragedInverter::periodicSteadyCurrent(const Matrix &voltage) const {
   // instantaneous P/Q current reference is a 60 Hz periodic signal, so the
   // filter state at t=0 must include its steady-state gain and phase lag.
   constexpr double root3over2 = 0.86602540378443864676;
-  const Matrix target = passiveCurrentReference(voltage);
+  const Matrix target = passiveCurrentReference(voltage, 0.0);
   const double targetAlpha =
       (2.0 / 3.0) * (target(0, 0) - 0.5 * target(1, 0) - 0.5 * target(2, 0));
   const double targetBeta =
@@ -130,7 +148,8 @@ Matrix NativeAveragedInverter::endpointCurrent(const Matrix &voltage) const {
   const double oldWeight = (2.0 * mTauSeconds - mStep) / denominator;
   const double targetWeight = mStep / denominator;
   return oldWeight * mOldState +
-         targetWeight * (mOldTarget + passiveCurrentReference(voltage));
+         targetWeight *
+             (mOldTarget + passiveCurrentReference(voltage, mCurrentTime));
 }
 
 Matrix NativeAveragedInverter::voltageFromSolution(const Matrix &solution) {
@@ -158,9 +177,9 @@ void NativeAveragedInverter::initializeFromNodesAndTerminals(Real) {
   // The IEEE39 FMI initializes its current state directly to its P/Q target.
   // The small-grid default may instead start at the periodic filtered state
   // to suppress its deliberately modeled startup transient.
-  const Matrix initialCurrent = mUsePeriodicFilterStart
-                                    ? periodicSteadyCurrent(mInitialVoltage)
-                                    : passiveCurrentReference(mInitialVoltage);
+  const Matrix initialCurrent =
+      mUsePeriodicFilterStart ? periodicSteadyCurrent(mInitialVoltage)
+                              : passiveCurrentReference(mInitialVoltage, 0.0);
   **mState = initialCurrent;
   **mIntfVoltage = mInitialVoltage;
   **mIntfCurrent = initialCurrent;
@@ -187,18 +206,20 @@ void NativeAveragedInverter::mnaCompInitialize(Real, Real timeStep,
             mVariableSystemMatrixEntries.emplace_back(matrixNodeIndex(a, i),
                                                       matrixNodeIndex(b, j));
   mOldState = **mState;
-  mOldTarget = passiveCurrentReference(**mIntfVoltage);
+  mCurrentTime = 0;
+  mOldTarget = passiveCurrentReference(**mIntfVoltage, 0.0);
   mTrialVoltage = **mIntfVoltage;
   mTrialState = mOldState;
   prepareTangent();
 }
 
-void NativeAveragedInverter::mnaCompPreStep(Real, Int) {
+void NativeAveragedInverter::mnaCompPreStep(Real time, Int) {
+  mCurrentTime = time;
   mIterations = 0;
   mResidual = 0;
   mOldState = **mState;
   mTrialVoltage = **mIntfVoltage;
-  mOldTarget = passiveCurrentReference(**mIntfVoltage);
+  mOldTarget = passiveCurrentReference(**mIntfVoltage, time - mStep);
   mTrialState = endpointCurrent(mTrialVoltage);
   prepareTangent();
 }

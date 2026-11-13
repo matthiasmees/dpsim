@@ -799,8 +799,23 @@ void EMT::Ph3::SSN_GFM::buildStateSpaceModel(const Matrix &x, const Matrix &u,
 }
 
 Bool EMT::Ph3::SSN_GFM::updateComponentParameters() {
-  buildStateSpaceModel(**mX, **mIntfVoltage, mA, mB, mC, mD,
+  const Matrix &linearizationState =
+      mImplicitNewtonActive ? mNewtonGuessState : **mX;
+  const Matrix &linearizationVoltage =
+      mImplicitNewtonActive ? mNewtonGuessVoltage : **mIntfVoltage;
+  buildStateSpaceModel(linearizationState, linearizationVoltage, mA, mB, mC, mD,
                        mStateOffsetWorkspace, mOutputOffsetWorkspace);
+
+  if (mImplicitNewtonActive) {
+    // Linearize only the unknown endpoint term in the trapezoidal residual:
+    // x1 - x0 - h/2(f0 + f(x1,u1)) = 0.  The ordinary SSN discretizer
+    // evaluates its affine model at both endpoints, so adjust E such that its
+    // old-endpoint contribution remains the true f(x0,u0), while its new
+    // endpoint contribution is the Newton tangent at (xj,uj).
+    mStateOffsetWorkspace =
+        0.5 * (mNewtonBaseDerivative + mStateOffsetWorkspace -
+               mA * mNewtonBaseState - mB * mNewtonBaseVoltage);
+  }
 
   setStateOffset(mStateOffsetWorkspace);
   setOutputOffset(mOutputOffsetWorkspace);
@@ -1124,3 +1139,72 @@ Matrix EMT::Ph3::SSN_GFM::getStateDerivative() const {
 Matrix EMT::Ph3::SSN_GFM::getInterfaceVoltage() const { return **mIntfVoltage; }
 
 Matrix EMT::Ph3::SSN_GFM::getInterfaceCurrent() const { return **mIntfCurrent; }
+
+void EMT::Ph3::SSN_GFM::beginImplicitNewtonStep() {
+  if (mImplicitNewtonActive)
+    throw std::logic_error("An implicit Newton step is already active.");
+  mNewtonBaseState = **mX;
+  mNewtonBaseVoltage = **mIntfVoltage;
+  evaluateStateDerivative(mNewtonBaseState, mNewtonBaseVoltage,
+                          mNewtonBaseDerivative);
+  mNewtonGuessState = mNewtonBaseState;
+  mNewtonGuessVoltage = mNewtonBaseVoltage;
+  mImplicitNewtonActive = true;
+}
+
+void EMT::Ph3::SSN_GFM::setImplicitNewtonGuess(const Matrix &state,
+                                               const Matrix &voltage) {
+  if (!mImplicitNewtonActive)
+    throw std::logic_error("No implicit Newton step is active.");
+  if (state.rows() != mStateSize || state.cols() != 1 ||
+      voltage.rows() != mInputSize || voltage.cols() != 1)
+    throw std::invalid_argument(
+        "Implicit Newton guess has invalid dimensions.");
+  mNewtonGuessState = state;
+  mNewtonGuessVoltage = voltage;
+}
+
+void EMT::Ph3::SSN_GFM::restoreImplicitNewtonBase() {
+  if (!mImplicitNewtonActive)
+    throw std::logic_error("No implicit Newton step is active.");
+  **mX = mNewtonBaseState;
+  **mIntfVoltage = mNewtonBaseVoltage;
+}
+
+Real EMT::Ph3::SSN_GFM::implicitNewtonResidual() const {
+  if (!mImplicitNewtonActive)
+    throw std::logic_error("No implicit Newton step is active.");
+
+  Matrix currentDerivative(mStateSize, 1);
+  Matrix currentOutput(mOutputSize, 1);
+  evaluateStateDerivative(**mX, **mIntfVoltage, currentDerivative);
+  evaluateOutput(**mX, **mIntfVoltage, currentOutput);
+
+  const Matrix stateResidual =
+      **mX - mNewtonBaseState -
+      (0.5 * mTimeStep) * (mNewtonBaseDerivative + currentDerivative);
+  Real scaledResidual = 0.0;
+  for (Int i = 0; i < mStateSize; ++i) {
+    const Real scale = 1e-10 + 1e-8 * std::max(std::abs(mNewtonBaseState(i, 0)),
+                                               std::abs((**mX)(i, 0)));
+    scaledResidual =
+        std::max(scaledResidual, std::abs(stateResidual(i, 0)) / scale);
+  }
+
+  const Matrix tangentOutput =
+      mC * (**mX) + mD * (**mIntfVoltage) + outputOffset();
+  for (Int i = 0; i < mOutputSize; ++i) {
+    const Real scale = 1e-10 + 1e-8 * std::max(std::abs(currentOutput(i, 0)),
+                                               std::abs(tangentOutput(i, 0)));
+    scaledResidual =
+        std::max(scaledResidual,
+                 std::abs(currentOutput(i, 0) - tangentOutput(i, 0)) / scale);
+  }
+  return scaledResidual;
+}
+
+void EMT::Ph3::SSN_GFM::endImplicitNewtonStep() {
+  if (!mImplicitNewtonActive)
+    throw std::logic_error("No implicit Newton step is active.");
+  mImplicitNewtonActive = false;
+}
