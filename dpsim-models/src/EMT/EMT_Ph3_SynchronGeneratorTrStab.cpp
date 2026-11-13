@@ -7,6 +7,7 @@
  *********************************************************************************/
 
 #include <dpsim-models/EMT/EMT_Ph3_SynchronGeneratorTrStab.h>
+#include <dpsim-models/MNAStampUtils.h>
 using namespace CPS;
 
 Matrix EMT::Ph3::SynchronGeneratorTrStab::parkTransformPowerInvariant(
@@ -32,6 +33,10 @@ Matrix EMT::Ph3::SynchronGeneratorTrStab::getParkTransformMatrixPowerInvariant(
 
 EMT::Ph3::SynchronGeneratorTrStab::SynchronGeneratorTrStab(
     String uid, String name, Logger::Level logLevel)
+    : SynchronGeneratorTrStab(uid, name, true, logLevel) {}
+
+EMT::Ph3::SynchronGeneratorTrStab::SynchronGeneratorTrStab(
+    String uid, String name, Bool useSubcomponents, Logger::Level logLevel)
     : Base::SynchronGenerator(mAttributes),
       CompositePowerComp<Real>(uid, name, true, true, logLevel),
       mEp(mAttributes->create<Complex>("Ep")),
@@ -39,7 +44,8 @@ EMT::Ph3::SynchronGeneratorTrStab::SynchronGeneratorTrStab(
       mEp_phase(mAttributes->create<Real>("Ep_phase")),
       mDelta_p(mAttributes->create<Real>("delta_r")),
       mRefOmega(mAttributes->createDynamic<Real>("w_ref")),
-      mRefDelta(mAttributes->createDynamic<Real>("delta_ref")) {
+      mRefDelta(mAttributes->createDynamic<Real>("delta_ref")),
+      mUseSubcomponents(useSubcomponents) {
   setVirtualNodeNumber(2);
   setTerminalNumber(1);
   **mIntfVoltage = Matrix::Zero(3, 1);
@@ -49,7 +55,7 @@ EMT::Ph3::SynchronGeneratorTrStab::SynchronGeneratorTrStab(
 }
 
 SimPowerComp<Real>::Ptr EMT::Ph3::SynchronGeneratorTrStab::clone(String name) {
-  auto copy = SynchronGeneratorTrStab::make(name, mLogLevel);
+  auto copy = SynchronGeneratorTrStab::make(name, mUseSubcomponents, mLogLevel);
   copy->setStandardParametersPU(mNomPower, mNomVolt, mNomFreq, mXpd / mBase_Z,
                                 **mInertia, **mRs / mBase_Z,
                                 mKd * mNomOmega / mNomPower);
@@ -145,6 +151,9 @@ void EMT::Ph3::SynchronGeneratorTrStab::createSubComponents() {
     return;
   mSubCompCreated = true;
 
+  if (!mUseSubcomponents)
+    return;
+
   mSubVoltageSource =
       EMT::Ph3::VoltageSource::make(**mName + "_src", mLogLevel);
   mSubVoltageSource->connect({SimNode::GND, mVirtualNodes[0]});
@@ -213,13 +222,29 @@ void EMT::Ph3::SynchronGeneratorTrStab::initializeParentFromNodesAndTerminals(
 
   // Initialize node between X'd and Ep
   mVirtualNodes[0]->setInitialVoltage(PEAK1PH_TO_RMS3PH * **mEp);
+  if (!mUseSubcomponents) {
+    MatrixComp terminalVoltage = CPS::Math::singlePhaseVariableToThreePhase(
+        RMS3PH_TO_PEAK1PH * initialSingleVoltage(0));
+    MatrixComp sourceVoltage =
+        CPS::Math::singlePhaseVariableToThreePhase(**mEp);
+    mDirectInductorVoltage = (terminalVoltage - sourceVoltage).real();
+    const Real omega = 2. * PI * frequency;
+    mDirectInductorCurrent =
+        (mDirectInductorVoltage.cast<Complex>() / Complex(0., omega * mLpd))
+            .real();
+  }
 
   MatrixComp vref = MatrixComp::Zero(3, 1);
   vref = CPS::Math::singlePhaseVariableToThreePhase(PEAK1PH_TO_RMS3PH * **mEp);
 
-  // Set emf on the already-created voltage source; the framework's generic
-  // sub-init loop will initialize it after this hook returns.
-  mSubVoltageSource->setParameters(vref, frequency);
+  if (mUseSubcomponents) {
+    // Set emf on the already-created voltage source; the framework's generic
+    // sub-init loop will initialize it after this hook returns.
+    mSubVoltageSource->setParameters(vref, frequency);
+  } else {
+    mDirectSourceSignal = Signal::SineWaveGenerator::make(**mName + "_source");
+    mDirectSourceSignal->setParameters(Complex(1., 0.), frequency);
+  }
 
   SPDLOG_LOGGER_INFO(mSLog,
                      "\n--- Initialize according to powerflow ---"
@@ -274,14 +299,64 @@ void EMT::Ph3::SynchronGeneratorTrStab::step(Real time) {
 void EMT::Ph3::SynchronGeneratorTrStab::mnaParentInitialize(
     Real omega, Real timeStep, Attribute<Matrix>::Ptr leftVector) {
   mTimeStep = timeStep;
-  mMnaTasks.push_back(std::make_shared<AddBStep>(*this));
+  if (mUseSubcomponents) {
+    mMnaTasks.push_back(std::make_shared<AddBStep>(*this));
+  } else {
+    mDirectInductorConductance =
+        (timeStep / 2.) * Matrix::Identity(3, 3) / mLpd;
+    mDirectInductorHistory =
+        mDirectInductorConductance * mDirectInductorVoltage +
+        mDirectInductorCurrent;
+  }
+}
+
+void EMT::Ph3::SynchronGeneratorTrStab::mnaParentApplySystemMatrixStamp(
+    SparseMatrixRow &systemMatrix) {
+  if (mUseSubcomponents)
+    return;
+
+  updateMatrixNodeIndices();
+  const UInt emfNode = mVirtualNodes[0]->matrixNodeIndex(PhaseType::A);
+  const UInt sourceCurrent = mVirtualNodes[1]->matrixNodeIndex(PhaseType::A);
+  MNAStampUtils::stampConductanceMatrix(
+      mDirectInductorConductance, systemMatrix, emfNode, matrixNodeIndex(0),
+      true, terminalNotGrounded(0), mSLog);
+  for (UInt phase = 0; phase < 3; ++phase) {
+    Math::addToMatrixElement(systemMatrix, emfNode + phase,
+                             sourceCurrent + phase, 1.);
+    Math::addToMatrixElement(systemMatrix, sourceCurrent + phase,
+                             emfNode + phase, 1.);
+  }
+}
+
+void EMT::Ph3::SynchronGeneratorTrStab::mnaParentApplyRightSideVectorStamp(
+    Matrix &rightVector) {
+  if (mUseSubcomponents)
+    return;
+
+  const UInt emfNode = mVirtualNodes[0]->matrixNodeIndex(PhaseType::A);
+  const UInt sourceCurrent = mVirtualNodes[1]->matrixNodeIndex(PhaseType::A);
+  for (UInt phase = 0; phase < 3; ++phase) {
+    Math::setVectorElement(rightVector, sourceCurrent + phase,
+                           mDirectSourceVoltage(phase, 0));
+    if (terminalNotGrounded(0)) {
+      Math::setVectorElement(rightVector, emfNode + phase,
+                             mDirectInductorHistory(phase, 0));
+      Math::setVectorElement(rightVector, matrixNodeIndex(0, phase),
+                             -mDirectInductorHistory(phase, 0));
+    }
+  }
 }
 
 void EMT::Ph3::SynchronGeneratorTrStab::mnaParentAddPreStepDependencies(
     AttributeBase::List &prevStepDependencies,
     AttributeBase::List &attributeDependencies,
     AttributeBase::List &modifiedAttributes) {
-  prevStepDependencies.push_back(mIntfVoltage);
+  if (!mUseSubcomponents) {
+    prevStepDependencies.push_back(mIntfVoltage);
+    prevStepDependencies.push_back(mIntfCurrent);
+  }
+  modifiedAttributes.push_back(mRightVector);
 };
 
 void EMT::Ph3::SynchronGeneratorTrStab::mnaParentAddPostStepDependencies(
@@ -296,10 +371,26 @@ void EMT::Ph3::SynchronGeneratorTrStab::mnaParentAddPostStepDependencies(
 void EMT::Ph3::SynchronGeneratorTrStab::mnaParentPreStep(Real time,
                                                          Int timeStepCount) {
   step(time);
-  //change magnitude of subvoltage source
-  MatrixComp vref = MatrixComp::Zero(3, 1);
-  vref = CPS::Math::singlePhaseVariableToThreePhase(PEAK1PH_TO_RMS3PH * **mEp);
-  mSubVoltageSource->mVoltageRef->set(vref);
+  if (mUseSubcomponents) {
+    //change magnitude of subvoltage source
+    MatrixComp vref = MatrixComp::Zero(3, 1);
+    vref =
+        CPS::Math::singlePhaseVariableToThreePhase(PEAK1PH_TO_RMS3PH * **mEp);
+    mSubVoltageSource->mVoltageRef->set(vref);
+  } else {
+    mDirectSourceSignal->step(time);
+    const Real signalPhase = Math::phase(mDirectSourceSignal->getSignal());
+    const MatrixComp vref =
+        CPS::Math::singlePhaseVariableToThreePhase(PEAK1PH_TO_RMS3PH * **mEp);
+    for (UInt phase = 0; phase < 3; ++phase)
+      mDirectSourceVoltage(phase, 0) =
+          RMS3PH_TO_PEAK1PH * Math::abs(vref(phase, 0)) *
+          std::cos(signalPhase + Math::phase(vref(phase, 0)));
+    mDirectInductorHistory =
+        mDirectInductorConductance * mDirectInductorVoltage +
+        mDirectInductorCurrent;
+    mnaCompApplyRightSideVectorStamp(**mRightVector);
+  }
 }
 
 void EMT::Ph3::SynchronGeneratorTrStab::AddBStep::execute(Real time,
@@ -329,5 +420,17 @@ void EMT::Ph3::SynchronGeneratorTrStab::mnaCompUpdateCurrent(
     const Matrix &leftVector) {
   SPDLOG_LOGGER_DEBUG(mSLog, "Read current from {:d}", matrixNodeIndex(0));
 
-  **mIntfCurrent = **mSubInductor->mIntfCurrent;
+  if (mUseSubcomponents) {
+    **mIntfCurrent = **mSubInductor->mIntfCurrent;
+  } else {
+    const UInt emfNode = mVirtualNodes[0]->matrixNodeIndex(PhaseType::A);
+    mDirectInductorVoltage = **mIntfVoltage;
+    for (UInt phase = 0; phase < 3; ++phase)
+      mDirectInductorVoltage(phase, 0) -=
+          Math::realFromVectorElement(leftVector, emfNode + phase);
+    mDirectInductorCurrent =
+        mDirectInductorConductance * mDirectInductorVoltage +
+        mDirectInductorHistory;
+    **mIntfCurrent = mDirectInductorCurrent;
+  }
 }
