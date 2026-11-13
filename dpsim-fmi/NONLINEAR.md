@@ -128,73 +128,22 @@ a short settling interval or an exporter-specific operating point.
 
 Each component owns an independent runtime. Sharing one FMU instance between
 clones is not supported. The exporter's singleton capability is respected;
-load a separate instance only if that capability allows it. The SG MATLAB FMU
-permits one instance per process, so run different scenarios in separate
-processes.
+load a separate instance only if that capability allows it.
 
-## Build and reproduce
+## Build and run
 
-Work from the repository root on the SSD. Example sources and retained inputs are under `dpsim-fmi/examples/`; generated outputs belong under build.
-
-```sh
-env DEVELOPER_DIR=/Library/Developer/CommandLineTools \
-  cmake --build build-macos-check --parallel 3 --target \
-  FMI_EMT_LinearSSN FMI_EMT_Ph3_LinearSSN FMI_EMT_Ph3_Nonlinear \
-  FMI_EMT_Ph3_Mixed FMI_EMT_Ph3_TwoGenerators
-ctest --test-dir build-macos-check -R fmi_ --output-on-failure
-```
-
-Execute each case's comparison notebook with the DPsim Python kernel. Each notebook contains its comparison logic and runs the C++ example against retained MATLAB references. The inverter notebook also reproduces direct 50/25 µs capability checks. Open the retained physical reference models in MATLAB to regenerate converter results; they do not invoke the FMU. The generator reference functions independently solve the full model equations with implicit trapezoid and segmented ode15s.
-
-| Case directory | Validated scope |
-| --- | --- |
-| `linear_scalar` | Existing scalar linear FMI import |
-| `linear_three_phase` | Existing ABC linear FMI import |
-| `synchronous_generator` | Nonlinear coupled generator, matched full-state MATLAB reference, 50/25 µs refinement and ode15s cross-check |
-| `inverter` | Switched converter with native voltage source, R/L, base and switched loads; balanced/unbalanced load, sag, phase and frequency disturbances at supported 1 µs step |
-| `two_generators` | Two separately exported generators on one shared bus, independent control changes, model-order isolation, singleton rejection and meaningful nonzero operating point, 50/25 µs refinement |
-
-Each directory keeps one C++ example and one executed comparison notebook, final FMU/XML/source models in `sources/`, and meaningful MATLAB reference results/model definitions in `matlab/`. All work remains local, uncommitted and unpushed on `feature/FMU_import`. MATLAB/Simulink is the benchmark scope.
-
-## Numerical evidence and interpretation
-
-The generator comparison checks all 34 saved signals. The original 0.1% maximum/RMS engineering-base criterion passes; the largest normalized discrepancy against ode15s is approximately 0.0671% at 50 µs and 0.0168% at 25 µs. The two-generator comparison checks 52 physical/control signals; its largest matched normalized discrepancy is approximately 5.23e-7, and the ode15s cross-check approximately 3.44e-6 (fractions of declared bases). Refinement reduces representative RMS errors by about four. Model-supplied initial conditions have nonzero power and network currents, with stationary machine/controller residual about 1.14e-13. This is not arbitrary-FMU automatic load-flow initialization.
-
-The switched converter preserves the IGBT/diode plant, transformer/filter, original loads, PLL, PI controllers, PWM and internal breaker. The independent physical Simscape reference preserves the original grid source and its initial state. A stateless series correction applies grid disturbances; additional reference resistors match the native switch resistances. Both controller subsystem XMLs are byte-identical to the original reference. Metrics include every coincident sample and retain startup/event peaks, raw angle maxima and wrapped angle errors. No trace shifts are applied.
-
-For the five matched 1 µs disturbance runs, the worst converter phase-current peaks are approximately 0.182%, 0.163%, 0.139%, 0.121% and 0.106% of the declared 16.32993 A engineering base. The largest PI/control peaks are approximately 0.834% of their declared pu base. These exceed the original provisional 0.1% threshold; the notebook shows the individual failures explicitly. The user accepted a wider margin, without a new universal numerical guarantee. All five runs satisfy network KCL to logged precision, converged Newton residuals and unchanged physical/control CSV outputs under tenfold tighter Newton tolerances.
-
-The requested practical network step is 50 µs. The switched converter now
-runs through 0.2 s at 50 and 25 µs while retaining all 1 µs scheduled events.
-Its MathWorks R2025a Model Exchange export advertises state rollback, but an
-identical replay changes the continuous state norm by about 0.394 and output
-norm by about 9.38e-4. The importer detects and rejects that rollback path.
-These two runs therefore use the generic single-pass policy. After the first
-10 ms, the 50 µs run has maximum converter-current and PCC-voltage errors of
-about 0.095% and 0.028% of their declared bases against the 1 µs import. The
-largest controller difference is 0.556% (`pi_q`). At 25 µs these become about
-0.086%, 0.020%, and 0.295%. Full-window results retain a very large initial PCC
-voltage difference caused by the zero-current line initialization at the coarse
-network step. The direct coupling discrepancy peaks at 1.268 A at 50 µs and
-0.683 A at 25 µs during startup; after 10 ms the maxima are 0.0523 A and
-0.0258 A. These are measured explicit-coupling results, not converged implicit
-coupling claims.
-
-The new multirate path implements that rollback/replay interval map. Its Norton
-tangent linearizes terminal output current at the converged substep state; the
-outer residual is checked against a fresh complete replay. This is a partitioned
-multirate approximation rather than a monolithic solve of every internal state
-and every network node. Its accuracy must therefore be measured for each model,
-especially around ideal switching and network discontinuities.
+Build with `WITH_FMI=ON` and `DPSIM_BUILD_EXAMPLES=ON`. The reusable nonlinear
+examples are `FMI_EMT_Ph3_Nonlinear` and `FMI_EMT_Ph3_TwoGenerators`; their
+source and sample FMUs are under `dpsim-fmi/examples/`. Generated logs belong
+in the configured build directory. See [the FMI examples guide](examples/README.md)
+for the available targets and inputs.
 
 ## Regression coverage and supported subset
 
-The current FMI CTest suite has 27 passing checks, including FMI 2.0 and FMI
-3.0 scalar Model Exchange, linear scalar/ABC, nonlinear coupled solves, sampled
-controls, rollback multirate scheduling, explicit single-pass scheduling without
-rollback, singleton handling, malformed imports, explicit nonconvergence and
-unsupported event-current changes. Legacy example notebooks also execute
-successfully. Native SSN solver changes are opt-in through
+The FMI CTest fixtures cover FMI 2.0 and FMI 3.0 scalar Model Exchange, linear
+scalar/ABC models, nonlinear coupled solves, sampled controls, rollback and
+single-pass scheduling, singleton handling, malformed imports, nonconvergence,
+and unsupported event-current changes. Native SSN solver changes are opt-in through
 `MNANonlinearCompInterface`; existing native components retain their previous
 path.
 
@@ -211,11 +160,5 @@ automatic steady-state initialization and dynamic-phasor conversion are not
 implemented. A model's singleton declaration is enforced; two-generator
 validation uses two genuine exports with distinct identities rather than editing
 capability metadata.
-
-## Official PV example limitation
-
-The official MathWorks `PVArrayGridAverageModelExample` was investigated separately. Its original Model Exchange export has zero continuous states and 50 µs internal ticks: successful lifecycle replay does not establish continuous, tightly coupled EMT MNA import. Provisional getter calls altered its later history in the isolated protocol check, even across advertised state restore. A continuous-powergui variant failed MATLAB ME export on the non-inlined `sfun_spid_contc` S-function, and generated network code overwrote an attempted ordinary State-Space replacement. The network also contains switching; one frozen network matrix would remove meaningful behavior. Consequently this PV/MPPT model is not claimed as validated. Development evidence remains outside the examples under the SSD benchmark/build directories.
-
-The successful switched inverter example is a different official MathWorks model and does not contain an MPPT loop. Neither example demonstrates universal FMI support. The implemented lifecycle follows the [FMI 3 specification](https://fmi-standard.org/docs/3.0.2/); MATLAB documents the [non-inlined S-function export restriction](https://www.mathworks.com/help/fmuexport/ug/generate-model-exchange-FMU.html).
 
 `NewtonSettings::maxJacobianReuseSteps` optionally reuses a local Jacobian as a chord predictor. It defaults to zero. Actual state and current residuals still govern convergence; failure refreshes the Jacobian before the next iteration.

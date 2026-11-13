@@ -1,3 +1,7 @@
-# Two generators and operating-point initialization
+# Coupled generator FMUs
 
-`FMI_EMT_Ph3_TwoGenerators.cpp` connects two separately exported nonlinear FMUs to one shared EMT ABC bus. `sources/` contains the second model/FMU/XML and references the first retained generator export and configuration. `matlab/` contains the independent full-state trapezoidal and ode15s references and saved results. `Comparison.ipynb` is the executed comparison, including independent controls, singleton rejection, model-order isolation, tightened tolerances and timestep refinement. Generated outputs remain under build.
+`FMI_EMT_Ph3_TwoGenerators.cpp` connects two separately instantiated nonlinear
+three-phase FMUs to one shared EMT bus. Build the `FMI_EMT_Ph3_TwoGenerators`
+target with `WITH_FMI=ON` and `DPSIM_BUILD_EXAMPLES=ON`. The archives and model
+descriptions are in `sources/`; simulation logs are written under the configured
+build directory.

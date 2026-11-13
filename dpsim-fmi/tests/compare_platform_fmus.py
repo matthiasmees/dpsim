@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check that the retained macOS and Linux FMUs describe the same models."""
+"""Check that the retained cross-platform FMI examples describe the same models."""
 
 from __future__ import annotations
 
@@ -17,7 +17,6 @@ PAIRS = (
     ("synchronous_generator", "dpsim_sg_3ph_me"),
     ("two_generators", "first_generator"),
     ("two_generators", "dpsim_sg_3ph_second"),
-    ("inverter", "GridTiedInverterPortedV3"),
 )
 
 

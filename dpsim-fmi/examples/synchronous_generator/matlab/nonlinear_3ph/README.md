@@ -88,7 +88,7 @@ state machines.
 In MATLAB R2025a or later:
 
 ```matlab
-addpath('/Volumes/SSDMatthias/development/dpsim/dpsim-fmi/examples/synchronous_generator/matlab')
+cd('dpsim-fmi/examples/synchronous_generator/matlab')
 outputDir = create_sg_grid_fmu_3ph; % build and simulate
 ```
 
@@ -101,7 +101,7 @@ outputDir = create_sg_grid_fmu_3ph([], true);
 For a chosen **fresh** directory:
 
 ```matlab
-outputDir = create_sg_grid_fmu_3ph('/Volumes/SSDMatthias/my_sg_3ph_test', true);
+outputDir = create_sg_grid_fmu_3ph(fullfile(tempdir, 'dpsim_sg_3ph_test'), true);
 ```
 
 Close the two generated models before repeating. Existing models are preserved;
@@ -138,18 +138,6 @@ checks solver integration and Simulink wiring, not independent machine-model
 validation. Energy conservation separately checks Park scaling, electrical
 power and torque signs. The reference tolerances are assertions in
 `sg_validate_reference.m`, not a guarantee for other parameter sets.
-
-On macOS, check the native exported FMU against the initial Simulink outputs:
-
-```sh
-python3 dpsim-fmi/examples/regression/validate_sg_fmu.py /absolute/path/to/benchmark-output
-```
-
-This loads the host FMU binary in-process, supplies all five initial inputs,
-checks ten continuous states, compares all 23 outputs and verifies that only
-rotor electrical position has a nonzero derivative on the initial periodic
-orbit. It writes `fmu_validation.json`. This is an export/initialization check,
-not a nonlinear DPsim transient simulation.
 
 ## States and equations
 

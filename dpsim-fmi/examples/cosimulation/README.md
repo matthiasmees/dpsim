@@ -7,17 +7,17 @@ patterns used by the existing FMI examples. They provide a small reusable EMT
 grid for each port shape; they do not reproduce each source model's original
 event schedule or validation scenario.
 
-The `dual_interface_rl` case includes one FMI 3 test FMU with both Model
-Exchange and Co-Simulation interfaces, a finite-impedance sag grid, a native
-Simulink state-space reference, and a comparison notebook. Use it when the
-same archive must be exercised through both DPsim import paths.
+The `dual_interface_rl` case includes one deterministic FMI 3 test FMU with
+both Model Exchange and Co-Simulation interfaces and a finite-impedance sag
+grid. Use it when the same archive must be exercised through both DPsim import
+paths.
 
 | Existing FMI example | Co-Simulation runner |
 |---|---|
 | `linear_scalar` | `FMI_EMT_CoSimulation` |
-| `linear_three_phase`, `inverter`, `synchronous_generator` | `FMI_EMT_Ph3_CoSimulation` |
-| `two_converters`, `two_generators` | `FMI_EMT_Ph3_TwoCoSimulations` |
-| `microgrid_network`, `powerfactory_generator` candidates | Use a runner above if the export exposes a scalar or abc voltage/current port; these candidate FMUs have not been exported as Co-Simulation here. |
+| `linear_three_phase`, `synchronous_generator` | `FMI_EMT_Ph3_CoSimulation` |
+| `two_generators` | `FMI_EMT_Ph3_TwoCoSimulations` |
+| Custom models | Use a runner above when the FMU exposes a scalar or abc voltage/current port. |
 
 `FMI_EMT_CoSimulation` is the single-phase counterpart. It connects one FMI
 voltage/current pair to an ideal 230 V RMS, 50 Hz boundary:
@@ -61,9 +61,9 @@ their internal states to DPsim Newton iterations through FMI `doStep`, so the
 example makes no implicit-convergence or rollback claim. The grid has 1 ohm
 series resistance and 2 mH series inductance. Logs are written under `logs/`.
 
-The checked-in inverter, synchronous-generator and RLC FMUs are Model Exchange
-exports. This example is ready for matching Co-Simulation exports from those
-models, but does not relabel or convert their existing archives. FMI 2.0
+The checked-in synchronous-generator and RLC FMUs are Model Exchange exports.
+This example is ready for matching Co-Simulation exports from those models, but
+does not relabel or convert their existing archives. FMI 2.0
 Co-Simulation exports require the FMI 2.0 `linux64`/`darwin64`/`win64` binary
 folder convention; FMI 3.0 uses architecture-OS folder names. MATLAB R2025a
 and Simulink are installed here, but the scoped export check could not build a

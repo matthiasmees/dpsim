@@ -1,3 +1,6 @@
-# Linear Scalar
+# Linear scalar FMU example
 
-Build the C++ example with CMake in the repository build directory. `sources/` contains the final FMU, extracted `modelDescription.xml`, and Simulink model. `matlab/` contains saved reference results and model definitions where needed. The comparison notebook contains its comparison logic and writes generated runs and plots under `build-macos-check/fmi-examples/linear_scalar/`.
+Build the `FMI_EMT_LinearSSN` target with `WITH_FMI=ON` and
+`DPSIM_BUILD_EXAMPLES=ON`. The `sources/` directory contains the FMI archive
+and its model description. Simulation logs are written under the configured
+build directory.

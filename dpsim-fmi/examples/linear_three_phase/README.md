@@ -1,3 +1,6 @@
-# Linear Three Phase
+# Linear three-phase FMU example
 
-Build the C++ example with CMake in the repository build directory. `sources/` contains the final FMU, extracted `modelDescription.xml`, and Simulink model. `matlab/` contains saved reference results and model definitions where needed. The comparison notebook contains its comparison logic and writes generated runs and plots under `build-macos-check/fmi-examples/linear_three_phase/`.
+Build the `FMI_EMT_Ph3_LinearSSN` target with `WITH_FMI=ON` and
+`DPSIM_BUILD_EXAMPLES=ON`. The `sources/` directory contains portable FMI
+archives and model descriptions. The Python import quickstarts also use this
+FMU. Simulation logs are written under the configured build directory.
