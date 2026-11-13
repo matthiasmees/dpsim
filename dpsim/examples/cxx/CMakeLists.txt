@@ -8,8 +8,49 @@ endif()
 
 # Targets
 set(CIRCUIT_SOURCES
+	Grids/IEEE39_Ph3.cpp
+	Grids/IEEE118_Ph3.cpp
 	# DP examples
 	Circuits/DP_VS_RL1.cpp
+	Circuits/DP_Ph1_PQLoadCS_GridBenchmark.cpp
+	Circuits/DP_Ph1_Shunt_GridBenchmark.cpp
+	Circuits/DP_Ph1_RXLoad_GridBenchmark.cpp
+	Circuits/DP_Ph1_RxLine_GridBenchmark.cpp
+	Circuits/DP_Ph1_Resistor_GridBenchmark.cpp
+	Circuits/DP_Ph1_Capacitor_GridBenchmark.cpp
+	Circuits/DP_Ph1_ITypeSSN_GridBenchmark.cpp
+	Circuits/DP_Ph3_ITypeSSN_GridBenchmark.cpp
+	Circuits/EMT_Ph3_ITypeSSN_GridBenchmark.cpp
+	Circuits/DP_Ph1_VoltageSourceNorton_Optimization.cpp
+	Circuits/DP_Ph1_varResSwitch_Optimization.cpp
+	Circuits/DP_Ph3_SeriesResistor_Optimization.cpp
+	Circuits/DP_Ph3_SeriesSwitch_Optimization.cpp
+	Circuits/EMT_Ph3_SeriesResistor_Optimization.cpp
+	Circuits/EMT_Ph3_SeriesSwitch_Optimization.cpp
+	Circuits/EMT_Ph1_Switch_Audit.cpp
+	Circuits/EMT_Ph1_SwitchDense_Audit.cpp
+	Circuits/EMT_DC_Resistor_GridBenchmark.cpp
+	Circuits/EMT_DC_PiLine_GridBenchmark.cpp
+	Circuits/EMT_DC_CurrentSource_GridBenchmark.cpp
+	Circuits/DP_Ph1_Transformer_GridBenchmark.cpp
+	Circuits/EMT_DC_Capacitor_GridBenchmark.cpp
+	Circuits/EMT_DC_Inductor_GridBenchmark.cpp
+	Circuits/EMT_Ph3_RxLine_GridBenchmark.cpp
+	Circuits/EMT_Ph3_RXLoad_SwitchedAudit.cpp
+	Circuits/DP_Ph1_RXLoad_MultiFrequency_GridBenchmark.cpp
+	Circuits/DP_Ph1_SVC_GridBenchmark.cpp
+	Circuits/DP_Ph1_RXLoadSwitch_GridBenchmark.cpp
+	Circuits/DP_Ph3_NetworkInjection_GridBenchmark.cpp
+	Circuits/EMT_Ph1_CurrentSource_GridBenchmark.cpp
+	Circuits/EMT_Ph1_PiLine_GridBenchmark.cpp
+	Circuits/EMT_Ph3_ControlledVoltageSource_Audit.cpp
+	Circuits/EMT_Ph3_CurrentSource_GridBenchmark.cpp
+	Circuits/DP_Ph1_ControlledVoltageSource_Audit.cpp
+	Circuits/DP_Ph3_VoltageSource_Audit.cpp
+	Circuits/DP_Ph1_ControlledCurrentSource_Optimization.cpp
+	Circuits/EMT_Ph1_VoltageSourceNorton_Optimization.cpp
+	Circuits/EMT_Ph3_VoltageSourceNorton_Optimization.cpp
+	Circuits/EMT_Ph3_FourTerminalSSN_Optimization.cpp
 	Circuits/DP_Circuits.cpp
 	Circuits/DP_Basics_DP_Sims.cpp
 	Circuits/DP_PiLine.cpp
@@ -38,10 +79,12 @@ set(CIRCUIT_SOURCES
 	Circuits/EMT_VSI.cpp
 	Circuits/EMT_PiLine.cpp
 	Circuits/EMT_DecouplingLine_Ph3.cpp
+	Circuits/EMT_Ph3_RxLine_DirectCompare.cpp
 	Circuits/EMT_Diakoptics.cpp
 	Circuits/EMT_Ph3_R3C1L1CS1_RC_vs_SSN.cpp
 	Circuits/EMT_Ph3_RLC1VS1_RC_vs_SSN.cpp
 	Circuits/EMT_Ph1_General2TerminalSSN.cpp
+	Circuits/EMT_Ph1_LargeStateSSNHistory.cpp
 	Circuits/EMT_RC_split_decoupled_node_DC.cpp
 	Circuits/EMT_RC_split_decoupled_node.cpp
 	Circuits/EMT_RC_split_decoupled_node_Ph3.cpp
@@ -59,8 +102,11 @@ set(CIRCUIT_SOURCES
 	Circuits/EMT_Slack_PiLine_VSI_with_PF_Init.cpp
 	Circuits/EMT_Slack_PiLine_VSI_Ramp_with_PF_Init.cpp
 	Circuits/EMT_Ph3_PQLoad.cpp
+	Circuits/EMT_Ph3_PQLoad_GridBenchmark.cpp
 
 	# SP examples
+	Circuits/SP_Ph3_Inductor_GridBenchmark.cpp
+	Circuits/SP_Ph3_Resistor_Optimization.cpp
 	Circuits/SP_Circuits.cpp
 	Circuits/SP_PiLine.cpp
 	Circuits/SP_ITM_withPiLine_Ph1.cpp
@@ -163,7 +209,8 @@ Components/DP_Ph1_MixedVariableSSN_vs_FixedSSN.cpp
 Components/DP_Ph1_AvVoltSourceInverterStateSpace.cpp
 Components/DP_Ph3_AvVoltSourceInverterStateSpace.cpp
 Components/EMT_SSN_GFM_Test.cpp
-Components/EMT_Ph3_SSN_GFM_JacobianCheck.cpp
+	Components/EMT_Ph3_SSN_GFM_JacobianCheck.cpp
+	Components/DP_Ph3_SSN_SynchronGenerator4Order_JacobianCheck.cpp
 Components/EMT_Ph3_GFL_Comparison.cpp
 Components/EMT_Ph3_SSN_InductionMotor_LoadSwitch.cpp
 )
@@ -333,6 +380,38 @@ foreach(SOURCE
 	target_include_directories(${TARGET} PRIVATE ${INCLUDE_DIRS})
 	target_compile_options(${TARGET} PUBLIC ${DPSIM_CXX_FLAGS})
 endforeach()
+
+# Same IEEE118 case and initialization, with SSN network components selected
+# by default. The standard IEEE118_Ph3 target remains the conventional baseline.
+add_executable(IEEE118_Ph3_SSN Grids/IEEE118_Ph3.cpp)
+target_compile_definitions(IEEE118_Ph3_SSN PRIVATE IEEE118_DEFAULT_SSN_MODE)
+target_link_libraries(IEEE118_Ph3_SSN ${LIBRARIES})
+target_include_directories(IEEE118_Ph3_SSN PRIVATE ${INCLUDE_DIRS})
+target_compile_options(IEEE118_Ph3_SSN PUBLIC ${DPSIM_CXX_FLAGS})
+
+# Same three-phase EMT benchmark setup using the IEEE 300-bus MATPOWER case.
+add_executable(IEEE300_Ph3 Grids/IEEE300_Ph3.cpp)
+target_link_libraries(IEEE300_Ph3 ${LIBRARIES})
+target_include_directories(IEEE300_Ph3 PRIVATE ${INCLUDE_DIRS})
+target_compile_options(IEEE300_Ph3 PUBLIC ${DPSIM_CXX_FLAGS})
+
+if(WITH_METAL)
+	add_executable(MetalLinearSSNGroupAdapterTest Circuits/GPU/Apple/MetalLinearSSNGroupAdapterTest.mm)
+	set_source_files_properties(Circuits/GPU/Apple/MetalLinearSSNGroupAdapterTest.mm PROPERTIES COMPILE_OPTIONS "-fno-objc-arc")
+	target_link_libraries(MetalLinearSSNGroupAdapterTest ${LIBRARIES})
+	target_include_directories(MetalLinearSSNGroupAdapterTest PRIVATE ${INCLUDE_DIRS})
+	target_compile_options(MetalLinearSSNGroupAdapterTest PUBLIC ${DPSIM_CXX_FLAGS})
+	add_executable(MetalVBRGeneratorAdapterTest Circuits/GPU/Apple/MetalVBRGeneratorAdapterTest.mm)
+	set_source_files_properties(Circuits/GPU/Apple/MetalVBRGeneratorAdapterTest.mm PROPERTIES COMPILE_OPTIONS "-fno-objc-arc")
+	target_link_libraries(MetalVBRGeneratorAdapterTest ${LIBRARIES})
+	target_include_directories(MetalVBRGeneratorAdapterTest PRIVATE ${INCLUDE_DIRS})
+	target_compile_options(MetalVBRGeneratorAdapterTest PUBLIC ${DPSIM_CXX_FLAGS})
+	add_executable(MetalIndirectCommandBufferTest Circuits/GPU/Apple/MetalIndirectCommandBufferTest.mm)
+	set_source_files_properties(Circuits/GPU/Apple/MetalIndirectCommandBufferTest.mm PROPERTIES COMPILE_OPTIONS "-fno-objc-arc")
+	target_link_libraries(MetalIndirectCommandBufferTest ${LIBRARIES})
+	target_include_directories(MetalIndirectCommandBufferTest PRIVATE ${INCLUDE_DIRS})
+	target_compile_options(MetalIndirectCommandBufferTest PUBLIC ${DPSIM_CXX_FLAGS})
+endif()
 
 foreach(TEST_SOURCE ${TEST_SOURCES})
 	get_filename_component(TARGET ${TEST_SOURCE} NAME_WE)
