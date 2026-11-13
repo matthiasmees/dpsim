@@ -146,6 +146,6 @@ void SP::Ph1::Capacitor::pfApplyAdmittanceMatrixStamp(SparseMatrixCompRow &Y) {
   }
 
   //set the circuit matrix values
-  Y.coeffRef(bus1, bus1) += mAdmittancePerUnit;
+  Math::addToMatrixElement(Y, bus1, bus1, mAdmittancePerUnit);
   SPDLOG_LOGGER_INFO(mSLog, "#### Y matrix stamping: {}", mAdmittancePerUnit);
 }

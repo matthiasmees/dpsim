@@ -52,6 +52,7 @@ MnaSolver<VarType>::getStateSpaceExtractor() const {
 }
 
 template <typename VarType> void MnaSolver<VarType>::initialize() {
+  CPS::Math::ScopedZeroSkipping zeroSkippingScope(mZeroSkipping);
   // TODO: check that every system matrix has the same dimensions
   SPDLOG_LOGGER_INFO(mSLog, "---- Start initialization ----");
   mLeftVectorLog->start();

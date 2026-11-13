@@ -16,7 +16,6 @@
 #endif
 
 #include <algorithm>
-#include <fstream>
 #include <numeric>
 #include <unordered_set>
 
@@ -120,8 +119,19 @@ void MnaSolverDirect<VarType>::stampVariableSystemMatrix() {
 
   // Now stamp initial state of variable elements and switches into matrix
   SPDLOG_LOGGER_INFO(mSLog, "Stamping variable elements");
-  for (auto varElem : mMNAIntfVariableComps)
-    varElem->mnaApplySystemMatrixStamp(mVariableSystemMatrix);
+  {
+    // Preserve every potentially changing coefficient in the sparse pattern,
+    // including entries that are zero in the initial operating point. The
+    // pattern must remain fixed when the value cache is used during EMT steps.
+    CPS::Math::ScopedZeroSkipping zeroSkippingScope(false);
+    for (auto varElem : mMNAIntfVariableComps)
+      varElem->mnaApplySystemMatrixStamp(mVariableSystemMatrix);
+  }
+
+  // Keep structural slots for entries that can change later, even if their
+  // initial stamp is zero and zero skipping is enabled.
+  for (const auto &entry : mListVariableSystemMatrixEntries)
+    mVariableSystemMatrix.coeffRef(entry.first, entry.second) += 0.;
 
   // Keep the reset matrix on exactly the same sparse pattern and in the same
   // coefficient order as the variable matrix. Variable-only entries must be
@@ -298,6 +308,7 @@ void MnaSolverDirect<VarType>::solveWithSystemMatrixRecomputation(
 
 template <typename VarType>
 void MnaSolverDirect<VarType>::recomputeSystemMatrix(Real time) {
+  CPS::Math::ScopedZeroSkipping zeroSkippingScope(this->mZeroSkipping);
   const auto profileStart = std::chrono::steady_clock::now();
   // The sparse structure is fixed after initialization. Reset only the
   // coefficient values instead of copying/reallocating the full sparse

@@ -135,6 +135,7 @@ template <typename VarType> void Simulation::createSolvers() {
 #endif
 
     pfSolver->setKeepLastSolution(**mPFKeepLastSolution);
+    pfSolver->setZeroSkipping(mZeroSkipping);
     pfSolver->setBaseApparentPowerFallback(**mPFBaseApparentPowerFallback);
     pfSolver->setMaxIterations(**mPFMaxIterations);
     pfSolver->setEnforceReactiveLimits(**mPFEnforceReactiveLimits);
@@ -173,6 +174,7 @@ template <typename VarType> void Simulation::createSolvers() {
 }
 
 template <typename VarType> void Simulation::createMNASolver() {
+  CPS::Math::ScopedZeroSkipping zeroSkippingScope(mZeroSkipping);
   Solver::Ptr solver;
   std::vector<SystemTopology> subnets;
   // The Diakoptics solver splits the system at a later point.
@@ -218,9 +220,11 @@ template <typename VarType> void Simulation::createMNASolver() {
       solver->setSystemMatrixRecomputationMode(mSystemMatrixRecomputationMode);
       solver->setDirectLinearSolverConfiguration(
           mDirectLinearSolverConfiguration);
+      solver->setZeroSkipping(mZeroSkipping);
       solver->initialize();
       solver->setMaxNumberOfIterations(mMaxIterations);
     }
+    solver->setZeroSkipping(mZeroSkipping);
     mSolvers.push_back(solver);
   }
 }

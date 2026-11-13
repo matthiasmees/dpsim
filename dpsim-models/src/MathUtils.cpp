@@ -18,6 +18,7 @@ using namespace CPS;
 
 namespace {
 using SparseCache = std::unordered_map<std::uint64_t, Eigen::Index>;
+thread_local Bool gZeroSkippingEnabled = true;
 std::unordered_map<const CPS::SparseMatrixRow *, SparseCache>
     gSparseMatrixValueCaches;
 
@@ -46,6 +47,17 @@ Matrix trapezoidalStep(const Matrix &states, const Matrix &A,
 }
 
 } // namespace
+
+Math::ScopedZeroSkipping::ScopedZeroSkipping(Bool enabled)
+    : mPrevious(gZeroSkippingEnabled) {
+  gZeroSkippingEnabled = enabled;
+}
+
+Math::ScopedZeroSkipping::~ScopedZeroSkipping() {
+  gZeroSkippingEnabled = mPrevious;
+}
+
+Bool Math::zeroSkippingEnabled() { return gZeroSkippingEnabled; }
 
 // #### Angular Operations ####
 Real Math::radtoDeg(Real rad) { return rad * 180 / PI; }
@@ -154,6 +166,8 @@ void Math::setMatrixElement(SparseMatrixRow &mat, Matrix::Index row,
   Eigen::Index harmCol = column + harmonicOffset * freqIdx;
 
   auto set = [&mat](Eigen::Index r, Eigen::Index c, Real v) {
+    if (zeroSkippingEnabled() && v == 0. && mat.coeff(r, c) == 0.)
+      return;
     if (Real *cached = cachedSparseValue(mat, r, c))
       *cached = v;
     else
@@ -175,6 +189,8 @@ void Math::addToMatrixElement(SparseMatrixRow &mat, Matrix::Index row,
   Eigen::Index harmCol = column + harmonicOffset * freqIdx;
 
   auto add = [&mat](Eigen::Index r, Eigen::Index c, Real v) {
+    if (zeroSkippingEnabled() && v == 0.)
+      return;
     if (Real *cached = cachedSparseValue(mat, r, c))
       *cached += v;
     else
@@ -196,6 +212,8 @@ void Math::addToMatrixElement(SparseMatrixRow &mat, Matrix::Index row,
   Eigen::Index harmCol = column + harmonicOffset * freqIdx;
 
   auto add = [&mat](Eigen::Index r, Eigen::Index c, Real v) {
+    if (zeroSkippingEnabled() && v == 0.)
+      return;
     if (Real *cached = cachedSparseValue(mat, r, c))
       *cached += v;
     else
@@ -209,6 +227,8 @@ void Math::addToMatrixElement(SparseMatrixRow &mat, Matrix::Index row,
 
 void Math::setMatrixElement(SparseMatrixRow &mat, Matrix::Index row,
                             Matrix::Index column, Real value) {
+  if (zeroSkippingEnabled() && value == 0. && mat.coeff(row, column) == 0.)
+    return;
   if (Real *cached = cachedSparseValue(mat, row, column))
     *cached = value;
   else
@@ -223,10 +243,19 @@ void Math::addToMatrixElement(SparseMatrixRow &mat, std::vector<UInt> rows,
 
 void Math::addToMatrixElement(SparseMatrixRow &mat, Matrix::Index row,
                               Matrix::Index column, Real value) {
+  if (zeroSkippingEnabled() && value == 0.)
+    return;
   if (Real *cached = cachedSparseValue(mat, row, column))
     *cached += value;
   else
     mat.coeffRef(row, column) = mat.coeff(row, column) + value;
+}
+
+void Math::addToMatrixElement(SparseMatrixCompRow &mat, Matrix::Index row,
+                              Matrix::Index column, Complex value) {
+  if (zeroSkippingEnabled() && value == Complex(0., 0.))
+    return;
+  mat.coeffRef(row, column) += value;
 }
 
 void Math::prepareSparseMatrixValueCache(SparseMatrixRow &mat) {

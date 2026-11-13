@@ -16,6 +16,20 @@ namespace CPS {
 
 class Math {
 public:
+  /// Scoped setting for omitting exact zero values while assembling sparse
+  /// matrices. Enabled by default and thread-local to keep solver scopes isolated.
+  class ScopedZeroSkipping {
+    Bool mPrevious;
+
+  public:
+    explicit ScopedZeroSkipping(Bool enabled);
+    ~ScopedZeroSkipping();
+    ScopedZeroSkipping(const ScopedZeroSkipping &) = delete;
+    ScopedZeroSkipping &operator=(const ScopedZeroSkipping &) = delete;
+  };
+
+  static Bool zeroSkippingEnabled();
+
   typedef Real (*DeriveFnPtr)(Matrix inputs);
 
   // #### Angular Operations ####
@@ -87,6 +101,9 @@ public:
   static void addToMatrixElement(SparseMatrixRow &mat, Matrix::Index row,
                                  Matrix::Index column, Matrix value,
                                  Int maxFreq = 1, Int freqIdx = 0);
+
+  static void addToMatrixElement(SparseMatrixCompRow &mat, Matrix::Index row,
+                                 Matrix::Index column, Complex value);
 
   static void setMatrixElement(SparseMatrixRow &mat, Matrix::Index row,
                                Matrix::Index column, Real value);

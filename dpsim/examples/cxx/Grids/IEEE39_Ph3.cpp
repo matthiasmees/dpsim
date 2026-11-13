@@ -1,8 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Institute for Automation of Complex Power Systems, EONERC, RWTH Aachen University
 // SPDX-License-Identifier: MPL-2.0
 // Hardcoded IEEE39 counterpart to examples/Notebooks/Grids/IEEE39_DP3Ph_EMT3Ph_MATPOWER.ipynb.
-// Run with `IEEE39_Ph3 dp` or `IEEE39_Ph3 emt`.
+// Run with `IEEE39_Ph3 dp [on|off] [dense|klu]` or `IEEE39_Ph3 emt [on|off] [dense|klu]`.
 #include <DPsim.h>
+#include <dpsim-models/EMT/EMT_Ph3_SSN_ImpedanceLoad.h>
+#include <dpsim-models/EMT/EMT_Ph3_SSN_PiLine.h>
+#include <dpsim-models/EMT/EMT_Ph3_SSN_SynchronGenerator4Order.h>
+#include <dpsim-models/EMT/EMT_Ph3_SSN_Transformer.h>
 
 #include <cmath>
 #include <iostream>
@@ -209,8 +213,11 @@ SystemTopology makePowerflowSystem() {
   return SystemTopology(frequency, systemNodes, components);
 }
 
-void runDP(const SystemTopology &systemPF) {
-  const String simName = "IEEE39_DP3Ph_CPP";
+void runDP(const SystemTopology &systemPF, Bool zeroSkipping, Bool useKLU) {
+  const String backend = useKLU ? "klu" : "dense";
+  const String skipSetting = zeroSkipping ? "on" : "off";
+  const String simName =
+      "IEEE39_DP3Ph_CPP_zero_skipping_" + skipSetting + "_" + backend;
   Logger::setLogDir("logs/" + simName);
   std::vector<DP::SimNode::Ptr> nodes;
   SystemNodeList systemNodes;
@@ -317,6 +324,9 @@ void runDP(const SystemTopology &systemPF) {
   sim.setSystem(system);
   sim.setDomain(Domain::DP);
   sim.setSolverType(Solver::Type::MNA);
+  sim.setZeroSkipping(zeroSkipping);
+  sim.setDirectLinearSolverImplementation(
+      useKLU ? DirectLinearSolverImpl::KLU : DirectLinearSolverImpl::DenseLU);
   sim.setTimeStep(1e-3);
   sim.setFinalTime(30.0);
   sim.doInitFromNodesAndTerminals(true);
@@ -324,8 +334,12 @@ void runDP(const SystemTopology &systemPF) {
   sim.run();
 }
 
-void runEMT(const SystemTopology &systemPF) {
-  const String simName = "IEEE39_EMT3Ph_CPP";
+void runEMT(const SystemTopology &systemPF, Bool zeroSkipping, Bool useKLU,
+            Real finalTime) {
+  const String backend = useKLU ? "klu" : "dense";
+  const String skipSetting = zeroSkipping ? "on" : "off";
+  const String simName =
+      "IEEE39_EMT3Ph_CPP_zero_skipping_" + skipSetting + "_" + backend;
   Logger::setLogDir("logs/" + simName);
   std::vector<EMT::SimNode::Ptr> nodes;
   SystemNodeList systemNodes;
@@ -338,42 +352,39 @@ void runEMT(const SystemTopology &systemPF) {
   SystemComponentList components;
 
   for (const auto &gen : generators) {
-    auto machine = EMT::Ph3::SynchronGenerator4OrderVBR::make(
+    const auto &bus = buses[gen.bus - 1];
+    auto machine = EMT::Ph3::SSN::SynchronGenerator4Order::make(
         "Gen_N" + std::to_string(gen.bus));
-    machine->setOperationalParametersPerUnit(
-        gen.baseS * 1e6, baseVoltage, frequency, gen.H, gen.Xd, gen.Xq, gen.Xl,
-        gen.Xd_t, gen.Xq_t, gen.Td0_t, gen.Tq0_t);
-    machine->connect({nodes.at(gen.bus - 1)});
+    machine->setParametersOperationalPerUnit(
+        gen.baseS * 1e6, baseVoltage, frequency, gen.H, gen.Ra, gen.Xd_t,
+        gen.Xq_t, gen.Xd, gen.Xq, gen.Td0_t, gen.Tq0_t);
+    Complex powerflowPower(gen.pg * 1e6, gen.qg * 1e6);
+    for (const auto &component : systemPF.mComponents) {
+      if (component->name() == "Gen_N" + std::to_string(gen.bus)) {
+        if (auto powerflowGenerator =
+                std::dynamic_pointer_cast<SP::Ph1::SynchronGenerator>(
+                    component))
+          powerflowPower = powerflowGenerator->getApparentPower();
+        break;
+      }
+    }
+    machine->setPowerflowInitialValues(
+        powerflowPower.real() / (gen.baseS * 1e6),
+        powerflowPower.imag() / (gen.baseS * 1e6), bus.vm, bus.va * PI / 180.);
+    machine->connect({EMT::SimNode::GND, nodes.at(gen.bus - 1)});
     components.push_back(machine);
   }
 
-  int loadIndex = 0;
-  for (const auto &bus : buses) {
-    if (bus.pd == 0.0 && bus.qd == 0.0)
-      continue;
-    auto load = EMT::Ph3::RXLoad::make("load" + std::to_string(++loadIndex));
-    load->setParameters(parameter3(bus.pd * 1e6 / 3.0),
-                        parameter3(bus.qd * 1e6 / 3.0), bus.vm * baseVoltage);
-    load->connect({nodes.at(bus.id - 1)});
-    components.push_back(load);
-    const Real g = bus.gs * 1e6 / (baseVoltage * baseVoltage);
-    const Real b = bus.bs * 1e6 / (baseVoltage * baseVoltage);
-    if (g != 0.0 || b != 0.0) {
-      auto shunt = EMT::Ph3::Shunt::make("Shunt_N" + std::to_string(bus.id));
-      shunt->setParameters(g, b);
-      shunt->connect({nodes.at(bus.id - 1)});
-      components.push_back(shunt);
-    }
-  }
-  // Shunts may also be present on buses without load.
   for (const auto &bus : buses) {
     const Real g = bus.gs * 1e6 / (baseVoltage * baseVoltage);
     const Real b = bus.bs * 1e6 / (baseVoltage * baseVoltage);
-    if ((g != 0.0 || b != 0.0) && bus.pd == 0.0 && bus.qd == 0.0) {
-      auto shunt = EMT::Ph3::Shunt::make("Shunt_N" + std::to_string(bus.id));
-      shunt->setParameters(g, b);
-      shunt->connect({nodes.at(bus.id - 1)});
-      components.push_back(shunt);
+    if (bus.pd != 0.0 || bus.qd != 0.0 || g != 0.0 || b != 0.0) {
+      auto load = EMT::Ph3::SSN::ImpedanceLoad::make("ImpedanceLoad_N" +
+                                                     std::to_string(bus.id));
+      load->setParameters(bus.pd * 1e6, bus.qd * 1e6, bus.vm * baseVoltage, g,
+                          b);
+      load->connect({nodes.at(bus.id - 1)});
+      components.push_back(load);
     }
   }
 
@@ -385,13 +396,14 @@ void runEMT(const SystemTopology &systemPF) {
     const Real l = branch.x * zBase * tap * tap / omega;
     if (branch.tap == 0.0) {
       const Real c = branch.b / zBase / omega;
-      auto line = EMT::Ph3::PiLine::make("line" + std::to_string(++lineIndex));
+      auto line =
+          EMT::Ph3::SSN::PiLine::make("line" + std::to_string(++lineIndex));
       line->setParameters(parameter3(r), parameter3(l), parameter3(c),
                           parameter3(0.0));
       line->connect({nodes.at(branch.from - 1), nodes.at(branch.to - 1)});
       components.push_back(line);
     } else {
-      auto trafo = EMT::Ph3::Transformer::make(
+      auto trafo = EMT::Ph3::SSN::Transformer::make(
           "transformer" + std::to_string(++transformerIndex));
       trafo->setParameters(baseVoltage, baseVoltage, baseMVA * 1e6, tap, 0.0,
                            parameter3(r), parameter3(l));
@@ -410,8 +422,11 @@ void runEMT(const SystemTopology &systemPF) {
   sim.setSystem(system);
   sim.setDomain(Domain::EMT);
   sim.setSolverType(Solver::Type::MNA);
-  sim.setTimeStep(1e-4);
-  sim.setFinalTime(30.0);
+  sim.setZeroSkipping(zeroSkipping);
+  sim.setDirectLinearSolverImplementation(
+      useKLU ? DirectLinearSolverImpl::KLU : DirectLinearSolverImpl::DenseLU);
+  sim.setTimeStep(5e-5);
+  sim.setFinalTime(finalTime);
   sim.doInitFromNodesAndTerminals(true);
   sim.doSystemMatrixRecomputation(true);
   sim.addLogger(logger);
@@ -421,22 +436,43 @@ void runEMT(const SystemTopology &systemPF) {
 
 int main(int argc, char **argv) {
   const std::string mode = argc > 1 ? argv[1] : "dp";
+  const std::string zeroSkippingArg = argc > 2 ? argv[2] : "on";
+  const std::string backendArg = argc > 3 ? argv[3] : "klu";
+  const Real finalTime = argc > 4 ? std::stod(argv[4]) : 30.0;
+  if ((zeroSkippingArg != "on" && zeroSkippingArg != "off") ||
+      (backendArg != "dense" && backendArg != "klu") ||
+      !std::isfinite(finalTime) || finalTime <= 0.0) {
+    std::cerr
+        << "Usage: IEEE39_Ph3 [dp|emt] [on|off] [dense|klu] [final_time_s]\n";
+    return 2;
+  }
+  const Bool zeroSkipping = zeroSkippingArg == "on";
+  const Bool useKLU = backendArg == "klu";
+#ifndef WITH_KLU
+  if (useKLU) {
+    std::cerr << "This DPsim build does not include KLU.\n";
+    return 2;
+  }
+#endif
   auto systemPF = makePowerflowSystem();
-  Simulation pf("IEEE39_SP_PF", Logger::Level::off);
+  Simulation pf("IEEE39_SP_PF", Logger::Level::info);
   pf.setSystem(systemPF);
   pf.setDomain(Domain::SP);
   pf.setSolverType(Solver::Type::NRP);
+  pf.setZeroSkipping(zeroSkipping);
+  pf.setPFSolverUseSparse(useKLU);
   pf.setSolverAndComponentBehaviour(Solver::Behaviour::Initialization);
   pf.setTimeStep(.01);
   pf.setFinalTime(.01);
   pf.doInitFromNodesAndTerminals(false);
   pf.run();
   if (mode == "dp")
-    runDP(systemPF);
+    runDP(systemPF, zeroSkipping, useKLU);
   else if (mode == "emt")
-    runEMT(systemPF);
+    runEMT(systemPF, zeroSkipping, useKLU, finalTime);
   else {
-    std::cerr << "Usage: IEEE39_Ph3 [dp|emt]\\n";
+    std::cerr
+        << "Usage: IEEE39_Ph3 [dp|emt] [on|off] [dense|klu] [final_time_s]\n";
     return 2;
   }
   return 0;
