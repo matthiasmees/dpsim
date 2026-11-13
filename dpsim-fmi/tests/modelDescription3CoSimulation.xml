@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<fmiModelDescription fmiVersion="3.0" modelName="CoSimulationLinearFixture"
+                     instantiationToken="dpsim-cosim-3" variableNamingConvention="flat">
+  <CoSimulation modelIdentifier="CoSimulationModel3" eventModeUsed="false"
+                canGetAndSetFMUState="true" canSerializeFMUState="false"
+                canHandleVariableCommunicationStepSize="true"/>
+  <ModelVariables>
+    <Float64 name="u" valueReference="0" causality="input" variability="continuous" start="1"/>
+    <Float64 name="y" valueReference="1" causality="output" variability="continuous" initial="calculated"/>
+  </ModelVariables>
+  <ModelStructure>
+    <Output valueReference="1"/>
+  </ModelStructure>
+</fmiModelDescription>

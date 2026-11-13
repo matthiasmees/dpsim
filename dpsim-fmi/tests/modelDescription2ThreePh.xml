@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<fmiModelDescription fmiVersion="2.0" modelName="NonlinearThreePhaseFixture2" guid="{dpsim-fmi-2-threephase}">
+  <ModelExchange modelIdentifier="TestModel2ThreePh"/>
+  <ModelVariables>
+    <ScalarVariable name="u_a" valueReference="0" causality="input" variability="continuous"><Real start="7"/></ScalarVariable>
+    <ScalarVariable name="u_b" valueReference="1" causality="input" variability="continuous"><Real start="-11"/></ScalarVariable>
+    <ScalarVariable name="u_c" valueReference="2" causality="input" variability="continuous"><Real start="13"/></ScalarVariable>
+    <ScalarVariable name="i_a" valueReference="3" causality="output" variability="continuous"><Real/></ScalarVariable>
+    <ScalarVariable name="i_b" valueReference="4" causality="output" variability="continuous"><Real/></ScalarVariable>
+    <ScalarVariable name="i_c" valueReference="5" causality="output" variability="continuous"><Real/></ScalarVariable>
+    <ScalarVariable name="x_a" valueReference="6" variability="continuous"><Real start="0.25"/></ScalarVariable>
+    <ScalarVariable name="x_b" valueReference="7" variability="continuous"><Real start="-0.5"/></ScalarVariable>
+    <ScalarVariable name="x_c" valueReference="8" variability="continuous"><Real start="1"/></ScalarVariable>
+    <ScalarVariable name="x_d" valueReference="9" variability="continuous"><Real start="2"/></ScalarVariable>
+    <ScalarVariable name="x_e" valueReference="10" variability="continuous"><Real start="-3"/></ScalarVariable>
+    <ScalarVariable name="x_f" valueReference="11" variability="continuous"><Real start="4"/></ScalarVariable>
+    <ScalarVariable name="dx_a" valueReference="12" variability="continuous"><Real/></ScalarVariable>
+    <ScalarVariable name="dx_b" valueReference="13" variability="continuous"><Real/></ScalarVariable>
+    <ScalarVariable name="dx_c" valueReference="14" variability="continuous"><Real/></ScalarVariable>
+    <ScalarVariable name="dx_d" valueReference="15" variability="continuous"><Real/></ScalarVariable>
+    <ScalarVariable name="dx_e" valueReference="16" variability="continuous"><Real/></ScalarVariable>
+    <ScalarVariable name="dx_f" valueReference="17" variability="continuous"><Real/></ScalarVariable>
+  </ModelVariables>
+  <ModelStructure>
+    <Outputs><Unknown index="4"/><Unknown index="5"/><Unknown index="6"/></Outputs>
+    <Derivatives><Unknown index="13" derivative="7"/><Unknown index="14" derivative="8"/><Unknown index="15" derivative="9"/><Unknown index="16" derivative="10"/><Unknown index="17" derivative="11"/><Unknown index="18" derivative="12"/></Derivatives>
+  </ModelStructure>
+</fmiModelDescription>

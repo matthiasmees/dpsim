@@ -1,0 +1,61 @@
+{
+  "frequency_Hz": 50,
+  "phase_rms_V": 230,
+  "stop_time_s": 4,
+  "step_s": 5e-05,
+  "network": [
+    4e-05,
+    0.3,
+    0.005
+  ],
+  "initial_network_state": [
+    325.2009128998511,
+    -156.8320349303405,
+    -168.36887796951044,
+    4.083167614950172,
+    -1.3286291356711253,
+    -2.7545384792790446
+  ],
+  "initial_generator_current": [
+    16.29439608508912,
+    -3.677060346227138,
+    -12.617335738861971
+  ],
+  "G0_S": 0.03780718336483932,
+  "Gstep_S": 0.03780718336483932,
+  "load_step_s": 1,
+  "vref_step_s": 2,
+  "vref_step_pu": 0.02,
+  "pmref_pu": 0.5391763370361963,
+  "voltage_inputs": [
+    "u_a",
+    "u_b",
+    "u_c"
+  ],
+  "current_outputs": [
+    "i_a",
+    "i_b",
+    "i_c"
+  ],
+  "control_names": [
+    "vref_pu",
+    "pmref_pu"
+  ],
+  "control_initial_values": [
+    1,
+    0.5391763370361963
+  ],
+  "current_sign_to_passive": -1,
+  "power_base_VA": 15000,
+  "bases": {
+    "phase_voltage_V": 325.2691193458119,
+    "phase_current_A": 30.743773095067287,
+    "power_W": 15000.0,
+    "field_current_A": 4.696505405444895,
+    "stator_flux_Wb": 1.2680564594701216,
+    "field_flux_Wb": 7.0447581081673425,
+    "angle_rad": 1.0,
+    "per_unit": 1.0,
+    "conductance_S": 0.03780718336483932
+  }
+}

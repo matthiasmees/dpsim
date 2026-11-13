@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<fmiModelDescription fmiVersion="2.0" modelName="LinearFixture2" guid="{dpsim-fmi-2-fixture}">
+  <ModelExchange modelIdentifier="TestModel2"/>
+  <ModelVariables>
+    <ScalarVariable name="u" valueReference="0" causality="input" variability="continuous"><Real start="0"/></ScalarVariable>
+    <ScalarVariable name="i" valueReference="1" causality="output" variability="continuous"><Real/></ScalarVariable>
+    <ScalarVariable name="v_C" valueReference="2" causality="output" variability="continuous"><Real/></ScalarVariable>
+    <ScalarVariable name="time" valueReference="3" causality="independent" variability="continuous"><Real/></ScalarVariable>
+    <ScalarVariable name="currentState" valueReference="4" variability="continuous"><Real start="0.25"/></ScalarVariable>
+    <ScalarVariable name="capacitorState" valueReference="5" variability="continuous"><Real start="-0.5"/></ScalarVariable>
+    <ScalarVariable name="di" valueReference="6" variability="continuous"><Real/></ScalarVariable>
+    <ScalarVariable name="dv" valueReference="7" variability="continuous"><Real/></ScalarVariable>
+  </ModelVariables>
+  <ModelStructure>
+    <Outputs><Unknown index="2"/><Unknown index="3"/></Outputs>
+    <Derivatives><Unknown index="7" derivative="5"/><Unknown index="8" derivative="6"/></Derivatives>
+  </ModelStructure>
+</fmiModelDescription>

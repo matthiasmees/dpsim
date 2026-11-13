@@ -1,0 +1,60 @@
+<?xml version='1.0' encoding='utf-8'?>
+<fmiModelDescription fmiVersion="3.0" modelName="CoupledThreePhaseFixture" instantiationToken="dpsim-three-phase">
+  <ModelExchange canGetAndSetFMUState="true" modelIdentifier="TestModel3Ph" needsCompletedIntegratorStep="true" />
+  <ModelVariables>
+    <Float64 name="u_c" valueReference="2" causality="input" variability="continuous" start="0" />
+    <Float64 name="u_a" valueReference="0" causality="input" variability="continuous" start="0" />
+    <Float64 name="u_b" valueReference="1" causality="input" variability="continuous" start="0" />
+    <Float64 name="v_C_c" valueReference="8" causality="output" variability="continuous" initial="calculated" />
+    <Float64 name="i_b" valueReference="4" causality="output" variability="continuous" initial="calculated" />
+    <Float64 name="v_C_a" valueReference="6" causality="output" variability="continuous" initial="calculated" />
+    <Float64 name="i_c" valueReference="5" causality="output" variability="continuous" initial="calculated" />
+    <Float64 name="i_a" valueReference="3" causality="output" variability="continuous" initial="calculated" />
+    <Float64 name="v_C_b" valueReference="7" causality="output" variability="continuous" initial="calculated" />
+    <Float64 name="time" valueReference="9" causality="independent" variability="continuous" />
+    <Float64 name="x0" valueReference="10" variability="continuous" initial="calculated" />
+    <Float64 name="x1" valueReference="11" variability="continuous" initial="calculated" />
+    <Float64 name="x2" valueReference="12" variability="continuous" initial="calculated" />
+    <Float64 name="x3" valueReference="13" variability="continuous" initial="calculated" />
+    <Float64 name="x4" valueReference="14" variability="continuous" initial="calculated" />
+    <Float64 name="x5" valueReference="15" variability="continuous" initial="calculated" />
+    <Float64 name="dx0" valueReference="16" derivative="10" variability="continuous" initial="calculated" />
+    <Float64 name="dx1" valueReference="17" derivative="11" variability="continuous" initial="calculated" />
+    <Float64 name="dx2" valueReference="18" derivative="12" variability="continuous" initial="calculated" />
+    <Float64 name="dx3" valueReference="19" derivative="13" variability="continuous" initial="calculated" />
+    <Float64 name="dx4" valueReference="20" derivative="14" variability="continuous" initial="calculated" />
+    <Float64 name="dx5" valueReference="21" derivative="15" variability="continuous" initial="calculated" />
+  <Float64 name="evaluation_count" valueReference="24" causality="output" variability="continuous" initial="calculated"/><Float64 name="history" valueReference="25" causality="local" variability="discrete" initial="calculated"/></ModelVariables>
+  <ModelStructure>
+    <Output valueReference="8" />
+    <Output valueReference="4" />
+    <Output valueReference="6" />
+    <Output valueReference="5" />
+    <Output valueReference="3" />
+    <Output valueReference="7" />
+    <ContinuousStateDerivative valueReference="16" />
+    <ContinuousStateDerivative valueReference="17" />
+    <ContinuousStateDerivative valueReference="18" />
+    <ContinuousStateDerivative valueReference="19" />
+    <ContinuousStateDerivative valueReference="20" />
+    <ContinuousStateDerivative valueReference="21" />
+    <InitialUnknown valueReference="3" />
+    <InitialUnknown valueReference="4" />
+    <InitialUnknown valueReference="5" />
+    <InitialUnknown valueReference="6" />
+    <InitialUnknown valueReference="7" />
+    <InitialUnknown valueReference="8" />
+    <InitialUnknown valueReference="10" />
+    <InitialUnknown valueReference="11" />
+    <InitialUnknown valueReference="12" />
+    <InitialUnknown valueReference="13" />
+    <InitialUnknown valueReference="14" />
+    <InitialUnknown valueReference="15" />
+    <InitialUnknown valueReference="16" />
+    <InitialUnknown valueReference="17" />
+    <InitialUnknown valueReference="18" />
+    <InitialUnknown valueReference="19" />
+    <InitialUnknown valueReference="20" />
+    <InitialUnknown valueReference="21" />
+  <Output valueReference="24"/><InitialUnknown valueReference="24"/><InitialUnknown valueReference="25"/></ModelStructure>
+</fmiModelDescription>
